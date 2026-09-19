@@ -160,6 +160,22 @@ public class ArrangementTests
     }
 
     [Fact]
+    public void Backbeat_plays_kick_on_one_and_three_and_opens_the_last_hi_hat_of_the_bar()
+    {
+        var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.Backbeat } }).Score.Voice("Drums");
+
+        var kicks = drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.Kick).Select(n => n.StartTicks % Bar).Distinct().Order();
+        var open = drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.OpenHiHat).ToList();
+
+        Assert.Equal([0L, 2 * Ppq], kicks);
+        Assert.Equal(16, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.Kick));
+        Assert.Equal(16, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.Snare));
+        Assert.Equal(8, open.Count);
+        Assert.All(open, n => Assert.Equal(Bar - Ppq / 2, n.StartTicks % Bar)); // on "4+"
+        Assert.Equal((7 * 8) - 2, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.ClosedHiHat)); // 2 replaced by crashes
+    }
+
+    [Fact]
     public void Crash_cymbals_can_be_switched_off()
     {
         var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { CrashOnSections = false } }).Score.Voice("Drums");

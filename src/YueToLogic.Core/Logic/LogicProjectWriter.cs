@@ -38,14 +38,18 @@ public sealed record LogicProjectResult(bool Success, FlacStreamInfo? Audio, IRe
 
 /// <summary>
 /// Creates a Logic Pro project by filling a template saved by Logic (see <see cref="LogicTemplate"/>): it replaces the
-/// notes of the five MIDI regions, their length, tempo, meter, project length and the audio file. Stateless and thread-safe.
+/// notes of the five MIDI regions, their length, tempo, meter, project length and the audio file, and writes the
+/// chords to the chord track and the sections as arrangement markers. Stateless and thread-safe.
 /// </summary>
 /// <remarks>
 /// Logic's project format is undocumented. The offsets below were derived from projects saved by Logic Pro 12.3.1 and
 /// verified by opening generated projects in Logic; a future Logic version may require a new template.
 /// </remarks>
-public sealed class LogicProjectWriter(LogicTemplate template) : ILogicProjectWriter
+public sealed partial class LogicProjectWriter : ILogicProjectWriter
 {
+    private readonly LogicTemplate template;
+    private readonly TimeProvider timeProvider;
+
     /// <summary>The template project runs at 48 kHz; Logic does not resample audio regions on playback.</summary>
     public const int RequiredSampleRate = 48000;
 
@@ -83,6 +87,14 @@ public sealed class LogicProjectWriter(LogicTemplate template) : ILogicProjectWr
     public LogicProjectWriter()
         : this(LogicTemplate.Default)
     {
+    }
+
+    /// <param name="timeProvider">Clock for the time-based ids of objects the writer creates; the system clock by default.</param>
+    public LogicProjectWriter(LogicTemplate template, TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        this.template = template;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<LogicProjectResult> WriteAsync(
@@ -263,6 +275,15 @@ public sealed class LogicProjectWriter(LogicTemplate template) : ILogicProjectWr
         SetTempo(chunks, score.TempoBpm);
         SetTimeSignature(chunks, score, diagnostics);
         SetAudio(chunks, audio);
+
+        var created = WriteChordTrack(chunks, score);
+        created.AddRange(WriteArrangementMarkers(chunks, score));
+        if (created.Count > 0)
+        {
+            var song = chunks.Single(c => c.Tag == "Song");
+            song.Payload = LogicObjectRegistry.Register(song.Payload, created, timeProvider.GetUtcNow(), Random.Shared);
+        }
+
         return project.Serialize();
     }
 
@@ -278,11 +299,15 @@ public sealed class LogicProjectWriter(LogicTemplate template) : ILogicProjectWr
         }
     }
 
-    /// <summary>Tempo is stored as BPM · 10000 in the tempo list and in two places of the Song chunk.</summary>
+    /// <summary>
+    /// Tempo is stored as BPM · 10000 in the tempo list and in several places of the Song chunk. The list is reduced
+    /// to its first event (two records), since the score has a single tempo.
+    /// </summary>
     private static void SetTempo(List<LogicChunk> chunks, double bpm)
     {
         var tempoList = chunks.Single(c => c.Tag == "EvSq" && c.Class == TempoListClass);
         var oldTempo = BinaryPrimitives.ReadUInt32LittleEndian(tempoList.Payload.AsSpan(16, 4));
+        tempoList.Payload = [.. tempoList.Payload.AsSpan(0, 32), .. SequenceTerminator];
         var newTempo = (uint)Math.Round(bpm * 10000);
         foreach (var chunk in new[] { tempoList, chunks.Single(c => c.Tag == "Song") })
         {

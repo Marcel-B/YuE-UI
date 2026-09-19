@@ -4,6 +4,7 @@ using System.Xml.Linq;
 using YueToLogic.Core.Arrangement;
 using YueToLogic.Core.Conversion;
 using YueToLogic.Core.Diagnostics;
+using YueToLogic.Core.Harmony;
 using YueToLogic.Core.Logic;
 using YueToLogic.Core.Model;
 using static YueToLogic.Core.Tests.TestScores;
@@ -135,6 +136,77 @@ public class LogicProjectWriterTests
         Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCodes.AudioLengthMismatch);
     }
 
+    [Fact]
+    public void Chords_are_encoded_exactly_as_logic_stores_them()
+    {
+        // The template's chord track holds these chords, entered by hand in Logic, one per bar.
+        string[] texts = ["C", "Cm", "Cdim", "Caug", "C7", "Cmaj7", "Cm7", "Cdim7", "Cm7b5", "Csus4", "Csus2", "C6", "Cm6", "C7sus4", "Cm(maj7)", "C/E", "F#m7"];
+        var logicRecords = TemplateChordRecords();
+
+        for (var i = 0; i < texts.Length; i++)
+        {
+            Assert.True(ChordSymbolParser.TryParse(texts[i], out var symbol));
+            var record = logicRecords[i].ToArray();
+            LogicChordEncoding.Encode(record, texts[i], symbol);
+
+            // Logic picked a phrygian scale for F#m7 (context-dependent); we always use the quality's default scale.
+            var compared = texts[i] == "F#m7" ? 14 : 16;
+            Assert.True(logicRecords[i][..compared].SequenceEqual(record[..compared]), $"{texts[i]} differs from Logic's encoding");
+        }
+    }
+
+    [Fact]
+    public void Flats_and_sharps_keep_their_spelling()
+    {
+        var record = new byte[16];
+        Assert.True(ChordSymbolParser.TryParse("Gb", out var gFlat));
+        LogicChordEncoding.Encode(record, "Gb", gFlat);
+        Assert.Equal((1, 6), (record[4], record[5])); // flat, pitch class 6 — Logic shows "Gb" (German "Ges")
+
+        Assert.True(ChordSymbolParser.TryParse("F#m7/C#", out var fSharp));
+        LogicChordEncoding.Encode(record, "F#m7/C#", fSharp);
+        Assert.Equal((3, 6, 3, 1), (record[4], record[5], record[2], record[3]));
+    }
+
+    [Fact]
+    public async Task Every_chord_gets_a_region_on_the_chord_track_and_every_section_an_arrangement_marker()
+    {
+        // 106 chords and 8 sections: more than the template's 17 chord regions and 3 markers.
+        var score = Convert(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "logic-template-song.abc")), withAccompaniment: false);
+        var package = await WriteAsync(score, Flac(48000, 2, 24, TemplateSongSamples));
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+
+        var chordTrack = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.SequenceName == "Global Harmonies");
+        var placements = chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == chordTrack.Id).Payload;
+        var regionIds = Enumerable.Range(0, placements.Length / 80).Select(i => ReadUInt32(placements, (i * 80) + 32)).ToList();
+        Assert.Equal(score.Chords.Count, regionIds.Count);
+        Assert.Equal(regionIds.Count, regionIds.Distinct().Count());
+        Assert.Equal(34_560u + (2 * (uint)score.Chords[1].StartTicks), ReadUInt32(placements, 80 + 4));
+        foreach (var id in regionIds)
+        {
+            Assert.Single(chunks, c => c.Tag == "MSeq" && c.Class == 23 && c.Id == id);
+            Assert.Single(chunks, c => c.Tag == "Trak" && c.Class == 23 && c.Id == id);
+            Assert.Single(chunks, c => c.Tag == "EvSq" && c.Class == 23 && c.Id == id);
+        }
+
+        var markers = chunks.Single(c => c.Tag == "EvSq" && c.Class == 5 && c.Payload[0] == 0x12).Payload;
+        var textIds = Enumerable.Range(0, markers.Length / 48).Select(i => ReadUInt32(markers, (i * 48) + 16)).ToList();
+        Assert.Equal(score.Sections.Count, textIds.Count);
+        var names = textIds.Select(id => chunks.Single(c => c.Tag == "TxSq" && c.Id == id).Payload).Select(p => System.Text.Encoding.UTF8.GetString(p, 98, p.Length - 99));
+        Assert.Equal(score.Sections.Select(s => char.ToUpperInvariant(s.Name[0]) + s.Name[1..]), names);
+        Assert.Equal(38_400u + (2 * (uint)score.Sections[1].StartTicks), ReadUInt32(markers, 48 + 4));
+
+        // New objects are listed in both registry tables of the Song chunk.
+        var song = chunks.Single(c => c.Tag == "Song").Payload;
+        var templateSong = LogicProjectData.Parse(TemplateProjectData).Chunks.Single(c => c.Tag == "Song").Payload;
+        var newObjects = (regionIds.Count - 17) + (textIds.Count - 3);
+        Assert.Equal(templateSong.Length + (newObjects * (24 + 16)), song.Length);
+        foreach (var id in regionIds.Skip(17))
+        {
+            Assert.Equal(2, CountEntries(song, 23, id));
+        }
+    }
+
     [Theory]
     [InlineData(60, 0x0000)]
     [InlineData(72, 0x2080)]
@@ -220,6 +292,34 @@ public class LogicProjectWriterTests
             .Select(i => System.Convert.ToHexString(sequence, i * 16, 32))
             .Order(StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>The chord data records of the template's chord regions, in the order of the chord track.</summary>
+    private static List<byte[]> TemplateChordRecords()
+    {
+        var chunks = LogicProjectData.Parse(TemplateProjectData).Chunks;
+        var track = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.SequenceName == "Global Harmonies");
+        var placements = chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == track.Id).Payload;
+        return Enumerable.Range(0, placements.Length / 80)
+            .Select(i => ReadUInt32(placements, (i * 80) + 32))
+            .Select(id => chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == id).Payload[48..64])
+            .ToList();
+    }
+
+    private static int CountEntries(byte[] song, uint klass, uint id)
+    {
+        Span<byte> key = stackalloc byte[8];
+        BinaryPrimitives.WriteUInt32LittleEndian(key, klass);
+        BinaryPrimitives.WriteUInt32LittleEndian(key[4..], id);
+        var count = 0;
+        for (var i = song.AsSpan().IndexOf(key); i >= 0;)
+        {
+            count++;
+            var next = song.AsSpan(i + 1).IndexOf(key);
+            i = next < 0 ? -1 : i + 1 + next;
+        }
+
+        return count;
+    }
 
     private static uint ReadUInt32(byte[] buffer, int offset) => BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(offset));
 

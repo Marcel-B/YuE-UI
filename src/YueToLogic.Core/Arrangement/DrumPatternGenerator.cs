@@ -3,9 +3,10 @@ using YueToLogic.Core.Model;
 namespace YueToLogic.Core.Arrangement;
 
 /// <summary>
-/// A four-on-the-floor groove: kick on every beat, snare on every second beat, closed hi-hat on every
-/// half beat, and optionally a crash cymbal (instead of the hi-hat) where a section starts.
-/// Compound meters such as 6/8 count dotted quarters as beats and play the hi-hat on every eighth note.
+/// Drum grooves on the score's meter: snare on every second beat and hi-hat on every half beat, with the kick on
+/// every beat (<see cref="DrumPattern.FourOnTheFloor"/>) or on every other beat plus an open hi-hat on the last
+/// half beat of the bar (<see cref="DrumPattern.Backbeat"/>). Optionally a crash cymbal replaces the hi-hat where
+/// a section starts. Compound meters such as 6/8 count dotted quarters as beats and play the hi-hat on every eighth.
 /// </summary>
 internal static class DrumPatternGenerator
 {
@@ -16,11 +17,13 @@ internal static class DrumPatternGenerator
     private const int CrashVelocity = 100;
     private const int HiHatOnBeatVelocity = 80;
     private const int HiHatOffBeatVelocity = 60;
+    private const int OpenHiHatVelocity = 75;
 
     public static VoiceTrack Generate(ScoreDocument score, DrumOptions options)
     {
         var ppq = score.TicksPerQuarterNote;
         var hitTicks = Math.Max(1, ppq / 4);
+        var backbeat = options.Pattern == DrumPattern.Backbeat;
         var crashTicks = options.CrashOnSections
             ? score.Sections.Select(s => s.StartTicks).Where(t => t < score.LengthTicks).ToHashSet()
             : [];
@@ -41,7 +44,11 @@ internal static class DrumPatternGenerator
                 for (var beat = 0; beat < beatsPerBar && bar + beat * beatTicks < segmentEnd; beat++)
                 {
                     var tick = bar + beat * beatTicks;
-                    notes.Add(new NoteEvent(tick, hitTicks, GeneralMidiDrums.Kick, KickVelocity));
+                    if (!backbeat || beat % 2 == 0)
+                    {
+                        notes.Add(new NoteEvent(tick, hitTicks, GeneralMidiDrums.Kick, KickVelocity));
+                    }
+
                     if (beat % 2 == 1)
                     {
                         notes.Add(new NoteEvent(tick, hitTicks, GeneralMidiDrums.Snare, SnareVelocity));
@@ -49,13 +56,24 @@ internal static class DrumPatternGenerator
                 }
             }
 
+            var measureTicks = beatTicks * beatsPerBar;
             for (var tick = signature.StartTicks; tick < segmentEnd; tick += hiHatTicks)
             {
-                if (!crashTicks.Contains(tick))
+                if (crashTicks.Contains(tick))
                 {
-                    var onBeat = (tick - signature.StartTicks) % beatTicks == 0;
-                    notes.Add(new NoteEvent(tick, hitTicks, GeneralMidiDrums.ClosedHiHat, onBeat ? HiHatOnBeatVelocity : HiHatOffBeatVelocity));
+                    continue;
                 }
+
+                var positionInBar = (tick - signature.StartTicks) % measureTicks;
+                if (backbeat && positionInBar + hiHatTicks >= measureTicks)
+                {
+                    // Open hi-hat on the last half beat ("4+"), ringing into the next downbeat.
+                    notes.Add(new NoteEvent(tick, hiHatTicks, GeneralMidiDrums.OpenHiHat, OpenHiHatVelocity));
+                    continue;
+                }
+
+                var onBeat = positionInBar % beatTicks == 0;
+                notes.Add(new NoteEvent(tick, hitTicks, GeneralMidiDrums.ClosedHiHat, onBeat ? HiHatOnBeatVelocity : HiHatOffBeatVelocity));
             }
         }
 
