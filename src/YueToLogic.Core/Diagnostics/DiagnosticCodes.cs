@@ -28,6 +28,12 @@ public static class DiagnosticCodes
     // Arrangement
     public const string UnknownVoice = "YTL030";
 
+    // Logic Pro project
+    public const string InvalidAudio = "YTL050";
+    public const string UnsupportedSampleRate = "YTL051";
+    public const string AudioLengthMismatch = "YTL052";
+    public const string LogicTemplateLimitation = "YTL053";
+
     // Fatal
     public const string NoMusic = "YTL040";
     public const string TickResolution = "YTL041";

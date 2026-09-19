@@ -25,6 +25,8 @@
 
   <ItemGroup>
     <None Include="..\..\samples\score.abc" Link="Samples\score.abc" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The YuE score the embedded Logic template was created from (The City Calls My Name, 108 BPM). -->
+    <None Include="Fixtures\*.abc" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

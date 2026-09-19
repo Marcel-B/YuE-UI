@@ -16,4 +16,9 @@
     <InternalsVisibleTo Include="YueToLogic.Core.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Logic Pro template (saved by Logic Pro 12.3), filled by LogicProjectWriter. -->
+    <EmbeddedResource Include="Logic/Template/*" LogicalName="YueToLogic.LogicTemplate.%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

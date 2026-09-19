@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using YueToLogic.Core.Abc;
 using YueToLogic.Core.Conversion;
+using YueToLogic.Core.Diagnostics;
 using YueToLogic.Core.Model;
 
 namespace YueToLogic.Core.Serialization;
@@ -15,4 +16,5 @@ namespace YueToLogic.Core.Serialization;
 [JsonSerializable(typeof(ConversionOptions))]
 [JsonSerializable(typeof(AbcParseResult))]
 [JsonSerializable(typeof(ScoreDocument))]
+[JsonSerializable(typeof(Diagnostic[]))]
 public sealed partial class YueToLogicJsonContext : JsonSerializerContext;

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>BundleVersion</key>
+	<real>2</real>
+	<key>HasProjectFolder</key>
+	<false/>
+	<key>LastSavedFrom</key>
+	<string>Logic Pro 12.3.1 (6682)</string>
+	<key>VariantNames</key>
+	<dict>
+		<key>0</key>
+		<string>YuE-Vorlage</string>
+	</dict>
+	<key>VariantNamesV2</key>
+	<dict>
+		<key>0</key>
+		<string>{PROJECT_NAME}</string>
+	</dict>
+	<key>WasOnceSavedFromLPX</key>
+	<true/>
+	<key>projectAssetFlags</key>
+	<integer>8269</integer>
+</dict>
+</plist>
