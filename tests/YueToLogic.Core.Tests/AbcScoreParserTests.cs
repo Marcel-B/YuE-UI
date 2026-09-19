@@ -149,6 +149,27 @@ public class AbcScoreParserTests
     }
 
     [Fact]
+    public void Score_that_ends_inside_a_bar_is_reported_as_truncated()
+    {
+        // YuE stops writing when it reaches its token limit, e.g. "…|e2z" without a closing bar line.
+        var result = new AbcScoreParser().Parse(Native("V: Vocal\nC16|D16|\nV: Ins\nZ|E4E2z"));
+
+        var warning = Assert.Single(result.Warnings());
+        Assert.Equal(DiagnosticCodes.ScoreTruncated, warning.Code);
+        Assert.Contains("bar 2 of voice 'Ins' (1.75 of 4 quarter notes)", warning.Message, StringComparison.Ordinal);
+        Assert.Equal(2 * Bar, result.Score!.LengthTicks);
+    }
+
+    [Fact]
+    public void Missing_bar_line_inside_the_score_is_reported_as_such()
+    {
+        var result = new AbcScoreParser().Parse(Native("V: Vocal\nC8\nV: Ins\nZ|"));
+
+        Assert.Contains(result.Warnings(), d => d.Code == DiagnosticCodes.MissingBarLine);
+        Assert.DoesNotContain(result.Warnings(), d => d.Code == DiagnosticCodes.ScoreTruncated);
+    }
+
+    [Fact]
     public void Key_change_starts_a_new_key_signature_and_resets_accidentals()
     {
         var score = ParseScore(Native("""

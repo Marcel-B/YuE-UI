@@ -55,6 +55,7 @@ public sealed partial class AbcScoreParser : IAbcScoreParser
         private readonly List<SectionMarker> _sections = [];
         private readonly List<PendingChord> _chords = [];
 
+        private string[] _lines = [];
         private bool _inHeader = true;
         private bool _fatal;
         private int _line;
@@ -76,11 +77,11 @@ public sealed partial class AbcScoreParser : IAbcScoreParser
                 return new AbcParseResult(null, _diagnostics.ToList());
             }
 
-            var lines = text.TrimStart('﻿').Split('\n');
-            for (var index = 0; index < lines.Length && !_fatal; index++)
+            _lines = text.TrimStart('﻿').Split('\n');
+            for (var index = 0; index < _lines.Length && !_fatal; index++)
             {
                 _line = index + 1;
-                ProcessLine(lines[index].TrimEnd('\r'));
+                ProcessLine(_lines[index].TrimEnd('\r'));
             }
 
             _line = 0;
@@ -441,11 +442,40 @@ public sealed partial class AbcScoreParser : IAbcScoreParser
                 Apply(voice, token);
             }
 
-            if (voice.Offset != 0)
+            if (voice.Offset == 0)
             {
-                _diagnostics.Warning(DiagnosticCodes.MissingBarLine, "Music line does not end with a bar line; the bar is closed here.", _line);
-                CloseBar(voice, column: null);
+                return;
             }
+
+            if (IsLastMusicLine())
+            {
+                // YuE stops writing the score when it reaches its token limit, often inside a bar.
+                voice.Meter.TryGetMeasureTicks(_ppq, out var measureTicks);
+                _diagnostics.Warning(
+                    DiagnosticCodes.ScoreTruncated,
+                    Invariant($"The score ends in the middle of bar {voice.BarNumber} of voice '{voice.Id}' ({Quarters(voice.Offset)} of {Quarters(measureTicks * voice.MeasuresInBar)} quarter notes). YuE probably stopped writing it early (its result.json then reports \"truncated\"); the bar is completed with rests."),
+                    _line);
+                CloseBar(voice, column: null, reportLength: false);
+                return;
+            }
+
+            _diagnostics.Warning(DiagnosticCodes.MissingBarLine, "Music line does not end with a bar line; the bar is closed here.", _line);
+            CloseBar(voice, column: null);
+        }
+
+        /// <summary>Whether only blank lines and comments follow the current line.</summary>
+        private bool IsLastMusicLine()
+        {
+            for (var index = _line; index < _lines.Length; index++)
+            {
+                var rest = _lines[index].Trim();
+                if (rest.Length > 0 && rest[0] != '%')
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private VoiceCursor DefaultVoice()
@@ -596,7 +626,7 @@ public sealed partial class AbcScoreParser : IAbcScoreParser
             voice.PendingTie = null;
         }
 
-        private void CloseBar(VoiceCursor voice, int? column)
+        private void CloseBar(VoiceCursor voice, int? column, bool reportLength = true)
         {
             if (voice.Offset == 0)
             {
@@ -605,7 +635,7 @@ public sealed partial class AbcScoreParser : IAbcScoreParser
 
             voice.Meter.TryGetMeasureTicks(_ppq, out var measureTicks);
             var expected = measureTicks * voice.MeasuresInBar;
-            if (voice.Offset != expected)
+            if (reportLength && voice.Offset != expected)
             {
                 _diagnostics.Warning(
                     DiagnosticCodes.BarLengthMismatch,

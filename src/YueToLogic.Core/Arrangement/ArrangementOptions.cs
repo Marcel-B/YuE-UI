@@ -47,8 +47,19 @@ public enum BassPattern
 
 public sealed record DrumOptions
 {
+    public DrumPattern Pattern { get; set; } = DrumPattern.FourOnTheFloor;
+
     /// <summary>Plays a crash cymbal at the start of every section (verse, chorus, …).</summary>
     public bool CrashOnSections { get; set; } = true;
+}
+
+public enum DrumPattern
+{
+    /// <summary>Kick on every beat, snare on 2 and 4, closed hi-hat in eighth notes.</summary>
+    FourOnTheFloor,
+
+    /// <summary>Kick on 1 and 3, snare on 2 and 4, eighth-note hi-hat that opens on the last eighth of the bar.</summary>
+    Backbeat,
 }
 
 /// <summary>Note numbers of the General MIDI drum map, which Logic's drum kits follow.</summary>
@@ -58,5 +69,6 @@ public static class GeneralMidiDrums
     public const int Kick = 36;
     public const int Snare = 38;
     public const int ClosedHiHat = 42;
+    public const int OpenHiHat = 46;
     public const int Crash = 49;
 }

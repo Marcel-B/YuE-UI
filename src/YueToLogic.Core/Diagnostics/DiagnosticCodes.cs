@@ -20,6 +20,7 @@ public static class DiagnosticCodes
     public const string PitchOutOfRange = "YTL015";
     public const string MissingBarLine = "YTL016";
     public const string ConflictingChange = "YTL017";
+    public const string ScoreTruncated = "YTL018";
 
     // Harmony
     public const string UnknownChord = "YTL020";

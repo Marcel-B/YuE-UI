@@ -46,6 +46,11 @@ public static class ConversionOptionsValidator
             }
         }
 
+        if (arrangement.Drums is { } drums && !Enum.IsDefined(drums.Pattern))
+        {
+            errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.drums.pattern '{drums.Pattern}' is not supported."));
+        }
+
         return errors.ToList();
     }
 
