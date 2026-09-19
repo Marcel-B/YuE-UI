@@ -8,8 +8,11 @@ internal static class BassLineGenerator
 {
     public const string TrackId = "Bass";
 
-    /// <summary>MIDI 28, the low E string of a bass guitar; bass notes are placed in the octave above it.</summary>
-    private const int LowestNote = 28;
+    /// <summary>
+    /// MIDI 40 (E2; E1 in Logic's naming): bass notes are placed in the octave above it. This is one octave
+    /// above the lowest bass-guitar string, because many instruments cannot play the bottom octave.
+    /// </summary>
+    private const int LowestNote = 40;
 
     private const int OffBeatSoftening = 16;
 
@@ -27,7 +30,7 @@ internal static class BassLineGenerator
             }
 
             // A slash chord (C/E) names the bass note explicitly.
-            var bassNote = LowestNote + Mod12((symbol.BassPitchClass ?? symbol.RootPitchClass) - LowestNote);
+            var bassNote = LowestNote + (12 * options.OctaveShift) + Mod12((symbol.BassPitchClass ?? symbol.RootPitchClass) - LowestNote);
             var alternateNote = AlternateNote(symbol, bassNote);
             var end = chord.StartTicks + chord.DurationTicks;
             var index = 0;

@@ -23,6 +23,12 @@ public sealed record BassOptions
 {
     public BassPattern Pattern { get; init; } = BassPattern.Eighths;
 
+    /// <summary>
+    /// Octaves relative to the default register E2–D#3 (MIDI 40–51, E1–D#2 in Logic's naming);
+    /// -1 is the bottom octave of a four-string bass guitar.
+    /// </summary>
+    public int OctaveShift { get; init; }
+
     /// <summary>Velocity on the beat; off-beat notes are played slightly softer.</summary>
     public int Velocity { get; init; } = 100;
 }

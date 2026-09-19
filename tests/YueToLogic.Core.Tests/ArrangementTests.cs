@@ -83,8 +83,8 @@ public class ArrangementTests
         Assert.Equal(8 * 8, bass.Notes.Count);
         Assert.All(bass.Notes, n => Assert.Equal(0, n.StartTicks % (Ppq / 2)));
         // C, G, Am, F in the first four bars
-        Assert.Equal([36, 31, 33, 29], bass.Notes.Where((_, i) => i % 8 == 0).Take(4).Select(n => n.NoteNumber));
-        Assert.All(bass.Notes, n => Assert.InRange(n.NoteNumber, 28, 39));
+        Assert.Equal([48, 43, 45, 41], bass.Notes.Where((_, i) => i % 8 == 0).Take(4).Select(n => n.NoteNumber));
+        Assert.All(bass.Notes, n => Assert.InRange(n.NoteNumber, 40, 51));
         Assert.Equal([100, 84], bass.Notes.Take(2).Select(n => n.Velocity!.Value));
         Assert.True(bass.Notes[0].DurationTicks < Ppq / 2, "Bass notes are slightly detached.");
     }
@@ -96,7 +96,17 @@ public class ArrangementTests
 
         var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions() }).Score.Voice("Bass");
 
-        Assert.All(bass.Notes, n => Assert.Equal(28, n.NoteNumber));
+        Assert.All(bass.Notes, n => Assert.Equal(40, n.NoteNumber));
+    }
+
+    [Theory]
+    [InlineData(-1, 36)]
+    [InlineData(1, 60)]
+    public void Bass_register_can_be_moved_by_octaves(int octaves, int expected)
+    {
+        var bass = Arranger.Arrange(Sample, new ArrangementOptions { Bass = new BassOptions { OctaveShift = octaves } }).Score.Voice("Bass");
+
+        Assert.Equal(expected, bass.Notes[0].NoteNumber);
     }
 
     [Fact]
@@ -108,9 +118,9 @@ public class ArrangementTests
     }
 
     [Theory]
-    [InlineData("C", 36, 43)]
-    [InlineData("Bdim", 35, 41)]
-    [InlineData("C/G", 31, 36)]
+    [InlineData("C", 48, 55)]
+    [InlineData("Bdim", 47, 53)]
+    [InlineData("C/G", 43, 48)]
     public void Root_fifth_alternates_bass_note_and_fifth(string chord, int bassNote, int alternate)
     {
         var score = ParseScore(Native($"V: Vocal\n\"{chord}\"C16|"));
@@ -128,7 +138,7 @@ public class ArrangementTests
         var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions() }).Score.Voice("Bass");
 
         Assert.Equal([0L, 240, 360, 480, 720], bass.Notes.Take(5).Select(n => n.StartTicks));
-        Assert.Equal([36, 36, 31, 31, 31], bass.Pitches()[..5]);
+        Assert.Equal([48, 48, 43, 43, 43], bass.Pitches()[..5]);
     }
 
     [Fact]
