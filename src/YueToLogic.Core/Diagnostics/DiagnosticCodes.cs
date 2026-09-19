@@ -1,0 +1,34 @@
+namespace YueToLogic.Core.Diagnostics;
+
+/// <summary>Stable identifiers for <see cref="Diagnostic.Code"/>, usable as localization keys by frontends.</summary>
+public static class DiagnosticCodes
+{
+    // Header and structure
+    public const string MissingHeaderField = "YTL001";
+    public const string InvalidFieldValue = "YTL002";
+    public const string UnsupportedKey = "YTL003";
+    public const string IgnoredField = "YTL004";
+    public const string UndeclaredVoice = "YTL005";
+    public const string TempoChangeIgnored = "YTL006";
+
+    // Music lines
+    public const string UnsupportedNotation = "YTL010";
+    public const string NonNativeDuration = "YTL011";
+    public const string BarLengthMismatch = "YTL012";
+    public const string VoicesOutOfSync = "YTL013";
+    public const string TieMismatch = "YTL014";
+    public const string PitchOutOfRange = "YTL015";
+    public const string MissingBarLine = "YTL016";
+    public const string ConflictingChange = "YTL017";
+
+    // Harmony
+    public const string UnknownChord = "YTL020";
+    public const string ChordOutsideVocal = "YTL021";
+
+    // Arrangement
+    public const string UnknownVoice = "YTL030";
+
+    // Fatal
+    public const string NoMusic = "YTL040";
+    public const string TickResolution = "YTL041";
+}

@@ -1,0 +1,215 @@
+using System.Text.Json;
+using Melanchall.DryWetMidi.Core;
+using YueToLogic.Core.Arrangement;
+using YueToLogic.Core.Conversion;
+using YueToLogic.Core.Diagnostics;
+using YueToLogic.Core.Model;
+using YueToLogic.Core.Serialization;
+using static YueToLogic.Core.Tests.TestScores;
+
+namespace YueToLogic.Core.Tests;
+
+public class ArrangementTests
+{
+    private static readonly ScoreArranger Arranger = new();
+
+    private static ScoreDocument Sample => ParseScore(File.ReadAllText(SamplePath));
+
+    private static ScoreDocument TwoVoices => ParseScore(Native("""
+        V: Vocal
+        C16|
+        V: Ins
+        E16|
+        """));
+
+    [Fact]
+    public void Default_options_leave_the_score_unchanged()
+    {
+        var result = Arranger.Arrange(Sample);
+
+        Assert.Equal(Sample.Voices.Select(v => v.Notes), result.Score.Voices.Select(v => v.Notes));
+        Assert.Empty(result.Diagnostics);
+    }
+
+    [Fact]
+    public void Single_voice_is_moved_by_octaves()
+    {
+        var score = Arranger.Arrange(TwoVoices, new ArrangementOptions { OctaveShifts = new Dictionary<string, int> { ["vocal"] = 1 } }).Score;
+
+        Assert.Equal([72], score.Voice("Vocal").Pitches());
+        Assert.Equal([64], score.Voice("Ins").Pitches());
+    }
+
+    [Fact]
+    public void Voice_specific_shift_takes_precedence_over_the_default()
+    {
+        var options = new ArrangementOptions
+        {
+            DefaultOctaveShift = -1,
+            OctaveShifts = new Dictionary<string, int> { ["Ins"] = 2 },
+        };
+
+        var score = Arranger.Arrange(TwoVoices, options).Score;
+
+        Assert.Equal([48], score.Voice("Vocal").Pitches());
+        Assert.Equal([88], score.Voice("Ins").Pitches());
+    }
+
+    [Fact]
+    public void Notes_moved_outside_the_midi_range_are_dropped_with_a_warning()
+    {
+        var score = ParseScore(Native("V: Vocal\nC8c'8|"));
+
+        var result = Arranger.Arrange(score, new ArrangementOptions { DefaultOctaveShift = 4 });
+
+        Assert.Equal([108], result.Score.Voice("Vocal").Pitches());
+        Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCodes.PitchOutOfRange);
+    }
+
+    [Fact]
+    public void Unknown_voice_is_reported()
+    {
+        var result = Arranger.Arrange(Sample, new ArrangementOptions { OctaveShifts = new Dictionary<string, int> { ["Piano"] = 1 } });
+
+        Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCodes.UnknownVoice && d.Message.Contains("Vocal, Ins", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Bass_plays_chord_roots_in_eighth_notes_in_the_bass_register()
+    {
+        var bass = Arranger.Arrange(Sample, new ArrangementOptions { Bass = new BassOptions() }).Score.Voice("Bass");
+
+        Assert.Equal(TrackKind.Bass, bass.Kind);
+        Assert.Equal(8 * 8, bass.Notes.Count);
+        Assert.All(bass.Notes, n => Assert.Equal(0, n.StartTicks % (Ppq / 2)));
+        // C, G, Am, F in the first four bars
+        Assert.Equal([36, 31, 33, 29], bass.Notes.Where((_, i) => i % 8 == 0).Take(4).Select(n => n.NoteNumber));
+        Assert.All(bass.Notes, n => Assert.InRange(n.NoteNumber, 28, 39));
+        Assert.Equal([100, 84], bass.Notes.Take(2).Select(n => n.Velocity!.Value));
+        Assert.True(bass.Notes[0].DurationTicks < Ppq / 2, "Bass notes are slightly detached.");
+    }
+
+    [Fact]
+    public void Bass_uses_the_slash_bass_note()
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C/E\"C16|"));
+
+        var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions() }).Score.Voice("Bass");
+
+        Assert.All(bass.Notes, n => Assert.Equal(28, n.NoteNumber));
+    }
+
+    [Fact]
+    public void Bass_quarter_notes()
+    {
+        var bass = Arranger.Arrange(Sample, new ArrangementOptions { Bass = new BassOptions { Pattern = BassPattern.Quarters } }).Score.Voice("Bass");
+
+        Assert.Equal(8 * 4, bass.Notes.Count);
+    }
+
+    [Theory]
+    [InlineData("C", 36, 43)]
+    [InlineData("Bdim", 35, 41)]
+    [InlineData("C/G", 31, 36)]
+    public void Root_fifth_alternates_bass_note_and_fifth(string chord, int bassNote, int alternate)
+    {
+        var score = ParseScore(Native($"V: Vocal\n\"{chord}\"C16|"));
+
+        var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions { Pattern = BassPattern.RootFifth } }).Score.Voice("Bass");
+
+        Assert.Equal([bassNote, alternate, bassNote, alternate], bass.Pitches());
+    }
+
+    [Fact]
+    public void Bass_stays_on_the_eighth_note_grid_when_a_chord_changes_off_the_beat()
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C\"C3\"G\"C13|"));
+
+        var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions() }).Score.Voice("Bass");
+
+        Assert.Equal([0L, 240, 360, 480, 720], bass.Notes.Take(5).Select(n => n.StartTicks));
+        Assert.Equal([36, 36, 31, 31, 31], bass.Pitches()[..5]);
+    }
+
+    [Fact]
+    public void Drums_play_four_on_the_floor_with_backbeat_hi_hats_and_section_crashes()
+    {
+        var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions() }).Score.Voice("Drums");
+
+        Assert.Equal(TrackKind.Drums, drums.Kind);
+        var kicks = drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.Kick).ToList();
+        var snares = drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.Snare).ToList();
+        var crashes = drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.Crash).ToList();
+
+        Assert.Equal(32, kicks.Count);
+        Assert.All(kicks, n => Assert.Equal(0, n.StartTicks % Ppq));
+        Assert.Equal([Ppq, 3L * Ppq], snares.Take(2).Select(n => n.StartTicks));
+        Assert.Equal(16, snares.Count);
+        Assert.Equal(64 - 2, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.ClosedHiHat));
+        Assert.Equal([0L, 4 * Bar], crashes.Select(n => n.StartTicks));
+    }
+
+    [Fact]
+    public void Crash_cymbals_can_be_switched_off()
+    {
+        var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { CrashOnSections = false } }).Score.Voice("Drums");
+
+        Assert.DoesNotContain(drums.Notes, n => n.NoteNumber == GeneralMidiDrums.Crash);
+        Assert.Equal(64, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.ClosedHiHat));
+    }
+
+    [Theory]
+    [InlineData("3/4", "C12|", 3, 1, 6)]
+    [InlineData("6/8", "C12|", 2, 1, 6)]
+    [InlineData("2/2", "C16|", 2, 1, 4)]
+    public void Drum_pattern_follows_the_meter(string meter, string bar, int kicks, int snares, int hiHats)
+    {
+        var score = ParseScore(Native($"V: Vocal\n{bar}", meter: meter));
+
+        var drums = Arranger.Arrange(score, new ArrangementOptions { Drums = new DrumOptions() }).Score.Voice("Drums");
+
+        Assert.Equal(kicks, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.Kick));
+        Assert.Equal(snares, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.Snare));
+        Assert.Equal(hiHats, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.ClosedHiHat));
+    }
+
+    [Fact]
+    public void Generated_tracks_follow_the_chord_track_and_drums_use_channel_ten()
+    {
+        var options = new ConversionOptions { Arrangement = new ArrangementOptions { Bass = new BassOptions(), Drums = new DrumOptions() } };
+
+        var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
+        var tracks = MidiFile.Read(new MemoryStream(result.Midi!)).GetTrackChunks().ToList();
+
+        Assert.Equal(
+            ["Conductor", "Vocal", "Ins", "Chords", "Bass", "Drums"],
+            tracks.Select(t => t.Events.OfType<SequenceTrackNameEvent>().Single().Text));
+        Assert.All(tracks[5].Events.OfType<NoteOnEvent>(), e => Assert.Equal(9, (int)e.Channel));
+        Assert.All(tracks[4].Events.OfType<NoteOnEvent>(), e => Assert.Equal(3, (int)e.Channel));
+        Assert.Equal(110, (int)tracks[5].Events.OfType<NoteOnEvent>().First(e => e.NoteNumber == GeneralMidiDrums.Kick).Velocity);
+    }
+
+    [Fact]
+    public void Arrangement_options_round_trip_through_json()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions
+            {
+                DefaultOctaveShift = -1,
+                OctaveShifts = new Dictionary<string, int> { ["Vocal"] = 1 },
+                Bass = new BassOptions { Pattern = BassPattern.RootFifth },
+                Drums = new DrumOptions { CrashOnSections = false },
+            },
+        };
+
+        var json = JsonSerializer.Serialize(options, YueToLogicJsonContext.Default.ConversionOptions);
+        var restored = JsonSerializer.Deserialize(json, YueToLogicJsonContext.Default.ConversionOptions)!;
+
+        Assert.Contains("\"pattern\": \"RootFifth\"", json, StringComparison.Ordinal);
+        Assert.Equal(1, restored.Arrangement.OctaveShifts["Vocal"]);
+        Assert.Equal(options.Arrangement.Bass, restored.Arrangement.Bass);
+        Assert.Equal(options.Arrangement.Drums, restored.Arrangement.Drums);
+        Assert.Equal(-1, restored.Arrangement.DefaultOctaveShift);
+    }
+}
