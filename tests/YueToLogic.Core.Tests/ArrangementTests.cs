@@ -200,6 +200,21 @@ public class ArrangementTests
     }
 
     [Fact]
+    public void Partial_json_options_keep_their_defaults()
+    {
+        var options = JsonSerializer.Deserialize(
+            """{"arrangement":{"bass":{"pattern":"rootFifth"},"drums":{}}}""",
+            YueToLogicJsonContext.Default.ConversionOptions)!;
+
+        Assert.Equal(480, options.TicksPerQuarterNote);
+        Assert.True(options.IncludeChordTrack);
+        Assert.Equal(BassPattern.RootFifth, options.Arrangement.Bass!.Pattern);
+        Assert.Equal(100, options.Arrangement.Bass.Velocity);
+        Assert.True(options.Arrangement.Drums!.CrashOnSections);
+        Assert.Empty(ConversionOptionsValidator.Validate(options));
+    }
+
+    [Fact]
     public void Arrangement_options_round_trip_through_json()
     {
         var options = new ConversionOptions

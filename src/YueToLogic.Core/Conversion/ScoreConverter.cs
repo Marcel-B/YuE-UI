@@ -16,14 +16,19 @@ public interface IScoreConverter
 }
 
 /// <summary>Serializable conversion settings, e.g. as the body of a web request.</summary>
+/// <remarks>
+/// This and the arrangement option types use <c>set</c> rather than <c>init</c>: the System.Text.Json source
+/// generator assigns <c>default</c> to init-only properties missing from the JSON, which would discard the
+/// defaults below for partial requests such as <c>{"includeChordTrack": false}</c>.
+/// </remarks>
 public sealed record ConversionOptions
 {
-    public int TicksPerQuarterNote { get; init; } = AbcParseOptions.DefaultTicksPerQuarterNote;
+    public int TicksPerQuarterNote { get; set; } = AbcParseOptions.DefaultTicksPerQuarterNote;
 
-    public bool IncludeChordTrack { get; init; } = true;
+    public bool IncludeChordTrack { get; set; } = true;
 
     /// <summary>Octave shifts and generated bass/drum tracks; by default the score is rendered as written.</summary>
-    public ArrangementOptions Arrangement { get; init; } = new();
+    public ArrangementOptions Arrangement { get; set; } = new();
 }
 
 /// <param name="Success">Whether a score could be read; warnings in <see cref="Diagnostics"/> do not affect it.</param>
@@ -46,6 +51,11 @@ public sealed class ScoreConverter(IAbcScoreParser parser, IScoreArranger arrang
     {
         ArgumentNullException.ThrowIfNull(abcText);
         options ??= new ConversionOptions();
+        var optionErrors = ConversionOptionsValidator.Validate(options);
+        if (optionErrors.Count > 0)
+        {
+            return new ConversionResult(false, null, null, optionErrors);
+        }
 
         var parsed = parser.Parse(abcText, new AbcParseOptions { TicksPerQuarterNote = options.TicksPerQuarterNote });
         if (parsed.Score is null)
