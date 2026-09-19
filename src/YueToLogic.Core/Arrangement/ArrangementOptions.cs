@@ -7,30 +7,30 @@ public sealed record ArrangementOptions
     /// Octave shift per score voice, keyed by voice id (<c>Vocal</c>, <c>Ins</c>; case-insensitive).
     /// Positive values move up, negative values down.
     /// </summary>
-    public IReadOnlyDictionary<string, int> OctaveShifts { get; init; } = new Dictionary<string, int>();
+    public IReadOnlyDictionary<string, int> OctaveShifts { get; set; } = new Dictionary<string, int>();
 
     /// <summary>Octave shift for every score voice that has no entry in <see cref="OctaveShifts"/>.</summary>
-    public int DefaultOctaveShift { get; init; }
+    public int DefaultOctaveShift { get; set; }
 
     /// <summary>Adds a bass line following the chord symbols; <c>null</c> for none.</summary>
-    public BassOptions? Bass { get; init; }
+    public BassOptions? Bass { get; set; }
 
     /// <summary>Adds a drum pattern for the whole song; <c>null</c> for none.</summary>
-    public DrumOptions? Drums { get; init; }
+    public DrumOptions? Drums { get; set; }
 }
 
 public sealed record BassOptions
 {
-    public BassPattern Pattern { get; init; } = BassPattern.Eighths;
+    public BassPattern Pattern { get; set; } = BassPattern.Eighths;
 
     /// <summary>
     /// Octaves relative to the default register E2–D#3 (MIDI 40–51, E1–D#2 in Logic's naming);
     /// -1 is the bottom octave of a four-string bass guitar.
     /// </summary>
-    public int OctaveShift { get; init; }
+    public int OctaveShift { get; set; }
 
     /// <summary>Velocity on the beat; off-beat notes are played slightly softer.</summary>
-    public int Velocity { get; init; } = 100;
+    public int Velocity { get; set; } = 100;
 }
 
 public enum BassPattern
@@ -48,7 +48,7 @@ public enum BassPattern
 public sealed record DrumOptions
 {
     /// <summary>Plays a crash cymbal at the start of every section (verse, chorus, …).</summary>
-    public bool CrashOnSections { get; init; } = true;
+    public bool CrashOnSections { get; set; } = true;
 }
 
 /// <summary>Note numbers of the General MIDI drum map, which Logic's drum kits follow.</summary>

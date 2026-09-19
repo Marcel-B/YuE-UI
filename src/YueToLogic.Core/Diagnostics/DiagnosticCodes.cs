@@ -31,4 +31,5 @@ public static class DiagnosticCodes
     // Fatal
     public const string NoMusic = "YTL040";
     public const string TickResolution = "YTL041";
+    public const string InvalidOption = "YTL042";
 }
