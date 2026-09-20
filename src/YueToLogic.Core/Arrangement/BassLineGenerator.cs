@@ -3,7 +3,7 @@ using YueToLogic.Core.Model;
 
 namespace YueToLogic.Core.Arrangement;
 
-/// <summary>Plays the bass note of every chord symbol on a fixed rhythmic grid.</summary>
+/// <summary>Plays the bass note of every chord symbol on the rhythmic grid of the chosen pattern.</summary>
 internal static class BassLineGenerator
 {
     public const string TrackId = "Bass";
@@ -19,7 +19,12 @@ internal static class BassLineGenerator
     public static VoiceTrack Generate(ScoreDocument score, BassOptions options)
     {
         var ppq = score.TicksPerQuarterNote;
-        var step = options.Pattern == BassPattern.Eighths ? Math.Max(1, ppq / 2) : ppq;
+        var step = options.Pattern switch
+        {
+            BassPattern.Eighths or BassPattern.Octaves or BassPattern.Offbeat => Math.Max(1, ppq / 2),
+            BassPattern.Sustained => long.MaxValue,
+            _ => ppq,
+        };
         var notes = new List<NoteEvent>();
 
         foreach (var chord in score.Chords)
@@ -38,13 +43,23 @@ internal static class BassLineGenerator
             // Steps stay on the absolute grid, so a chord starting off the beat does not shift the rhythm.
             for (var tick = chord.StartTicks; tick < end; index++)
             {
-                var next = Math.Min(end, (tick / step + 1) * step);
-                var pitch = options.Pattern == BassPattern.RootFifth && index % 2 == 1 ? alternateNote : bassNote;
-                var velocity = tick % ppq == 0 ? options.Velocity : options.Velocity - OffBeatSoftening;
+                var next = step == long.MaxValue ? end : Math.Min(end, ((tick / step) + 1) * step);
+                var onBeat = tick % ppq == 0;
+                if (options.Pattern != BassPattern.Offbeat || !onBeat)
+                {
+                    var pitch = options.Pattern switch
+                    {
+                        BassPattern.RootFifth when index % 2 == 1 => alternateNote,
+                        BassPattern.Octaves when index % 2 == 1 => bassNote + 12,
+                        _ => bassNote,
+                    };
+                    var velocity = onBeat ? options.Velocity : options.Velocity - OffBeatSoftening;
 
-                // Slightly detached so that repeated notes are audible as separate attacks.
-                var duration = Math.Max(1, (next - tick) * 9 / 10);
-                notes.Add(new NoteEvent(tick, duration, pitch, Math.Clamp(velocity, 1, 127)));
+                    // Slightly detached so that repeated notes are audible as separate attacks.
+                    var duration = Math.Max(1, (next - tick) * 9 / 10);
+                    notes.Add(new NoteEvent(tick, duration, pitch, Math.Clamp(velocity, 1, 127)));
+                }
+
                 tick = next;
             }
         }

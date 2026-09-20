@@ -447,13 +447,15 @@ public sealed partial class AbcScoreParser : IAbcScoreParser
                 return;
             }
 
-            if (IsLastMusicLine())
+            voice.Meter.TryGetMeasureTicks(_ppq, out var measureTicks);
+            var barTicks = measureTicks * voice.MeasuresInBar;
+            if (IsLastMusicLine() && voice.Offset < barTicks)
             {
-                // YuE stops writing the score when it reaches its token limit, often inside a bar.
-                voice.Meter.TryGetMeasureTicks(_ppq, out var measureTicks);
+                // YuE stops writing the score when it reaches its token limit, often inside a bar. A last bar that
+                // is complete but has no closing bar line is reported as such below, as in the rest of the score.
                 _diagnostics.Warning(
                     DiagnosticCodes.ScoreTruncated,
-                    Invariant($"The score ends in the middle of bar {voice.BarNumber} of voice '{voice.Id}' ({Quarters(voice.Offset)} of {Quarters(measureTicks * voice.MeasuresInBar)} quarter notes). YuE probably stopped writing it early (its result.json then reports \"truncated\"); the bar is completed with rests."),
+                    Invariant($"The score ends in the middle of bar {voice.BarNumber} of voice '{voice.Id}' ({Quarters(voice.Offset)} of {Quarters(barTicks)} quarter notes). YuE probably stopped writing it early (its result.json then reports \"truncated\"); the bar is completed with rests."),
                     _line);
                 CloseBar(voice, column: null, reportLength: false);
                 return;

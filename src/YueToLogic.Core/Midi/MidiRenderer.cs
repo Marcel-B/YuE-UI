@@ -56,20 +56,28 @@ public sealed class MidiRenderer : IMidiRenderer
         var channel = 0;
         foreach (var voice in score.Voices.Where(v => v.Kind == TrackKind.Melody))
         {
-            chunks.Add(BuildVoiceTrack(voice, NextChannel(ref channel), options.MelodyVelocity));
+            chunks.Add(BuildVoiceTrack(voice, NextChannel(ref channel), options.MelodyVelocity, []));
         }
 
-        if (options.IncludeChordTrack && score.Chords.Count > 0)
+        // The arranger plays the chord symbols; only a score that has not been through it needs block chords here.
+        var chordVoice = score.Voices.FirstOrDefault(v => v.Kind == TrackKind.Chords);
+        if (options.IncludeChordTrack && chordVoice is null && score.Chords.Count > 0)
         {
             chunks.Add(BuildChordTrack(score.Chords, NextChannel(ref channel), options.ChordVelocity));
         }
 
         foreach (var voice in score.Voices.Where(v => v.Kind != TrackKind.Melody))
         {
+            if (voice == chordVoice && !options.IncludeChordTrack)
+            {
+                continue;
+            }
+
             var trackChannel = voice.Kind == TrackKind.Drums
                 ? (FourBitNumber)(byte)GeneralMidiDrums.Channel
                 : NextChannel(ref channel);
-            chunks.Add(BuildVoiceTrack(voice, trackChannel, options.MelodyVelocity));
+            var names = voice == chordVoice ? score.Chords : [];
+            chunks.Add(BuildVoiceTrack(voice, trackChannel, options.MelodyVelocity, names));
         }
 
         var file = new MidiFile(chunks)
@@ -102,9 +110,15 @@ public sealed class MidiRenderer : IMidiRenderer
         return ToTrackChunk(events);
     }
 
-    private static TrackChunk BuildVoiceTrack(VoiceTrack voice, FourBitNumber channel, int defaultVelocity)
+    /// <param name="chordNames">Chord symbols written as text events, for the generated chord track.</param>
+    private static TrackChunk BuildVoiceTrack(
+        VoiceTrack voice,
+        FourBitNumber channel,
+        int defaultVelocity,
+        IReadOnlyList<ChordEvent> chordNames)
     {
         var events = new List<TimedMidiEvent> { new(0, MetaOrder, new SequenceTrackNameEvent(voice.Id)) };
+        events.AddRange(chordNames.Select(chord => new TimedMidiEvent(chord.StartTicks, MetaOrder, new TextEvent(chord.Text))));
         foreach (var note in voice.Notes)
         {
             AddNote(events, note.StartTicks, note.DurationTicks, note.NoteNumber, channel, note.Velocity ?? defaultVelocity);

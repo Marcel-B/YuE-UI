@@ -196,6 +196,25 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task Chord_pattern_reaches_the_logic_chord_region()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions { Chords = new ChordOptions { Pattern = ChordPattern.Offbeat } },
+        };
+        var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+
+        var package = await WriteAsync(result.Score!, Flac(48000, 2, 24, 1_047_273));
+
+        // Four off-beat chords per bar, three notes each, exactly as the score's own chord track has them.
+        var region = RegionEvents(package.ProjectData)["Chords"];
+        Assert.Equal(8 * 4 * 3, NoteRecords(region).Count);
+        Assert.Equal(result.Score!.Voice("Chords").Notes.Count, NoteRecords(region).Count);
+        Assert.Equal(38_400u + Ppq, ReadUInt32(region, 4)); // first chord on the second eighth (Logic counts double)
+    }
+
+    [Fact]
     public async Task Without_audio_the_project_keeps_an_empty_audio_track()
     {
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);

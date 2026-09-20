@@ -17,6 +17,38 @@ public sealed record ArrangementOptions
 
     /// <summary>Adds a drum pattern for the whole song; <c>null</c> for none.</summary>
     public DrumOptions? Drums { get; set; }
+
+    /// <summary>
+    /// How the chord symbols are played on the chord track. Without it the score keeps no chord track of its own
+    /// and the chords are rendered as written, one sustained block chord per symbol.
+    /// </summary>
+    public ChordOptions? Chords { get; set; }
+}
+
+public sealed record ChordOptions
+{
+    public ChordPattern Pattern { get; set; } = ChordPattern.Block;
+
+    /// <summary>Octaves relative to the default register, whose root lies in octave 3 (MIDI 48, C2 in Logic).</summary>
+    public int OctaveShift { get; set; }
+
+    /// <summary>Velocity on the beat; notes off the beat are played slightly softer.</summary>
+    public int Velocity { get; set; } = 72;
+}
+
+public enum ChordPattern
+{
+    /// <summary>One sustained chord per symbol, as written.</summary>
+    Block,
+
+    /// <summary>The whole chord repeated on every eighth note.</summary>
+    Eighths,
+
+    /// <summary>Short chords on the off-beats only, the usual pop and reggae "skank".</summary>
+    Offbeat,
+
+    /// <summary>The notes of the chord one after another in eighths, from the bottom up.</summary>
+    ArpeggioUp,
 }
 
 public sealed record BassOptions
@@ -43,6 +75,15 @@ public enum BassPattern
 
     /// <summary>Quarter notes alternating between the bass note and the chord's fifth.</summary>
     RootFifth,
+
+    /// <summary>Eighth notes alternating between the bass note and the octave above it.</summary>
+    Octaves,
+
+    /// <summary>Eighth notes on the off-beats only.</summary>
+    Offbeat,
+
+    /// <summary>One long note per chord.</summary>
+    Sustained,
 }
 
 public sealed record DrumOptions
@@ -60,6 +101,12 @@ public enum DrumPattern
 
     /// <summary>Kick on 1 and 3, snare on 2 and 4, eighth-note hi-hat that opens on the last eighth of the bar.</summary>
     Backbeat,
+
+    /// <summary>Kick on 1, snare on 3 alone, eighth-note hi-hat: the same groove at half the speed.</summary>
+    HalfTime,
+
+    /// <summary>Kick on every beat, snare on 2 and 4, and an open hi-hat on every off-beat.</summary>
+    Disco,
 }
 
 /// <summary>Note numbers of the General MIDI drum map, which Logic's drum kits follow.</summary>

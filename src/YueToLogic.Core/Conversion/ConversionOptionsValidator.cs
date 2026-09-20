@@ -13,6 +13,7 @@ public static class ConversionOptionsValidator
     public const int MaxTicksPerQuarterNote = short.MaxValue;
     public const int MaxOctaveShift = 4;
     public const int MaxBassOctaveShift = 2;
+    public const int MaxChordOctaveShift = 2;
 
     /// <returns>One error diagnostic per invalid value; empty if the options are valid.</returns>
     public static IReadOnlyList<Diagnostic> Validate(ConversionOptions options)
@@ -43,6 +44,20 @@ public static class ConversionOptionsValidator
             if (!Enum.IsDefined(bass.Pattern))
             {
                 errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.bass.pattern '{bass.Pattern}' is not supported."));
+            }
+        }
+
+        if (arrangement.Chords is { } chords)
+        {
+            CheckOctave(errors, "arrangement.chords.octaveShift", chords.OctaveShift, MaxChordOctaveShift);
+            if (chords.Velocity is < 1 or > 127)
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.chords.velocity must be between 1 and 127, got {chords.Velocity}."));
+            }
+
+            if (!Enum.IsDefined(chords.Pattern))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.chords.pattern '{chords.Pattern}' is not supported."));
             }
         }
 
