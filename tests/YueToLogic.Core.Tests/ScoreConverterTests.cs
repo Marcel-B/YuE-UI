@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Melanchall.DryWetMidi.Core;
 using Microsoft.Extensions.DependencyInjection;
+using YueToLogic.Core.Arrangement;
 using YueToLogic.Core.Conversion;
 using YueToLogic.Core.Serialization;
 using static YueToLogic.Core.Tests.TestScores;
@@ -32,6 +33,26 @@ public class ScoreConverterTests
         Assert.Equal(0, NoteOns(tracks[2]));
         Assert.Equal(8 * 3, NoteOns(tracks[3]));
         Assert.Equal(8, tracks[3].Events.OfType<TextEvent>().Count());
+    }
+
+    [Fact]
+    public void Chord_pattern_replaces_the_block_chords_of_the_midi_chord_track()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions { Chords = new ChordOptions { Pattern = ChordPattern.Eighths } },
+        };
+
+        var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
+
+        var tracks = MidiFile.Read(new MemoryStream(result.Midi!)).GetTrackChunks().ToList();
+        Assert.Equal(["Conductor", "Vocal", "Ins", "Chords"], tracks.Select(TrackName));
+
+        // Eight bars of eight eighth-note chords with three notes each, and still one text event per chord symbol.
+        var chords = tracks[3];
+        Assert.Equal(8 * 8 * 3, NoteOns(chords));
+        Assert.Equal(8, chords.Events.OfType<TextEvent>().Count());
+        Assert.Equal(result.Score!.Voice("Chords").Notes.Count, NoteOns(chords));
     }
 
     [Fact]

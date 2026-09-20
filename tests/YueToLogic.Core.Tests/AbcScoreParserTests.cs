@@ -161,6 +161,17 @@ public class AbcScoreParserTests
     }
 
     [Fact]
+    public void Complete_last_bar_without_a_bar_line_is_not_called_truncated()
+    {
+        // YuE may stop right at a bar's end; the bar is full, only its closing bar line is missing.
+        var result = new AbcScoreParser().Parse(Native("V: Vocal\nC16|D16|\nV: Ins\nZ|E4E4E4E4"));
+
+        Assert.Contains(result.Warnings(), d => d.Code == DiagnosticCodes.MissingBarLine);
+        Assert.DoesNotContain(result.Warnings(), d => d.Code == DiagnosticCodes.ScoreTruncated);
+        Assert.Equal(2 * Bar, result.Score!.LengthTicks);
+    }
+
+    [Fact]
     public void Missing_bar_line_inside_the_score_is_reported_as_such()
     {
         var result = new AbcScoreParser().Parse(Native("V: Vocal\nC8\nV: Ins\nZ|"));

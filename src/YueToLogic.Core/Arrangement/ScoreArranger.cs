@@ -12,7 +12,7 @@ public interface IScoreArranger
 public sealed record ArrangementResult(ScoreDocument Score, IReadOnlyList<Diagnostic> Diagnostics);
 
 /// <summary>
-/// Transposes score voices by octaves and appends generated bass and drum tracks. The result is a new
+/// Transposes score voices by octaves and appends the generated chord, bass and drum tracks. The result is a new
 /// <see cref="ScoreDocument"/>, so JSON output and MIDI file always show the same arrangement.
 /// Stateless and thread-safe.
 /// </summary>
@@ -25,6 +25,11 @@ public sealed class ScoreArranger : IScoreArranger
         var diagnostics = new DiagnosticBag();
 
         var tracks = ShiftOctaves(score.Voices, options, diagnostics);
+        if (options.Chords is { } chords && score.Chords.Count > 0)
+        {
+            tracks.Add(ChordTrackGenerator.Generate(score, chords));
+        }
+
         if (options.Bass is { } bass)
         {
             tracks.Add(BassLineGenerator.Generate(score, bass));

@@ -174,11 +174,12 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         {
             var region = voice.Kind switch
             {
+                TrackKind.Chords => "Chords",
                 TrackKind.Bass => "Bass",
                 TrackKind.Drums => "Drums",
                 _ => voice.Id,
             };
-            if (!events.TryGetValue(region, out var target) || region is "Chords")
+            if (!events.TryGetValue(region, out var target) || (region is "Chords" && voice.Kind != TrackKind.Chords))
             {
                 diagnostics.Warning(
                     DiagnosticCodes.LogicTemplateLimitation,
@@ -190,10 +191,14 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
                 Ticks(n.StartTicks), Ticks(n.DurationTicks), n.NoteNumber, n.Velocity ?? options.MelodyVelocity)));
         }
 
-        foreach (var chord in score.Chords.Where(c => c.Symbol is not null))
+        // The arranger plays the chord symbols; only a score that has not been through it needs block chords here.
+        if (events["Chords"].Count == 0)
         {
-            events["Chords"].AddRange(ChordVoicing.GetNotes(chord.Symbol!).Select(pitch => new LogicNote(
-                Ticks(chord.StartTicks), Ticks(chord.DurationTicks), pitch, options.ChordVelocity)));
+            foreach (var chord in score.Chords.Where(c => c.Symbol is not null))
+            {
+                events["Chords"].AddRange(ChordVoicing.GetNotes(chord.Symbol!).Select(pitch => new LogicNote(
+                    Ticks(chord.StartTicks), Ticks(chord.DurationTicks), pitch, options.ChordVelocity)));
+            }
         }
 
         foreach (var list in events.Values)

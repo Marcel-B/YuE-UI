@@ -62,6 +62,9 @@ public enum TrackKind
     /// <summary>A voice read from the score (<c>Vocal</c>, <c>Ins</c>).</summary>
     Melody,
 
+    /// <summary>Generated chord track: the chord symbols of the score played out.</summary>
+    Chords,
+
     /// <summary>Generated bass line following the chords.</summary>
     Bass,
 

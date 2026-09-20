@@ -142,6 +142,112 @@ public class ArrangementTests
     }
 
     [Fact]
+    public void Bass_octaves_alternate_with_the_octave_above()
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C\"C16|"));
+
+        var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions { Pattern = BassPattern.Octaves } }).Score.Voice("Bass");
+
+        Assert.Equal([48, 60, 48, 60, 48, 60, 48, 60], bass.Pitches());
+    }
+
+    [Fact]
+    public void Bass_offbeat_plays_only_the_off_beat_eighths()
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C\"C16|"));
+
+        var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions { Pattern = BassPattern.Offbeat } }).Score.Voice("Bass");
+
+        Assert.Equal([Ppq / 2, Ppq + (Ppq / 2), (2 * Ppq) + (Ppq / 2), (3 * Ppq) + (Ppq / 2)], bass.Notes.Select(n => n.StartTicks));
+        Assert.All(bass.Notes, n => Assert.Equal(84, n.Velocity!.Value)); // off the beat, so slightly softer
+    }
+
+    [Fact]
+    public void Sustained_bass_plays_one_note_per_chord()
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C\"C8\"G\"C8|"));
+
+        var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions { Pattern = BassPattern.Sustained } }).Score.Voice("Bass");
+
+        Assert.Equal([(0L, 48), (2L * Ppq, 43)], bass.Notes.Select(n => (n.StartTicks, n.NoteNumber)));
+        Assert.All(bass.Notes, n => Assert.InRange(n.DurationTicks, (2 * Ppq * 8) / 10, 2 * Ppq));
+    }
+
+    [Fact]
+    public void Chords_are_only_played_out_when_a_pattern_is_chosen()
+    {
+        Assert.DoesNotContain(Arranger.Arrange(Sample).Score.Voices, v => v.Kind == TrackKind.Chords);
+
+        var chords = Arranger.Arrange(Sample, new ArrangementOptions { Chords = new ChordOptions() }).Score.Voice("Chords");
+
+        // Eight bars of one chord each, as block chords: the three notes of each triad, held for a whole bar.
+        Assert.Equal(TrackKind.Chords, chords.Kind);
+        Assert.Equal(8 * 3, chords.Notes.Count);
+        Assert.Equal([48, 52, 55], chords.Pitches()[..3]); // C major with the root in octave 3
+        Assert.All(chords.Notes, n => Assert.Equal(Bar, n.DurationTicks));
+        Assert.All(chords.Notes, n => Assert.Equal(72, n.Velocity!.Value));
+    }
+
+    [Theory]
+    [InlineData(ChordPattern.Eighths, 8, 0L, 72)]
+    [InlineData(ChordPattern.Offbeat, 4, 240L, 62)]
+    public void Chord_patterns_repeat_the_chord_on_their_grid(ChordPattern pattern, int hits, long firstTick, int firstVelocity)
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C\"C16|"));
+
+        var chords = Arranger.Arrange(score, new ArrangementOptions { Chords = new ChordOptions { Pattern = pattern } }).Score.Voice("Chords");
+
+        Assert.Equal(hits * 3, chords.Notes.Count);
+        Assert.Equal(firstTick, chords.Notes[0].StartTicks);
+        Assert.Equal(firstVelocity, chords.Notes[0].Velocity!.Value);
+        Assert.Equal(hits, chords.Notes.Select(n => n.StartTicks).Distinct().Count());
+        Assert.All(chords.Notes, n => Assert.True(n.DurationTicks < Ppq / 2, "Repeated chords are detached."));
+    }
+
+    [Fact]
+    public void Arpeggio_plays_one_chord_note_per_eighth_from_the_bottom_up()
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C\"C16|"));
+
+        var chords = Arranger.Arrange(score, new ArrangementOptions { Chords = new ChordOptions { Pattern = ChordPattern.ArpeggioUp } }).Score.Voice("Chords");
+
+        Assert.Equal([48, 52, 55, 48, 52, 55, 48, 52], chords.Pitches());
+        Assert.Equal(Enumerable.Range(0, 8).Select(i => i * (Ppq / 2L)), chords.Notes.Select(n => n.StartTicks));
+    }
+
+    [Fact]
+    public void Chord_register_can_be_moved_by_octaves()
+    {
+        var chords = Arranger.Arrange(Sample, new ArrangementOptions { Chords = new ChordOptions { OctaveShift = -1 } }).Score.Voice("Chords");
+
+        Assert.Equal([36, 40, 43], chords.Pitches()[..3]);
+    }
+
+    [Fact]
+    public void Half_time_plays_kick_on_one_and_snare_on_three()
+    {
+        var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.HalfTime } }).Score.Voice("Drums");
+
+        Assert.Equal(8, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.Kick));
+        Assert.All(drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.Kick), n => Assert.Equal(0, n.StartTicks % Bar));
+        Assert.Equal(8, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.Snare));
+        Assert.All(drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.Snare), n => Assert.Equal(2 * Ppq, n.StartTicks % Bar));
+    }
+
+    [Fact]
+    public void Disco_opens_the_hi_hat_on_every_off_beat()
+    {
+        var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.Disco } }).Score.Voice("Drums");
+
+        var open = drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.OpenHiHat).ToList();
+
+        Assert.Equal(32, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.Kick));
+        Assert.Equal(8 * 4, open.Count);
+        Assert.All(open, n => Assert.Equal(Ppq / 2, n.StartTicks % Ppq));
+        Assert.Equal((8 * 4) - 2, drums.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.ClosedHiHat)); // 2 replaced by crashes
+    }
+
+    [Fact]
     public void Drums_play_four_on_the_floor_with_backbeat_hi_hats_and_section_crashes()
     {
         var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions() }).Score.Voice("Drums");
