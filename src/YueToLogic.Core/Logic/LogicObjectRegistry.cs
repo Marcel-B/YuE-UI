@@ -58,6 +58,43 @@ internal static class LogicObjectRegistry
         return result.ToArray();
     }
 
+    /// <summary>Removes the entries of objects that are no longer in the project, such as its audio file.</summary>
+    public static byte[] Remove(byte[] song, IReadOnlyCollection<(uint Class, uint Id)> objects)
+    {
+        var removals = new List<(int Offset, int Length)>();
+        foreach (var (klass, id) in objects)
+        {
+            var uuidEntry = Entry(song, klass, id, UuidEntryLength, after: 0);
+            removals.Add((uuidEntry, UuidEntryLength));
+            removals.Add((Entry(song, klass, id, TimestampEntryLength, after: uuidEntry + UuidEntryLength), TimestampEntryLength));
+        }
+
+        var result = new List<byte>(song);
+        foreach (var (offset, length) in removals.OrderByDescending(r => r.Offset))
+        {
+            result.RemoveRange(offset, length);
+        }
+
+        return result.ToArray();
+    }
+
+    /// <summary>Offset of the entry of one object, recognized like <see cref="LastEntry"/> by its neighbours.</summary>
+    private static int Entry(byte[] song, uint klass, uint id, int entryLength, int after)
+    {
+        for (var offset = Math.Max(after, entryLength); offset + (2 * entryLength) <= song.Length; offset++)
+        {
+            if (ReadUInt32(song, offset) == klass
+                && ReadUInt32(song, offset + 4) == id
+                && ReadUInt32(song, offset - entryLength) < 0x40
+                && ReadUInt32(song, offset + entryLength) < 0x40)
+            {
+                return offset;
+            }
+        }
+
+        throw new InvalidOperationException($"The Logic template's object registry has no entry for object {klass}/{id}.");
+    }
+
     /// <summary>
     /// Offset of the entry with the highest id of <paramref name="klass"/> in the table with the given entry length,
     /// searching from <paramref name="after"/> (the timestamp table follows the UUID table). Table entries are

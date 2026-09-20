@@ -13,12 +13,13 @@ namespace YueToLogic.Core.Logic;
 public interface ILogicProjectWriter
 {
     /// <summary>
-    /// Writes a Logic Pro package with the score's tracks and the YuE audio (<c>audio.flac</c>) into <paramref name="sink"/>.
-    /// Nothing is written if the result reports an error.
+    /// Writes a Logic Pro package with the score's tracks into <paramref name="sink"/>, and the YuE audio
+    /// (<c>audio.flac</c>) if <paramref name="flacAudio"/> is given; without it the project keeps an empty audio
+    /// track. Nothing is written if the result reports an error.
     /// </summary>
     Task<LogicProjectResult> WriteAsync(
         ScoreDocument score,
-        Stream flacAudio,
+        Stream? flacAudio,
         ILogicPackageSink sink,
         LogicProjectOptions? options = null,
         CancellationToken cancellationToken = default);
@@ -66,6 +67,10 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
     private const ushort ArrangementClass = 23;
     private const uint RootSequenceId = 4;
 
+    /// <summary>A region in the arrangement: five 16-byte records, the first one 0x24 for audio and 0x20 for MIDI.</summary>
+    private const int PlacementLength = 80;
+    private const byte AudioPlacement = 0x24;
+
     // Offsets inside the audio file (AuFl) and audio region (AuRg) payloads.
     private const int AudioFileSamplesOffset = 498;
     private const int AudioFileSampleRateOffset = 506;
@@ -99,39 +104,44 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
 
     public async Task<LogicProjectResult> WriteAsync(
         ScoreDocument score,
-        Stream flacAudio,
+        Stream? flacAudio,
         ILogicPackageSink sink,
         LogicProjectOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(score);
-        ArgumentNullException.ThrowIfNull(flacAudio);
         ArgumentNullException.ThrowIfNull(sink);
         options ??= new LogicProjectOptions();
         var diagnostics = new DiagnosticBag();
 
         var audioHeader = new byte[FlacStreamInfo.HeaderLength];
-        var headerLength = await flacAudio.ReadAtLeastAsync(audioHeader, audioHeader.Length, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
-        if (!FlacStreamInfo.TryParse(audioHeader.AsSpan(0, headerLength), out var audio))
+        var headerLength = 0;
+        FlacStreamInfo? audio = null;
+        if (flacAudio is not null)
         {
-            diagnostics.Error(DiagnosticCodes.InvalidAudio, "The audio file is not a FLAC file; upload the audio.flac written by YuE.");
-            return new LogicProjectResult(false, null, diagnostics.ToList());
+            headerLength = await flacAudio.ReadAtLeastAsync(audioHeader, audioHeader.Length, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
+            if (!FlacStreamInfo.TryParse(audioHeader.AsSpan(0, headerLength), out audio))
+            {
+                diagnostics.Error(DiagnosticCodes.InvalidAudio, "The audio file is not a FLAC file; upload the audio.flac written by YuE.");
+                return new LogicProjectResult(false, null, diagnostics.ToList());
+            }
+
+            if (audio!.SampleRate != RequiredSampleRate)
+            {
+                diagnostics.Error(
+                    DiagnosticCodes.UnsupportedSampleRate,
+                    Invariant($"The audio has {audio.SampleRate} Hz; the Logic project needs {RequiredSampleRate} Hz (YuE writes 48 kHz)."));
+                return new LogicProjectResult(false, audio, diagnostics.ToList());
+            }
+
+            CheckAudio(score, audio, diagnostics);
         }
 
-        if (audio!.SampleRate != RequiredSampleRate)
-        {
-            diagnostics.Error(
-                DiagnosticCodes.UnsupportedSampleRate,
-                Invariant($"The audio has {audio.SampleRate} Hz; the Logic project needs {RequiredSampleRate} Hz (YuE writes 48 kHz)."));
-            return new LogicProjectResult(false, audio, diagnostics.ToList());
-        }
-
-        CheckAudio(score, audio, diagnostics);
         var events = CollectEvents(score, options, diagnostics);
         var projectData = BuildProjectData(score, audio, events, diagnostics);
 
         await WriteFileAsync(sink, LogicTemplate.ProjectDataPath, projectData, cancellationToken).ConfigureAwait(false);
-        await WriteFileAsync(sink, LogicTemplate.MetaDataPath, BuildMetaData(score), cancellationToken).ConfigureAwait(false);
+        await WriteFileAsync(sink, LogicTemplate.MetaDataPath, BuildMetaData(score, audio is not null), cancellationToken).ConfigureAwait(false);
         await WriteFileAsync(sink, LogicTemplate.ProjectInformationPath, BuildProjectInformation(options.ProjectName), cancellationToken).ConfigureAwait(false);
         foreach (var (path, content) in template.Files)
         {
@@ -141,8 +151,9 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             }
         }
 
-        await using (var target = sink.CreateFile(LogicTemplate.AudioPath))
+        if (flacAudio is not null)
         {
+            await using var target = sink.CreateFile(LogicTemplate.AudioPath);
             await target.WriteAsync(audioHeader.AsMemory(0, headerLength), cancellationToken).ConfigureAwait(false);
             await flacAudio.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
         }
@@ -229,7 +240,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
 
     // ---- ProjectData ------------------------------------------------------------------------------
 
-    private byte[] BuildProjectData(ScoreDocument score, FlacStreamInfo audio, Dictionary<string, List<LogicNote>> events, DiagnosticBag diagnostics)
+    private byte[] BuildProjectData(ScoreDocument score, FlacStreamInfo? audio, Dictionary<string, List<LogicNote>> events, DiagnosticBag diagnostics)
     {
         var project = LogicProjectData.Parse(template.Files[LogicTemplate.ProjectDataPath]);
         var chunks = project.Chunks;
@@ -269,18 +280,31 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             else if (sequence.Id == RootSequenceId)
             {
                 PlaceRegionsAtBarOne(sequence.Payload);
+                if (audio is null)
+                {
+                    sequence.Payload = WithoutAudioRegion(sequence.Payload);
+                }
             }
         }
 
         SetTempo(chunks, score.TempoBpm);
-        SetTimeSignature(chunks, score, diagnostics);
-        SetAudio(chunks, audio);
+        WriteSignatures(chunks, score);
+        var removed = audio is null ? RemoveAudioObjects(chunks) : [];
+        if (audio is not null)
+        {
+            SetAudio(chunks, audio);
+        }
 
         var created = WriteChordTrack(chunks, score);
         created.AddRange(WriteArrangementMarkers(chunks, score));
+        var song = chunks.Single(c => c.Tag == "Song");
+        if (removed.Count > 0)
+        {
+            song.Payload = LogicObjectRegistry.Remove(song.Payload, removed);
+        }
+
         if (created.Count > 0)
         {
-            var song = chunks.Single(c => c.Tag == "Song");
             song.Payload = LogicObjectRegistry.Register(song.Payload, created, timeProvider.GetUtcNow(), Random.Shared);
         }
 
@@ -300,6 +324,33 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
     }
 
     /// <summary>
+    /// Drops the audio file and its region from a project written without audio; without this Logic would report
+    /// the audio file of the template as missing when the project is opened. The audio track itself stays, empty.
+    /// </summary>
+    /// <returns>The removed objects, which have to leave the registry as well.</returns>
+    private static List<(uint Class, uint Id)> RemoveAudioObjects(List<LogicChunk> chunks)
+    {
+        var audioObjects = chunks.Where(c => c.Tag is "AuFl" or "AuRg").ToList();
+        var removed = audioObjects.Select(c => ((uint)c.Class, c.Id)).Distinct().ToList();
+        chunks.RemoveAll(audioObjects.Contains);
+        return removed;
+    }
+
+    /// <summary>The arrangement without the audio region, so that the audio track opens empty.</summary>
+    private static byte[] WithoutAudioRegion(byte[] arrangement)
+    {
+        for (var i = 0; i + PlacementLength <= arrangement.Length; i += PlacementLength)
+        {
+            if (arrangement[i] == AudioPlacement && arrangement[i + 16 + 7] == 0x89)
+            {
+                return [.. arrangement.AsSpan(0, i), .. arrangement.AsSpan(i + PlacementLength)];
+            }
+        }
+
+        return arrangement;
+    }
+
+    /// <summary>
     /// Tempo is stored as BPM · 10000 in the tempo list and in several places of the Song chunk. The list is reduced
     /// to its first event (two records), since the score has a single tempo.
     /// </summary>
@@ -313,22 +364,6 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         {
             ReplaceUInt32(chunk.Payload, oldTempo, newTempo);
         }
-    }
-
-    /// <summary>The first record of the signature list: byte 11 = log2(denominator), byte 12 = numerator.</summary>
-    private static void SetTimeSignature(List<LogicChunk> chunks, ScoreDocument score, DiagnosticBag diagnostics)
-    {
-        var signature = score.TimeSignatures[0];
-        if (score.TimeSignatures.Count > 1)
-        {
-            diagnostics.Warning(
-                DiagnosticCodes.LogicTemplateLimitation,
-                Invariant($"The Logic project uses only the first meter ({signature.Numerator}/{signature.Denominator}); the MIDI file contains all {score.TimeSignatures.Count} meter changes."));
-        }
-
-        var list = chunks.Single(c => c.Tag == "EvSq" && c.Class == SignatureListClass && c.Payload.Length > 16 && c.Payload[0] == 0x30);
-        list.Payload[11] = (byte)BitOperations.Log2((uint)signature.Denominator);
-        list.Payload[12] = (byte)signature.Numerator;
     }
 
     private static void SetAudio(List<LogicChunk> chunks, FlacStreamInfo audio)
@@ -369,13 +404,19 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
 
     // ---- Property lists ---------------------------------------------------------------------------
 
-    private byte[] BuildMetaData(ScoreDocument score)
+    private byte[] BuildMetaData(ScoreDocument score, bool withAudio)
     {
         var document = LoadPropertyList(template.Files[LogicTemplate.MetaDataPath]);
         var root = document.Root!.Element("dict")!;
         SetValue(root, "BeatsPerMinute", new XElement("real", score.TempoBpm.ToString("0.####", CultureInfo.InvariantCulture)));
         SetValue(root, "SongSignatureNumerator", new XElement("integer", score.TimeSignatures[0].Numerator));
         SetValue(root, "SongSignatureDenominator", new XElement("integer", score.TimeSignatures[0].Denominator));
+        if (!withAudio)
+        {
+            // Without this the Finder preview and Logic's browser would announce an audio file the package has not.
+            SetValue(root, "AudioFiles", new XElement("array"));
+        }
+
         return SavePropertyList(document);
     }
 

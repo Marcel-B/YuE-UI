@@ -102,6 +102,131 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task Key_and_meter_changes_are_written_exactly_as_logic_stores_them()
+    {
+        // The template project, with E major at bar 5, F minor at bar 9, 3/4 at bar 13 and 6/8 at bar 17
+        // entered on Logic's signature track; the bytes below are the signature list Logic then saved.
+        const string logicSignatureList =
+            "30000000000000000000000204000000" + // 4/4 at the start of the song
+            "3000000000000088F6FF000000960000" +
+            "00000000000000880000000007000000" +
+            "32000000000000000000000007000000" + // C major at the start of the song
+            "00000000000000880000000000000000" +
+            "3200000000D20000000000000B000000" + // E major, bar 5
+            "00000000000000880000000000000000" +
+            "32000000000E01000000000013000000" + // F minor, bar 9
+            "00000000000000880000000000000000" +
+            "30000000004A01000000000203000000" + // 3/4, bar 13
+            "30000000000000880C000000004A0100" +
+            "00000000000000880000000000000000" +
+            "30000000007701000000000306000080" + // 6/8, bar 17
+            "30000000000000881000000000770100" +
+            "00000000000000880000000000000000" +
+            "F1000000FFFFFF3F0000000000000000";
+
+        var bars = string.Join("\n", Enumerable.Repeat("C16|", 4));
+        var score = Convert(Native($"""
+            V: Vocal
+            {bars}
+            V: Ins
+            Z4|
+            V: Vocal
+            K:E
+            {bars}
+            V: Ins
+            K:E
+            Z4|
+            V: Vocal
+            K:Fm
+            {bars}
+            V: Ins
+            K:Fm
+            Z4|
+            V: Vocal
+            M:3/4
+            C12|C12|C12|C12|
+            V: Ins
+            M:3/4
+            Z4|
+            V: Vocal
+            M:6/8
+            C12|C12|C12|C12|
+            V: Ins
+            M:6/8
+            Z4|
+            """), withAccompaniment: false);
+        Assert.Equal([0L, 4 * Bar, 8 * Bar], score.KeySignatures.Select(k => k.StartTicks));
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 48_000));
+
+        var signatures = LogicProjectData.Parse(package.ProjectData).Chunks.Single(c => c.Tag == "EvSq" && c.Class == 1 && c.Payload[0] == 0x30).Payload;
+        Assert.Equal(logicSignatureList, System.Convert.ToHexString(signatures));
+    }
+
+    [Fact]
+    public async Task Chord_regions_carry_the_key_they_sound_in()
+    {
+        // Logic notes the key at each chord in its chord region and derives the suggested chord scale from it.
+        var score = Convert(Native("""
+            V: Vocal
+            "C"C16|"G"C16|
+            V: Ins
+            Z2|
+            V: Vocal
+            K:Fm
+            "Fm"C16|"Bbm"C16|
+            V: Ins
+            K:Fm
+            Z2|
+            """), withAccompaniment: false);
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 48_000));
+
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+        var track = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.SequenceName == "Global Harmonies");
+        var placements = chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == track.Id).Payload;
+        var keys = Enumerable.Range(0, placements.Length / 80)
+            .Select(i => ReadUInt32(placements, (i * 80) + 32))
+            .Select(id => chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == id).Payload)
+            .Select(events => (events[12], events[15]))
+            .ToList();
+
+        // C major (7) without the flag, then F minor (3 flats plus 16) as the key of a key change.
+        Assert.Equal([((byte)7, (byte)0), (7, 0), (19, 0x80), (19, 0x80)], keys);
+    }
+
+    [Fact]
+    public async Task Without_audio_the_project_keeps_an_empty_audio_track()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);
+        var sink = new MemorySink();
+
+        var result = await new LogicProjectWriter().WriteAsync(score, flacAudio: null, sink);
+
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.Null(result.Audio);
+        Assert.DoesNotContain(LogicTemplate.AudioPath, sink.Files.Keys);
+        Assert.Contains(LogicTemplate.ProjectDataPath, sink.Files.Keys);
+
+        var projectData = sink.Files[LogicTemplate.ProjectDataPath].ToArray();
+        var chunks = LogicProjectData.Parse(projectData).Chunks;
+        var arrangement = chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == 4).Payload;
+        var heads = Enumerable.Range(0, arrangement.Length / 80).Select(i => arrangement[i * 80]).ToList();
+        Assert.Equal(Enumerable.Repeat((byte)0x20, 5), heads); // the five MIDI regions, without the audio region
+
+        // Logic would report the template's audio file as missing, so file and region are gone, registry included.
+        Assert.DoesNotContain(chunks, c => c.Tag is "AuFl" or "AuRg");
+        var song = chunks.Single(c => c.Tag == "Song").Payload;
+        var templateSong = LogicProjectData.Parse(TemplateProjectData).Chunks.Single(c => c.Tag == "Song").Payload;
+        Assert.Equal(2, CountEntries(templateSong, 11, 0)); // one entry in each of the two registry tables
+        Assert.Equal(0, CountEntries(song, 11, 0));
+        Assert.Equal(templateSong.Length - 24 - 16, song.Length);
+
+        var metaData = System.Text.Encoding.UTF8.GetString(sink.Files[LogicTemplate.MetaDataPath].ToArray());
+        Assert.DoesNotContain("audio.flac", metaData, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Audio_is_copied_unchanged_into_the_package()
     {
         var flac = Flac(48000, 2, 24, 1_047_273);

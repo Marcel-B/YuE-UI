@@ -83,6 +83,7 @@ public sealed partial class LogicProjectWriter
 
             // Key record, chord head (at the region start) and chord data, as in the template region.
             var events = eventTemplate.AsSpan(0, 64).ToArray();
+            WriteChordRegionKey(events, score, chord.StartTicks);
             WriteUInt32(events, 32 + 4, EventOrigin);
             LogicChordEncoding.Encode(events.AsSpan(48, LogicChordEncoding.RecordLength), chord.Text, chord.Symbol!);
             Chunk(chunks, "EvSq", ArrangementClass, ids[i]).Payload = [.. events, .. SequenceTerminator];
