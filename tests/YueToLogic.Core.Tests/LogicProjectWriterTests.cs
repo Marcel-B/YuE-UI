@@ -314,6 +314,22 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task The_project_carries_no_path_of_the_machine_the_template_was_built_on()
+    {
+        // The template's instruments remember where their samples and impulse responses were found, which is
+        // the home folder of whoever saved it. Logic finds its own library content without being told.
+        Assert.Contains("/Users/"u8.ToArray(), TemplateProjectData);
+
+        var package = await WriteAsync(Convert(File.ReadAllText(SamplePath), false), Flac(48000, 2, 24, 1_047_273));
+
+        Assert.DoesNotContain("/Users/"u8.ToArray(), package.ProjectData);
+        // Paths outside a home folder say nothing about the machine and are left as they are.
+        Assert.Equal(
+            CountOccurrences(TemplateProjectData, "/Library/"u8.ToArray()),
+            CountOccurrences(package.ProjectData, "/Library/"u8.ToArray()));
+    }
+
+    [Fact]
     public async Task Without_audio_the_project_keeps_an_empty_audio_track()
     {
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);
@@ -857,6 +873,24 @@ public class LogicProjectWriterTests
     }
 
     private static uint ReadUInt32(byte[] buffer, int offset) => BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(offset));
+
+    private static int CountOccurrences(byte[] buffer, byte[] pattern)
+    {
+        var count = 0;
+        for (var start = 0; start < buffer.Length;)
+        {
+            var index = buffer.AsSpan(start).IndexOf(pattern);
+            if (index < 0)
+            {
+                break;
+            }
+
+            count++;
+            start += index + 1;
+        }
+
+        return count;
+    }
 
     private static int CountUInt64(byte[] buffer, long value)
     {
