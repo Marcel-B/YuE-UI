@@ -81,6 +81,28 @@ public class StemSeparationServiceTests
         Assert.Contains("the Mac is not answering", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_service_that_cannot_be_reached_says_so_instead_of_throwing_something_else()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, string.Empty) { Transport = new HttpRequestException("No such host is known") };
+
+        var exception = await Assert.ThrowsAsync<StemSeparationException>(() => Service(handler).GetAsync(JobId));
+
+        Assert.Contains("cannot be reached", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("No such host is known", exception.Message, StringComparison.Ordinal);
+        Assert.Null(exception.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_service_that_does_not_answer_in_time_says_so()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, string.Empty) { Transport = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout") };
+
+        var exception = await Assert.ThrowsAsync<StemSeparationException>(() => Service(handler).GetAsync(JobId));
+
+        Assert.Contains("did not answer in time", exception.Message, StringComparison.Ordinal);
+    }
+
     private static StemSeparationService Service(StubHandler handler)
     {
         var client = new HttpClient(handler) { BaseAddress = new Uri("https://stems.example/") };
@@ -92,12 +114,20 @@ public class StemSeparationServiceTests
     {
         public HttpRequestMessage? Request { get; private set; }
 
+        /// <summary>Thrown instead of answering, the way a broken connection or a timeout does.</summary>
+        public Exception? Transport { get; init; }
+
         /// <summary>The body that was sent, read before the request is disposed.</summary>
         public string? Body { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Request = request;
+            if (Transport is not null)
+            {
+                throw Transport;
+            }
+
             if (request.Content is not null)
             {
                 Body = await request.Content.ReadAsStringAsync(cancellationToken);

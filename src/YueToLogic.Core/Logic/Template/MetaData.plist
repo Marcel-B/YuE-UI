@@ -4,28 +4,7 @@
 <dict>
 	<key>AlchemyFiles</key>
 	<array>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G5.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C7.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G4.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C8.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C3.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C5.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G5.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C4.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C8.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G6.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G3.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C6.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G6.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C5.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C3.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G7.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C7.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G4.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G7.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G3.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C6.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C4.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Bass/Custom/Agile Synth Bass-A-A01.aaz</string>
 	</array>
 	<key>AudioFiles</key>
 	<array>

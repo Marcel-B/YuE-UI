@@ -72,21 +72,21 @@ public sealed class StemSeparationService(HttpClient client) : IStemSeparationSe
         using var content = new StreamContent(flacAudio);
         content.Headers.ContentType = new MediaTypeHeaderValue(AudioMediaType);
 
-        using var response = await client.PostAsync($"api/jobs?dereverb={(dereverb ? "true" : "false")}", content, cancellationToken).ConfigureAwait(false);
+        using var response = await SendAsync(() => client.PostAsync($"api/jobs?dereverb={(dereverb ? "true" : "false")}", content, cancellationToken), cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         return await ReadJobAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<StemJob> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using var response = await client.GetAsync($"api/jobs/{id}", cancellationToken).ConfigureAwait(false);
+        using var response = await SendAsync(() => client.GetAsync($"api/jobs/{id}", cancellationToken), cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         return await ReadJobAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<Stream> DownloadAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var response = await client.GetAsync($"api/jobs/{id}/result", HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        var response = await SendAsync(() => client.GetAsync($"api/jobs/{id}/result", HttpCompletionOption.ResponseHeadersRead, cancellationToken), cancellationToken).ConfigureAwait(false);
         try
         {
             await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
@@ -101,8 +101,29 @@ public sealed class StemSeparationService(HttpClient client) : IStemSeparationSe
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using var response = await client.DeleteAsync($"api/jobs/{id}", cancellationToken).ConfigureAwait(false);
+        using var response = await SendAsync(() => client.DeleteAsync($"api/jobs/{id}", cancellationToken), cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs a request and turns a transport failure into the same kind of message as a refusal by the service.
+    /// A stem job is optional, so a gateway that cannot be reached - wrong address, no route, no name - should
+    /// leave the host with something to show rather than an unhandled error.
+    /// </summary>
+    private static async Task<HttpResponseMessage> SendAsync(Func<Task<HttpResponseMessage>> request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await request().ConfigureAwait(false);
+        }
+        catch (HttpRequestException exception)
+        {
+            throw new StemSeparationException($"The stem service cannot be reached: {exception.Message}");
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new StemSeparationException("The stem service did not answer in time.");
+        }
     }
 
     private static async Task<StemJob> ReadJobAsync(HttpResponseMessage response, CancellationToken cancellationToken)
