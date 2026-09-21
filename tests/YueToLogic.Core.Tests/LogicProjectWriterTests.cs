@@ -13,9 +13,12 @@ namespace YueToLogic.Core.Tests;
 
 public class LogicProjectWriterTests
 {
-    private const int TemplateSongSamples = 11_408_576; // audio.flac of the template song, 48 kHz
+    private const int TemplateSongSamples = 15_832_768; // audio.flac of the template song, 48 kHz
 
     private static readonly byte[] TemplateProjectData = LogicTemplate.Default.Files[LogicTemplate.ProjectDataPath];
+
+    /// <summary>The MIDI tracks of the bundled template, in the order its arrangement places them.</summary>
+    private static readonly string[] TemplateTracks = ["Drums", "Chords", "Bass", "Guide", "Ins", "Vocal", "Vocal 8vb"];
 
     [Fact]
     public void Embedded_template_round_trips_byte_for_byte()
@@ -32,15 +35,16 @@ public class LogicProjectWriterTests
 
         var original = RegionEvents(TemplateProjectData);
         var generated = RegionEvents(package.ProjectData);
-        foreach (var region in new[] { "Ins", "Bass", "Drums" })
+
+        // Logic placed each region where its notes begin, this writer at bar 1, so positions count from the
+        // first note. Everything else - pitch, velocity, length - has to be byte for byte what Logic wrote.
+        foreach (var region in new[] { "Vocal", "Ins", "Bass", "Drums", "Guide", "Vocal 8vb" })
         {
-            Assert.True(original[region].SequenceEqual(generated[region]), $"{region} differs from Logic's encoding");
+            Assert.Equal(NotesFromFirst(original[region]), NotesFromFirst(generated[region]));
         }
 
         // Logic additionally stores the chord names as text events; the notes themselves must match.
-        Assert.Equal(NoteRecords(original["Chords"]), NoteRecords(generated["Chords"]));
-        // The template's vocal region starts at bar 8 (relative positions); ours at bar 1, so only the notes' content compares.
-        Assert.Equal(NoteRecords(original["Vocal"]).Count, NoteRecords(generated["Vocal"]).Count);
+        Assert.Equal(NotesFromFirst(original["Chords"]), NotesFromFirst(generated["Chords"]));
     }
 
     [Fact]
@@ -52,14 +56,14 @@ public class LogicProjectWriterTests
         var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
         const uint songTicks = 8 * 3840;
 
-        // Every copy of the template's tempo in the Song chunk is replaced (how many depends on the template).
-        var templateSong = LogicProjectData.Parse(TemplateProjectData).Chunks.Single(c => c.Tag == "Song").Payload;
-        Assert.Equal(CountUInt32(templateSong, 1_080_000), CountUInt32(chunks.Single(c => c.Tag == "Song").Payload, 880_000));
-        Assert.Equal(880_000u, ReadUInt32(chunks.Single(c => c.Tag == "EvSq" && c.Class == 3).Payload, 16));
-        Assert.Equal(0, CountUInt32(package.ProjectData, 1_080_000));
+        // The template's tempo is gone from the project, and every tempo set now runs at the score's tempo.
+        Assert.All(
+            chunks.Where(c => c.Tag == "EvSq" && c.Class == 3),
+            tempoList => Assert.Equal(880_000u, ReadUInt32(tempoList.Payload, 16)));
+        Assert.Equal(0, CountUInt32(package.ProjectData, 1_380_000));
 
         var sequences = chunks.Where(c => c.Tag == "MSeq" && c.Class == 23).ToList();
-        foreach (var sequence in sequences.Where(s => s.Id == 4 || s.SequenceName is "Vocal" or "Ins" or "Chords" or "Bass" or "Drums"))
+        foreach (var sequence in sequences.Where(s => s.Id == 4 || TemplateTracks.Contains(s.SequenceName)))
         {
             Assert.Equal(songTicks, ReadUInt32(sequence.Payload, sequence.SequenceLengthOffset));
         }
@@ -70,12 +74,17 @@ public class LogicProjectWriterTests
             .Where(i => arrangement[i] is 0x20 or 0x24 && arrangement[i + 23] == 0x89)
             .Select(i => ReadUInt32(arrangement, i + 4))
             .ToList();
-        Assert.Equal(6, placements.Count);
+        Assert.Equal(TemplateTracks.Length + 1, placements.Count); // the MIDI tracks and the audio track
         Assert.All(placements, p => Assert.Equal(34_560u, p));
 
+        // Length and format sit behind the format tag, whose position depends on what the object holds in
+        // front of it; writing them at a fixed offset would leave the template's own length in the project.
         var audioFile = chunks.Single(c => c.Tag == "AuFl").Payload;
-        Assert.Equal(1_047_273UL, BinaryPrimitives.ReadUInt64LittleEndian(audioFile.AsSpan(498)));
-        Assert.Equal(48_000u, ReadUInt32(audioFile, 506));
+        var format = audioFile.AsSpan().LastIndexOf("CaLf"u8);
+        Assert.Equal(1_047_273UL, BinaryPrimitives.ReadUInt64LittleEndian(audioFile.AsSpan(format + 12)));
+        Assert.Equal(48_000u, ReadUInt32(audioFile, format + 20));
+        Assert.Equal(2, BinaryPrimitives.ReadUInt16LittleEndian(audioFile.AsSpan(format + 24)));
+        Assert.Equal(0, CountUInt64(audioFile, TemplateSongSamples)); // no trace of the template's own audio
         Assert.Equal(-1, audioFile.AsSpan().IndexOf("/Volumes/"u8));
         Assert.Equal(1_047_273UL, BinaryPrimitives.ReadUInt64LittleEndian(chunks.Single(c => c.Tag == "AuRg").Payload.AsSpan(22)));
 
@@ -215,6 +224,26 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task The_audio_is_named_as_the_package_writes_it()
+    {
+        // The template's audio is called "audio_1.flac", because Logic numbers a file imported into a project
+        // that already had one. The package always writes "audio.flac", and Logic looks for the name in the
+        // project - in the file object as UTF-16 and in its region as UTF-8.
+        var templateName = "audio_1.flac";
+        Assert.Contains(System.Text.Encoding.Unicode.GetBytes(templateName), TemplateProjectData);
+
+        var package = await WriteAsync(Convert(File.ReadAllText(SamplePath), false), Flac(48000, 2, 24, 1_047_273));
+
+        foreach (var encoding in new[] { System.Text.Encoding.Unicode, System.Text.Encoding.UTF8 })
+        {
+            Assert.DoesNotContain(encoding.GetBytes(templateName), package.ProjectData);
+            Assert.Contains(encoding.GetBytes("audio.flac"), package.ProjectData);
+        }
+
+        Assert.Equal("Audio Files/audio.flac", PlistValue(package.Files[LogicTemplate.MetaDataPath], "AudioFiles"));
+    }
+
+    [Fact]
     public async Task Without_audio_the_project_keeps_an_empty_audio_track()
     {
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);
@@ -231,7 +260,7 @@ public class LogicProjectWriterTests
         var chunks = LogicProjectData.Parse(projectData).Chunks;
         var arrangement = chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == 4).Payload;
         var heads = Enumerable.Range(0, arrangement.Length / 80).Select(i => arrangement[i * 80]).ToList();
-        Assert.Equal(Enumerable.Repeat((byte)0x20, 5), heads); // the five MIDI regions, without the audio region
+        Assert.Equal(Enumerable.Repeat((byte)0x20, TemplateTracks.Length), heads); // the MIDI regions, without the audio one
 
         // Logic would report the template's audio file as missing, so file and region are gone, registry included.
         Assert.DoesNotContain(chunks, c => c.Tag is "AuFl" or "AuRg");
@@ -239,7 +268,7 @@ public class LogicProjectWriterTests
         var templateSong = LogicProjectData.Parse(TemplateProjectData).Chunks.Single(c => c.Tag == "Song").Payload;
         Assert.Equal(2, CountEntries(templateSong, 11, 0)); // one entry in each of the two registry tables
         Assert.Equal(0, CountEntries(song, 11, 0));
-        Assert.Equal(templateSong.Length - 24 - 16, song.Length);
+        Assert.Equal(0, CountEntries(song, 11, 4)); // the template's second audio file goes as well
 
         var metaData = System.Text.Encoding.UTF8.GetString(sink.Files[LogicTemplate.MetaDataPath].ToArray());
         Assert.DoesNotContain("audio.flac", metaData, StringComparison.Ordinal);
@@ -343,7 +372,9 @@ public class LogicProjectWriterTests
         // New objects are listed in both registry tables of the Song chunk.
         var song = chunks.Single(c => c.Tag == "Song").Payload;
         var templateSong = LogicProjectData.Parse(TemplateProjectData).Chunks.Single(c => c.Tag == "Song").Payload;
-        var newObjects = (regionIds.Count - 17) + (textIds.Count - 3);
+        // The template's unused second audio file leaves the registry, every chord region and marker beyond
+        // the template's own joins it, with an entry in each of the two tables.
+        var newObjects = (regionIds.Count - 17) + (textIds.Count - 3) - 1;
         Assert.Equal(templateSong.Length + (newObjects * (24 + 16)), song.Length);
         foreach (var id in regionIds.Skip(17))
         {
@@ -355,8 +386,9 @@ public class LogicProjectWriterTests
     [Fact]
     public async Task Sections_become_one_named_region_per_track()
     {
-        // intro, verse, pre-chorus, chorus, verse, chorus, bridge, chorus - repeated names are numbered.
-        string[] expected = ["Intro", "Verse 1", "Pre-chorus", "Chorus 1", "Verse 2", "Chorus 2", "Bridge", "Chorus 3"];
+        // The sections of the template song, in order; repeated names are numbered.
+        string[] expected =
+            ["Intro", "Verse 1", "Chorus 1", "Interlude 1", "Verse 2", "Chorus 2", "Interlude 2", "Chorus 3", "Interlude 3"];
         var score = Convert(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "logic-template-song.abc")), withAccompaniment: true);
 
         var package = await WriteAsync(
@@ -377,13 +409,13 @@ public class LogicProjectWriterTests
         var midi = placements.Where(p => p.Head == 0x20).ToList();
         Assert.Equal(midi.Count, midi.Select(p => p.Region).Distinct().Count());
 
-        // Placements of the same track share its track record; the template's five regions keep their ids,
+        // Placements of the same track share its track record; the template's regions keep their ids,
         // so each group can be recognized by the voice it grew out of.
         var tracks = midi.GroupBy(p => p.Track).ToList();
-        Assert.Equal(5, tracks.Count);
+        Assert.Equal(TemplateTracks.Length, tracks.Count);
         var sectionStarts = score.Sections.Select(section => 34_560u + (2 * (uint)section.StartTicks)).ToList();
 
-        foreach (var (voice, sourceId) in new[] { ("Vocal", 44u), ("Ins", 28u), ("Chords", 32u), ("Bass", 36u), ("Drums", 40u) })
+        foreach (var (voice, sourceId) in new[] { ("Vocal", 140u), ("Ins", 44u), ("Chords", 32u), ("Bass", 36u), ("Drums", 28u), ("Guide", 40u), ("Vocal 8vb", 144u) })
         {
             var regions = Assert.Single(tracks, group => group.Any(p => p.Region == sourceId)).OrderBy(p => p.Start).ToList();
 
@@ -427,7 +459,7 @@ public class LogicProjectWriterTests
         var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273));
 
         var arrangement = LogicProjectData.Parse(package.ProjectData).Chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == 4).Payload;
-        Assert.Equal(6, arrangement.Length / 80);
+        Assert.Equal(TemplateTracks.Length + 1, arrangement.Length / 80);
     }
 
     private readonly record struct Placement(byte Head, uint Start, uint Track, uint Region);
@@ -506,6 +538,59 @@ public class LogicProjectWriterTests
         Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.AudioLengthMismatch);
     }
 
+
+    [Fact]
+    public async Task Tracks_are_named_after_the_parts_they_carry()
+    {
+        // The template's tracks are named after the instruments chosen in it ("Studio Grand"), which says
+        // nothing about the part once the regions carry the section names instead of the track name.
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273));
+
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+        var names = TrackNames(chunks);
+
+        // The audio track and the output bus keep their own names; only the MIDI tracks are renamed.
+        Assert.Equal(["audio", "Vocal", "Ins", "Vocal 8vb", "Chords", "Drums", "Bass", "Guide"], names);
+
+        var templateNames = TrackNames(LogicProjectData.Parse(TemplateProjectData).Chunks);
+        Assert.Equal("audio", templateNames[0]);
+        Assert.Contains("Studio Grand", templateNames);
+    }
+
+    /// <summary>
+    /// The channel strips of the arrangement's tracks, in track order. The list also holds the output bus,
+    /// which points at no environment object of its own class and is left out here as the writer leaves it.
+    /// </summary>
+    private static List<string> TrackNames(List<LogicChunk> chunks)
+    {
+        var environment = chunks.Where(c => c.Tag == "Envi" && c.Class == 20 && c.Payload.Length > 160).ToDictionary(c => c.Id);
+        return chunks
+            .Where(c => c.Tag == "Trak" && c.Class == 23 && c.Id == 4 && c.Payload.Length == 58 && c.Payload[0] == 1)
+            .Select(c => ReadUInt32(c.Payload, 8))
+            .Where(environment.ContainsKey)
+            .Select(id => environment[id].Payload)
+            .Select(p => System.Text.Encoding.UTF8.GetString(p, 160, BinaryPrimitives.ReadUInt16LittleEndian(p.AsSpan(158, 2))))
+            .ToList();
+    }
+
+    [Fact]
+    public async Task A_voice_the_template_has_no_track_for_is_reported_with_the_tracks_it_does_have()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions { Doubling = new DoublingOptions { VoiceId = "Ins" } },
+        };
+        var converted = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
+
+        var result = await new LogicProjectWriter().WriteAsync(converted.Score!, null, new MemorySink());
+
+        var warning = Assert.Single(result.Diagnostics, d => d.Code == DiagnosticCodes.LogicTemplateLimitation);
+        Assert.Contains("'Ins 8vb'", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("Vocal 8vb", warning.Message, StringComparison.Ordinal); // the tracks it does have
+    }
+
     [Theory]
     [InlineData(60, 0x0000)]
     [InlineData(72, 0x2080)]
@@ -535,10 +620,17 @@ public class LogicProjectWriterTests
 
     private static ScoreDocument Convert(string abc, bool withAccompaniment)
     {
+        // With accompaniment means every track the Logic template carries, which is how the template was made.
         var options = new ConversionOptions
         {
             Arrangement = withAccompaniment
-                ? new ArrangementOptions { Bass = new BassOptions(), Drums = new DrumOptions() }
+                ? new ArrangementOptions
+                {
+                    Bass = new BassOptions(),
+                    Drums = new DrumOptions(),
+                    GuideTones = new GuideToneOptions(),
+                    Doubling = new DoublingOptions(),
+                }
                 : new ArrangementOptions(),
         };
         var result = new ScoreConverter().Convert(abc, options);
@@ -584,7 +676,7 @@ public class LogicProjectWriterTests
         var chunks = LogicProjectData.Parse(projectData).Chunks;
         var names = chunks.Where(c => c.Tag == "MSeq" && c.Class == 23).ToDictionary(c => c.Id, c => c.SequenceName);
         return chunks
-            .Where(c => c.Tag == "EvSq" && c.Class == 23 && names.TryGetValue(c.Id, out var n) && n is "Vocal" or "Ins" or "Chords" or "Bass" or "Drums")
+            .Where(c => c.Tag == "EvSq" && c.Class == 23 && names.TryGetValue(c.Id, out var n) && TemplateTracks.Contains(n))
             .ToDictionary(c => names[c.Id], c => c.Payload);
     }
 
@@ -594,6 +686,30 @@ public class LogicProjectWriterTests
             .Select(i => System.Convert.ToHexString(sequence, i * 16, 32))
             .Order(StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>
+    /// The note records of a region with their positions counted from its first note, so that a region Logic
+    /// placed where its notes begin compares with one that starts at bar 1.
+    /// </summary>
+    private static List<string> NotesFromFirst(byte[] sequence)
+    {
+        var records = Enumerable.Range(0, sequence.Length / 16 - 1)
+            .Where(i => (sequence[i * 16] & 0xF0) == 0x90)
+            .Select(i => sequence.AsSpan(i * 16, 32).ToArray())
+            .ToList();
+        if (records.Count == 0)
+        {
+            return [];
+        }
+
+        var first = records.Min(r => ReadUInt32(r, 4));
+        foreach (var record in records)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(record.AsSpan(4), ReadUInt32(record, 4) - first);
+        }
+
+        return records.Select(System.Convert.ToHexString).Order(StringComparer.Ordinal).ToList();
+    }
 
     /// <summary>The chord data records of the template's chord regions, in the order of the chord track.</summary>
     private static List<byte[]> TemplateChordRecords()
@@ -624,6 +740,22 @@ public class LogicProjectWriterTests
     }
 
     private static uint ReadUInt32(byte[] buffer, int offset) => BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(offset));
+
+    private static int CountUInt64(byte[] buffer, long value)
+    {
+        Span<byte> pattern = stackalloc byte[8];
+        BinaryPrimitives.WriteUInt64LittleEndian(pattern, (ulong)value);
+        var count = 0;
+        var start = 0;
+        int index;
+        while ((index = buffer.AsSpan(start).IndexOf(pattern)) >= 0)
+        {
+            count++;
+            start += index + 1;
+        }
+
+        return count;
+    }
 
     private static int CountUInt32(byte[] buffer, uint value)
     {

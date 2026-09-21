@@ -33,6 +33,7 @@ public sealed partial class LogicProjectWriter
     private static List<(uint Class, uint Id)> WriteSectionRegions(
         List<LogicChunk> chunks,
         ScoreDocument score,
+        IReadOnlyList<TemplateTrack> tracks,
         Dictionary<string, List<LogicNote>> events,
         bool withAudio,
         uint songTicks)
@@ -64,7 +65,7 @@ public sealed partial class LogicProjectWriter
             arrangement.Write(placement);
         }
 
-        foreach (var (name, channel) in Regions)
+        foreach (var (name, _, _, channel) in tracks)
         {
             var sourceId = regionByName[name];
             var notes = events[name];

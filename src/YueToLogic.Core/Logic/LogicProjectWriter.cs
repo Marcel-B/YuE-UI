@@ -77,24 +77,35 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
     /// <summary>A region in the arrangement: five 16-byte records, the first one 0x24 for audio and 0x20 for MIDI.</summary>
     private const int PlacementLength = 80;
     private const byte AudioPlacement = 0x24;
+    private const byte MidiPlacement = 0x20;
 
-    // Offsets inside the audio file (AuFl) and audio region (AuRg) payloads.
-    private const int AudioFileSamplesOffset = 498;
-    private const int AudioFileSampleRateOffset = 506;
-    private const int AudioFileChannelsOffset = 510;
+    /// <summary>Offset of the track a placement sits on, inside the placement.</summary>
+    private const int PlacementTrackOffset = 8;
+
+    private const int GeneralMidiDrumChannel = 9;
+
+    // Offsets inside the audio file (AuFl) and audio region (AuRg) payloads. What an audio file object holds
+    // in front of the format is not of a fixed size, so its fields are counted from the format tag: "CaLf" is
+    // "fLaC" backwards, the way this format stores four-character tags.
+    private static readonly byte[] FlacFormatTag = "CaLf"u8.ToArray();
+
+    /// <summary>An audio file object opens with the name of its file: its length in characters, then UTF-16.</summary>
+    private const int AudioFileNameLengthOffset = 8;
+    private const int AudioFileNameOffset = 10;
+
+    private const int AudioFileSamplesOffset = 12;
+    private const int AudioFileSampleRateOffset = 20;
+    private const int AudioFileChannelsOffset = 24;
     private const int AudioRegionSamplesOffset = 22;
 
-    private static readonly byte[] SequenceTerminator = Convert.FromHexString("F1000000FFFFFF3F0000000000000000");
+    /// <summary>Name of the audio file an audio region plays: its length as a u16, then the UTF-8 name.</summary>
+    private const int AudioRegionNameLengthOffset = 74;
+    private const int AudioRegionNameOffset = 76;
 
-    /// <summary>MIDI regions of the template and the channel Logic stored their events on.</summary>
-    private static readonly (string Region, int Channel)[] Regions =
-    [
-        ("Vocal", 0),
-        ("Ins", 1),
-        ("Chords", 2),
-        ("Bass", 3),
-        ("Drums", 9),
-    ];
+    /// <summary>The audio region's id in the arrangement, which the usual region field of a placement leaves empty.</summary>
+    private const int AudioPlacementRegionIdOffset = 44;
+
+    private static readonly byte[] SequenceTerminator = Convert.FromHexString("F1000000FFFFFF3F0000000000000000");
 
     public LogicProjectWriter()
         : this(LogicTemplate.Default)
@@ -144,8 +155,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             CheckAudio(score, audio, diagnostics);
         }
 
-        var events = CollectEvents(score, options, diagnostics);
-        var projectData = BuildProjectData(score, audio, events, options, diagnostics);
+        var projectData = BuildProjectData(score, audio, options, diagnostics);
 
         await WriteFileAsync(sink, LogicTemplate.ProjectDataPath, projectData, cancellationToken).ConfigureAwait(false);
         await WriteFileAsync(sink, LogicTemplate.MetaDataPath, BuildMetaData(score, audio is not null), cancellationToken).ConfigureAwait(false);
@@ -172,9 +182,13 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
 
     private readonly record struct LogicNote(long Start, long Length, int Pitch, int Velocity);
 
-    private static Dictionary<string, List<LogicNote>> CollectEvents(ScoreDocument score, LogicProjectOptions options, DiagnosticBag diagnostics)
+    private static Dictionary<string, List<LogicNote>> CollectEvents(
+        ScoreDocument score,
+        IReadOnlyList<TemplateTrack> tracks,
+        LogicProjectOptions options,
+        DiagnosticBag diagnostics)
     {
-        var events = Regions.ToDictionary(r => r.Region, _ => new List<LogicNote>(), StringComparer.Ordinal);
+        var events = tracks.ToDictionary(t => t.Region, _ => new List<LogicNote>(), StringComparer.Ordinal);
         long Ticks(long scoreTicks) => ToLogicTicks(scoreTicks, score.TicksPerQuarterNote);
 
         foreach (var voice in score.Voices)
@@ -190,7 +204,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             {
                 diagnostics.Warning(
                     DiagnosticCodes.LogicTemplateLimitation,
-                    $"The Logic template has no track for voice '{voice.Id}'; it is only in the MIDI file.");
+                    $"The Logic template has no track named '{region}', so voice '{voice.Id}' is only in the MIDI file. Its tracks are: {string.Join(", ", tracks.Select(t => t.Region))}. A template saved with a track of that name takes it as well.");
                 continue;
             }
 
@@ -199,11 +213,11 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         }
 
         // The arranger plays the chord symbols; only a score that has not been through it needs block chords here.
-        if (events["Chords"].Count == 0)
+        if (events.TryGetValue("Chords", out var chordTrack) && chordTrack.Count == 0)
         {
             foreach (var chord in score.Chords.Where(c => c.Symbol is not null))
             {
-                events["Chords"].AddRange(ChordVoicing.GetNotes(chord.Symbol!).Select(pitch => new LogicNote(
+                chordTrack.AddRange(ChordVoicing.GetNotes(chord.Symbol!).Select(pitch => new LogicNote(
                     Ticks(chord.StartTicks), Ticks(chord.DurationTicks), pitch, options.ChordVelocity)));
             }
         }
@@ -255,13 +269,21 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
     private byte[] BuildProjectData(
         ScoreDocument score,
         FlacStreamInfo? audio,
-        Dictionary<string, List<LogicNote>> events,
         LogicProjectOptions options,
         DiagnosticBag diagnostics)
     {
         var project = LogicProjectData.Parse(template.Files[LogicTemplate.ProjectDataPath]);
         var chunks = project.Chunks;
         var songTicks = checked((uint)ToLogicTicks(score.LengthTicks, score.TicksPerQuarterNote));
+
+        // Which MIDI tracks exist comes from the template, so one saved with further tracks fills them too.
+        var tracks = ReadTracks(chunks);
+        if (tracks.Count == 0)
+        {
+            throw new InvalidOperationException("The Logic template has no MIDI region in its arrangement.");
+        }
+
+        var events = CollectEvents(score, tracks, options, diagnostics);
 
         // Regions: set their length, remember which event sequence belongs to which track.
         var regionById = new Dictionary<uint, string>();
@@ -279,19 +301,11 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             }
         }
 
-        foreach (var (region, _) in Regions)
-        {
-            if (!regionById.ContainsValue(region))
-            {
-                throw new InvalidOperationException($"The Logic template has no MIDI region '{region}'.");
-            }
-        }
-
         var created = new List<(uint Class, uint Id)>();
         if (options.SplitRegionsAtSections)
         {
             // Rebuilds the arrangement from scratch, so the single-region path below does not run at all.
-            created.AddRange(WriteSectionRegions(chunks, score, events, audio is not null, songTicks));
+            created.AddRange(WriteSectionRegions(chunks, score, tracks, events, audio is not null, songTicks));
         }
         else
         {
@@ -299,7 +313,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             {
                 if (regionById.TryGetValue(sequence.Id, out var region))
                 {
-                    var channel = Regions.First(r => r.Region == region).Channel;
+                    var channel = tracks.First(t => t.Region == region).Channel;
                     sequence.Payload = EncodeSequence(events[region], channel);
                 }
                 else if (sequence.Id == RootSequenceId)
@@ -315,11 +329,14 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
 
         SetTempo(chunks, score.TempoBpm);
         WriteSignatures(chunks, score);
-        var removed = audio is null ? RemoveAudioObjects(chunks) : [];
+        var removed = audio is null ? RemoveAudioObjects(chunks) : KeepPlacedAudio(chunks);
         if (audio is not null)
         {
             SetAudio(chunks, audio);
         }
+
+        // Renamed before the regions are cut up, while the track list still matches the placements one to one.
+        WriteTrackNames(chunks, tracks);
 
         created.AddRange(WriteChordTrack(chunks, score));
         created.AddRange(WriteArrangementMarkers(chunks, score));
@@ -384,27 +401,58 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
     }
 
     /// <summary>
-    /// Tempo is stored as BPM · 10000 in the tempo list and in several places of the Song chunk. The list is reduced
-    /// to its first event (two records), since the score has a single tempo.
+    /// Tempo is stored as BPM · 10000 in the tempo list and in several places of the Song chunk. Each list is
+    /// reduced to its first event (two records), since the score has a single tempo. A template can hold more than
+    /// one list, because Logic keeps a tempo set of its own for every alternative.
     /// </summary>
     private static void SetTempo(List<LogicChunk> chunks, double bpm)
     {
-        var tempoList = chunks.Single(c => c.Tag == "EvSq" && c.Class == TempoListClass);
-        var oldTempo = BinaryPrimitives.ReadUInt32LittleEndian(tempoList.Payload.AsSpan(16, 4));
-        tempoList.Payload = [.. tempoList.Payload.AsSpan(0, 32), .. SequenceTerminator];
         var newTempo = (uint)Math.Round(bpm * 10000);
-        foreach (var chunk in new[] { tempoList, chunks.Single(c => c.Tag == "Song") })
+        var song = chunks.Single(c => c.Tag == "Song");
+        foreach (var tempoList in chunks.Where(c => c.Tag == "EvSq" && c.Class == TempoListClass).ToList())
         {
-            ReplaceUInt32(chunk.Payload, oldTempo, newTempo);
+            var oldTempo = BinaryPrimitives.ReadUInt32LittleEndian(tempoList.Payload.AsSpan(16, 4));
+            tempoList.Payload = [.. tempoList.Payload.AsSpan(0, 32), .. SequenceTerminator];
+            ReplaceUInt32(tempoList.Payload, oldTempo, newTempo);
+            ReplaceUInt32(song.Payload, oldTempo, newTempo);
         }
+    }
+
+    /// <summary>
+    /// A template may hold more audio files than the one on its audio track, for instance because a first take was
+    /// replaced: Logic keeps the others in the project audio pool. Only the placed one can be filled with the
+    /// uploaded audio, so the rest is dropped, as is the file of a project written without audio.
+    /// </summary>
+    /// <returns>The objects removed, which have to leave the registry as well.</returns>
+    private static List<(uint Class, uint Id)> KeepPlacedAudio(List<LogicChunk> chunks)
+    {
+        var placement = Records(Chunk(chunks, "EvSq", ArrangementClass, RootSequenceId).Payload, PlacementLength)
+            .FirstOrDefault(p => p[0] == AudioPlacement);
+        var placed = placement is null
+            ? chunks.Where(c => c.Tag == "AuRg").Select(c => c.Id).DefaultIfEmpty(0u).Min()
+            : ReadUInt32(placement, AudioPlacementRegionIdOffset);
+
+        var others = chunks.Where(c => c.Tag is "AuFl" or "AuRg" && c.Id != placed).ToList();
+        var removed = others.Select(c => ((uint)c.Class, c.Id)).Distinct().ToList();
+        chunks.RemoveAll(others.Contains);
+        return removed;
     }
 
     private static void SetAudio(List<LogicChunk> chunks, FlacStreamInfo audio)
     {
-        var file = chunks.Single(c => c.Tag == "AuFl").Payload;
-        BinaryPrimitives.WriteUInt64LittleEndian(file.AsSpan(AudioFileSamplesOffset), (ulong)audio.TotalSamples);
-        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(AudioFileSampleRateOffset), (uint)audio.SampleRate);
-        BinaryPrimitives.WriteUInt16LittleEndian(file.AsSpan(AudioFileChannelsOffset), (ushort)audio.Channels);
+        var fileName = Path.GetFileName(LogicTemplate.AudioPath);
+        var audioFile = chunks.First(c => c.Tag == "AuFl");
+        audioFile.Payload = WithName(audioFile.Payload, AudioFileNameLengthOffset, AudioFileNameOffset, Encoding.Unicode, fileName);
+        var file = audioFile.Payload;
+        var format = file.AsSpan().LastIndexOf(FlacFormatTag);
+        if (format < 0)
+        {
+            throw new InvalidOperationException("The Logic template's audio file is not a FLAC file.");
+        }
+
+        BinaryPrimitives.WriteUInt64LittleEndian(file.AsSpan(format + AudioFileSamplesOffset), (ulong)audio.TotalSamples);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(format + AudioFileSampleRateOffset), (uint)audio.SampleRate);
+        BinaryPrimitives.WriteUInt16LittleEndian(file.AsSpan(format + AudioFileChannelsOffset), (ushort)audio.Channels);
 
         // Forget the folder the template's audio came from, so Logic looks inside the package.
         var folder = file.AsSpan().IndexOf("PMOC"u8);
@@ -415,8 +463,29 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             file.AsSpan(start, end < 0 ? file.Length - start : end).Clear();
         }
 
-        var region = chunks.Single(c => c.Tag == "AuRg").Payload;
-        BinaryPrimitives.WriteUInt64LittleEndian(region.AsSpan(AudioRegionSamplesOffset), (ulong)audio.TotalSamples);
+        var region = chunks.First(c => c.Tag == "AuRg");
+        BinaryPrimitives.WriteUInt64LittleEndian(region.Payload.AsSpan(AudioRegionSamplesOffset), (ulong)audio.TotalSamples);
+        region.Payload = WithName(region.Payload, AudioRegionNameLengthOffset, AudioRegionNameOffset, Encoding.UTF8, fileName);
+    }
+
+    /// <summary>
+    /// Writes the name of the audio file, which the file object carries in UTF-16 and its region in UTF-8. The
+    /// package always writes the audio under the same name, while a template can carry a name of its own: Logic
+    /// numbers a second import "audio_1.flac", and looks for exactly that name when the project is opened.
+    /// </summary>
+    private static byte[] WithName(byte[] payload, int lengthOffset, int nameOffset, Encoding encoding, string fileName)
+    {
+        var characters = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(lengthOffset));
+        var name = encoding.GetBytes(fileName);
+        var tail = nameOffset + (characters * (encoding is UnicodeEncoding ? 2 : 1));
+        if (tail > payload.Length)
+        {
+            return payload;
+        }
+
+        byte[] patched = [.. payload.AsSpan(0, nameOffset), .. name, .. payload.AsSpan(tail)];
+        BinaryPrimitives.WriteUInt16LittleEndian(patched.AsSpan(lengthOffset), (ushort)fileName.Length);
+        return patched;
     }
 
     private static void CheckAudio(ScoreDocument score, FlacStreamInfo audio, DiagnosticBag diagnostics)
@@ -446,11 +515,15 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         SetValue(root, "BeatsPerMinute", new XElement("real", score.TempoBpm.ToString("0.####", CultureInfo.InvariantCulture)));
         SetValue(root, "SongSignatureNumerator", new XElement("integer", score.TimeSignatures[0].Numerator));
         SetValue(root, "SongSignatureDenominator", new XElement("integer", score.TimeSignatures[0].Denominator));
-        if (!withAudio)
-        {
-            // Without this the Finder preview and Logic's browser would announce an audio file the package has not.
-            SetValue(root, "AudioFiles", new XElement("array"));
-        }
+        // The package holds exactly the audio it was given, whatever the template listed here; without this the
+        // Finder preview and Logic's browser would announce files the package has not.
+        SetValue(root, "UnusedAudioFiles", new XElement("array"));
+        SetValue(
+            root,
+            "AudioFiles",
+            withAudio
+                ? new XElement("array", new XElement("string", LogicTemplate.AudioPath[(LogicTemplate.AudioPath.IndexOf('/') + 1)..]))
+                : new XElement("array"));
 
         return SavePropertyList(document);
     }
