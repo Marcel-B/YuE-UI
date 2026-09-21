@@ -40,6 +40,12 @@ public sealed record LogicProjectOptions
     /// sections in the score this changes nothing.
     /// </summary>
     public bool SplitRegionsAtSections { get; set; }
+
+    /// <summary>
+    /// MIDI channel per track (1-16), keyed by track name; a track without an entry keeps the channel of the
+    /// template's region. Logic sends a track's notes on this channel to an external instrument.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> Channels { get; set; } = new Dictionary<string, int>();
 }
 
 public sealed record LogicProjectResult(bool Success, FlacStreamInfo? Audio, IReadOnlyList<Diagnostic> Diagnostics);
@@ -277,7 +283,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         var songTicks = checked((uint)ToLogicTicks(score.LengthTicks, score.TicksPerQuarterNote));
 
         // Which MIDI tracks exist comes from the template, so one saved with further tracks fills them too.
-        var tracks = ReadTracks(chunks);
+        var tracks = WithChannels(ReadTracks(chunks), options.Channels);
         if (tracks.Count == 0)
         {
             throw new InvalidOperationException("The Logic template has no MIDI region in its arrangement.");

@@ -22,6 +22,25 @@ internal static class DrumPatternGenerator
     private const int HiHatOffBeatVelocity = 60;
     private const int OpenHiHatVelocity = 75;
 
+    /// <summary>Every hi-hat position of the segment: each beat opens one, the offsets fill it.</summary>
+    private static IEnumerable<long> HiHatTicks(long start, long end, long beatTicks, int beatsPerBar, long[] offsets)
+    {
+        for (var bar = start; bar < end; bar += beatTicks * beatsPerBar)
+        {
+            for (var beat = 0; beat < beatsPerBar; beat++)
+            {
+                foreach (var offset in offsets)
+                {
+                    var tick = bar + (beat * beatTicks) + offset;
+                    if (tick < end)
+                    {
+                        yield return tick;
+                    }
+                }
+            }
+        }
+    }
+
     public static VoiceTrack Generate(ScoreDocument score, DrumOptions options)
     {
         var ppq = score.TicksPerQuarterNote;
@@ -40,7 +59,17 @@ internal static class DrumPatternGenerator
             var noteTicks = 4L * ppq / signature.Denominator;
             var beatTicks = compound ? 3 * noteTicks : noteTicks;
             var beatsPerBar = compound ? signature.Numerator / 3 : signature.Numerator;
-            var hiHatTicks = Math.Max(1, compound ? noteTicks : beatTicks / 2);
+            // Where the hi-hat falls inside a beat: halves, quarters, or the first and third triplet.
+            long[] divisions = compound
+                ? [noteTicks, 2 * noteTicks]
+                : pattern switch
+                {
+                    DrumPattern.SixteenthHats => [beatTicks / 4, beatTicks / 2, 3 * beatTicks / 4],
+                    DrumPattern.Shuffle => [2 * beatTicks / 3],
+                    _ => [beatTicks / 2],
+                };
+            long[] offsets = [0, .. divisions.Where(d => d > 0)];
+            var hiHatTicks = Math.Max(1, offsets.Length > 1 ? offsets[1] : beatTicks);
 
             for (var bar = signature.StartTicks; bar < segmentEnd; bar += beatTicks * beatsPerBar)
             {
@@ -49,7 +78,7 @@ internal static class DrumPatternGenerator
                     var tick = bar + beat * beatTicks;
                     var kick = pattern switch
                     {
-                        DrumPattern.Backbeat => beat % 2 == 0,
+                        DrumPattern.Backbeat or DrumPattern.SixteenthHats or DrumPattern.Shuffle => beat % 2 == 0,
                         DrumPattern.HalfTime => beat == 0,
                         _ => true,
                     };
@@ -67,7 +96,7 @@ internal static class DrumPatternGenerator
             }
 
             var measureTicks = beatTicks * beatsPerBar;
-            for (var tick = signature.StartTicks; tick < segmentEnd; tick += hiHatTicks)
+            foreach (var tick in HiHatTicks(signature.StartTicks, segmentEnd, beatTicks, beatsPerBar, offsets))
             {
                 if (crashTicks.Contains(tick))
                 {

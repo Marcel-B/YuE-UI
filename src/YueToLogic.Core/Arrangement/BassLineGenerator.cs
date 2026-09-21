@@ -26,17 +26,17 @@ internal static class BassLineGenerator
             _ => ppq,
         };
         var notes = new List<NoteEvent>();
+        var chords = score.Chords.Where(c => c.Symbol is not null).ToList();
 
-        foreach (var chord in score.Chords)
+        for (var c = 0; c < chords.Count; c++)
         {
-            if (chord.Symbol is not { } symbol)
-            {
-                continue;
-            }
+            var chord = chords[c];
+            var symbol = chord.Symbol!;
 
             // A slash chord (C/E) names the bass note explicitly.
             var bassNote = LowestNote + (12 * options.OctaveShift) + Mod12((symbol.BassPitchClass ?? symbol.RootPitchClass) - LowestNote);
             var alternateNote = AlternateNote(symbol, bassNote);
+            var approach = c + 1 < chords.Count ? ApproachNote(bassNote, BassNoteOf(chords[c + 1].Symbol!, options)) : (int?)null;
             var end = chord.StartTicks + chord.DurationTicks;
             var index = 0;
 
@@ -45,12 +45,15 @@ internal static class BassLineGenerator
             {
                 var next = step == long.MaxValue ? end : Math.Min(end, ((tick / step) + 1) * step);
                 var onBeat = tick % ppq == 0;
+                var last = next >= end;
                 if (options.Pattern != BassPattern.Offbeat || !onBeat)
                 {
                     var pitch = options.Pattern switch
                     {
                         BassPattern.RootFifth when index % 2 == 1 => alternateNote,
                         BassPattern.Octaves when index % 2 == 1 => bassNote + 12,
+                        BassPattern.Walking when last && index > 0 && approach is { } target => target,
+                        BassPattern.Walking => ChordTone(symbol, bassNote, index),
                         _ => bassNote,
                     };
                     var velocity = onBeat ? options.Velocity : options.Velocity - OffBeatSoftening;
@@ -65,6 +68,25 @@ internal static class BassLineGenerator
         }
 
         return new VoiceTrack(TrackId, TrackId, notes, TrackKind.Bass);
+    }
+
+    /// <summary>The bass note a chord is played on, in the register the options ask for.</summary>
+    private static int BassNoteOf(ChordSymbol symbol, BassOptions options)
+    {
+        var lowest = LowestNote + (12 * options.OctaveShift);
+        return lowest + Mod12((symbol.BassPitchClass ?? symbol.RootPitchClass) - lowest);
+    }
+
+    /// <summary>A semitone below the note the next chord starts on, or above it when the line is coming down.</summary>
+    private static int ApproachNote(int from, int target) =>
+        Math.Clamp(from <= target ? target - 1 : target + 1, 0, 127);
+
+    /// <summary>The notes of the chord above its bass note, one per step: root, third, fifth, and so on.</summary>
+    private static int ChordTone(ChordSymbol symbol, int bassNote, int index)
+    {
+        var intervals = ChordVoicing.GetIntervals(symbol.Quality);
+        var pitchClass = symbol.RootPitchClass + intervals[index % intervals.Count];
+        return bassNote + Mod12(pitchClass - bassNote);
     }
 
     /// <summary>The chord's fifth above the bass note; the root instead if the bass already is the fifth (C/G).</summary>

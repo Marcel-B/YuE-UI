@@ -35,6 +35,19 @@ public sealed record ConversionOptions
     /// keeps the tempo the score names. The host measures the audio and passes its length.
     /// </summary>
     public TempoFitOptions? FitTempo { get; set; }
+
+    /// <summary>
+    /// MIDI channel per track (1-16), keyed by track name (<c>Vocal</c>, <c>Bass</c>, ...; case-insensitive).
+    /// A track without an entry gets the next free channel, drums channel 10. Set this to drive external gear
+    /// that listens on a fixed channel.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> MidiChannels { get; set; } = new Dictionary<string, int>();
+
+    /// <summary>
+    /// Program change (1-128) sent at the start of a track, keyed by track name. Without an entry the track
+    /// sends none and the receiving instrument keeps the sound it is on.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> MidiPrograms { get; set; } = new Dictionary<string, int>();
 }
 
 /// <param name="Success">Whether a score could be read; warnings in <see cref="Diagnostics"/> do not affect it.</param>
@@ -80,7 +93,14 @@ public sealed class ScoreConverter(IAbcScoreParser parser, IScoreArranger arrang
             score = TempoFitter.Fit(score, fit, fitted);
         }
 
-        var midi = renderer.Render(score, new MidiRenderOptions { IncludeChordTrack = options.IncludeChordTrack });
+        var midi = renderer.Render(
+            score,
+            new MidiRenderOptions
+            {
+                IncludeChordTrack = options.IncludeChordTrack,
+                Channels = options.MidiChannels,
+                Programs = options.MidiPrograms,
+            });
         return new ConversionResult(true, score, midi, [.. parsed.Diagnostics, .. arranged.Diagnostics, .. fitted.ToList()]);
     }
 

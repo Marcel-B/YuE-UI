@@ -103,6 +103,23 @@ public sealed partial class LogicProjectWriter
     }
 
     /// <summary>
+    /// Puts the channels the caller chose on the tracks they name; the rest keep the channel of the template's
+    /// region. Counted from one outside, as Logic and every MIDI device do.
+    /// </summary>
+    private static List<TemplateTrack> WithChannels(List<TemplateTrack> tracks, IReadOnlyDictionary<string, int> channels)
+    {
+        if (channels.Count == 0)
+        {
+            return tracks;
+        }
+
+        var given = new Dictionary<string, int>(channels, StringComparer.OrdinalIgnoreCase);
+        return [.. tracks.Select(track => given.TryGetValue(track.Region, out var channel) && channel is >= 1 and <= 16
+            ? track with { Channel = channel - 1 }
+            : track)];
+    }
+
+    /// <summary>
     /// The channel strip a region lies on, taken from the region itself: the id sits behind the region's name,
     /// which is why the offset follows the name's padded length, as a sequence's own length field does.
     /// </summary>

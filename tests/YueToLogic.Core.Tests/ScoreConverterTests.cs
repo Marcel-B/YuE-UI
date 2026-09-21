@@ -56,11 +56,46 @@ public class ScoreConverterTests
     }
 
     [Fact]
+    public void Tracks_take_the_midi_channel_and_program_they_are_given()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions { Bass = new BassOptions(), Drums = new DrumOptions() },
+            MidiChannels = new Dictionary<string, int> { ["Bass"] = 5, ["vocal"] = 3 }, // names are case-insensitive
+            MidiPrograms = new Dictionary<string, int> { ["Bass"] = 34 },
+        };
+
+        var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
+
+        var tracks = MidiFile.Read(new MemoryStream(result.Midi!)).GetTrackChunks().ToList();
+        Assert.Equal(["Conductor", "Vocal", "Ins", "Chords", "Bass", "Drums"], tracks.Select(TrackName));
+        Assert.Equal(3, Channel(tracks[1]));
+        Assert.Equal(2, Channel(tracks[3])); // no channel of its own, so the next one no track asked for
+        Assert.Equal(5, Channel(tracks[4]));
+        Assert.Equal(10, Channel(tracks[5])); // drums stay on the General MIDI drum channel
+
+        var program = Assert.Single(tracks[4].Events.OfType<ProgramChangeEvent>());
+        Assert.Equal((34 - 1, 5 - 1), ((int)program.ProgramNumber, (int)program.Channel));
+        Assert.All(tracks.Where(t => TrackName(t) != "Bass"), t => Assert.Empty(t.Events.OfType<ProgramChangeEvent>()));
+    }
+
+    [Fact]
     public void Chord_track_can_be_left_out()
     {
         var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), new ConversionOptions { IncludeChordTrack = false });
 
         Assert.Equal(3, MidiFile.Read(new MemoryStream(result.Midi!)).GetTrackChunks().Count());
+    }
+
+    [Fact]
+    public void An_unusable_channel_or_program_is_an_error()
+    {
+        var options = new ConversionOptions { MidiChannels = new Dictionary<string, int> { ["Bass"] = 17 } };
+
+        var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Diagnostics, d => d.Message.Contains("midiChannels.Bass", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -117,6 +152,10 @@ public class ScoreConverterTests
 
         Assert.True(converter.Convert(File.ReadAllText(SamplePath)).Success);
     }
+
+    /// <summary>The 1-based channel the track's notes are on.</summary>
+    private static int Channel(TrackChunk track) =>
+        track.Events.OfType<NoteOnEvent>().Select(n => (int)n.Channel + 1).Distinct().Single();
 
     private static string TrackName(TrackChunk track) =>
         track.Events.OfType<SequenceTrackNameEvent>().Single().Text;

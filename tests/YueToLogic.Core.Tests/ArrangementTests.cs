@@ -226,6 +226,66 @@ public class ArrangementTests
     }
 
     [Fact]
+    public void Walking_bass_steps_through_the_chord_and_approaches_the_next_one()
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            "C"C16|"F"C16|
+            V: Ins
+            Z2|
+            """));
+
+        var bass = Arranger.Arrange(score, new ArrangementOptions { Bass = new BassOptions { Pattern = BassPattern.Walking } }).Score.Voice("Bass");
+
+        // C: root, third, fifth, then a semitone above the F the next chord starts on, since the line comes
+        // down to it. The last chord has nothing to approach, so it stays on its own notes.
+        Assert.Equal([48, 52, 55, 42, 41, 45, 48, 41], bass.Pitches());
+        Assert.All(bass.Notes, n => Assert.Equal(0, n.StartTicks % Ppq));
+    }
+
+    [Fact]
+    public void Chords_can_run_up_and_back_down()
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C\"C16|"));
+
+        var chords = Arranger.Arrange(score, new ArrangementOptions { Chords = new ChordOptions { Pattern = ChordPattern.ArpeggioUpDown } }).Score.Voice("Chords");
+
+        Assert.Equal([48, 52, 55, 52, 48, 52, 55, 52], chords.Pitches());
+    }
+
+    [Fact]
+    public void Chords_in_sixteenths_hit_four_times_per_beat()
+    {
+        var score = ParseScore(Native("V: Vocal\n\"C\"C16|"));
+
+        var chords = Arranger.Arrange(score, new ArrangementOptions { Chords = new ChordOptions { Pattern = ChordPattern.Sixteenths } }).Score.Voice("Chords");
+
+        Assert.Equal(16 * 3, chords.Notes.Count);
+        Assert.Equal(Enumerable.Range(0, 16).Select(i => i * (Ppq / 4L)), chords.Notes.Select(n => n.StartTicks).Distinct());
+    }
+
+    [Theory]
+    [InlineData(DrumPattern.SixteenthHats, 16, 4)]
+    [InlineData(DrumPattern.Shuffle, 8, 2)]
+    public void Hi_hats_follow_the_pattern(DrumPattern pattern, int hitsPerBar, int hitsPerBeat)
+    {
+        var score = ParseScore(Native("V: Vocal\nC16|"));
+
+        var drums = Arranger.Arrange(score, new ArrangementOptions { Drums = new DrumOptions { Pattern = pattern, CrashOnSections = false } }).Score.Voice("Drums");
+
+        var hats = drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.ClosedHiHat).ToList();
+        Assert.Equal(hitsPerBar, hats.Count);
+        Assert.Equal(hitsPerBeat, hats.Count(n => n.StartTicks < Ppq));
+        Assert.Equal([0L, 2 * Ppq], drums.Notes.Where(n => n.NoteNumber == GeneralMidiDrums.Kick).Select(n => n.StartTicks));
+
+        // The shuffle puts its second hi-hat on the last third of the beat.
+        if (pattern == DrumPattern.Shuffle)
+        {
+            Assert.Equal(2 * Ppq / 3, hats[1].StartTicks);
+        }
+    }
+
+    [Fact]
     public void Half_time_plays_kick_on_one_and_snare_on_three()
     {
         var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.HalfTime } }).Score.Voice("Drums");

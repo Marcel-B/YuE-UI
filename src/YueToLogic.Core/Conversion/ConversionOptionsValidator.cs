@@ -36,6 +36,22 @@ public static class ConversionOptionsValidator
             errors.Error(DiagnosticCodes.InvalidOption, Invariant($"ticksPerQuarterNote must be between {MinTicksPerQuarterNote} and {MaxTicksPerQuarterNote}, got {options.TicksPerQuarterNote}."));
         }
 
+        foreach (var (track, channel) in options.MidiChannels ?? new Dictionary<string, int>())
+        {
+            if (channel is < 1 or > 16)
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"midiChannels.{track} must be between 1 and 16, got {channel}."));
+            }
+        }
+
+        foreach (var (track, program) in options.MidiPrograms ?? new Dictionary<string, int>())
+        {
+            if (program is < 1 or > 128)
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"midiPrograms.{track} must be between 1 and 128, got {program}."));
+            }
+        }
+
         var arrangement = options.Arrangement ?? new();
         CheckOctave(errors, "arrangement.defaultOctaveShift", arrangement.DefaultOctaveShift, MaxOctaveShift);
         foreach (var (voice, octaves) in arrangement.OctaveShifts ?? new Dictionary<string, int>())
