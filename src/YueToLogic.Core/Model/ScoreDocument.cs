@@ -70,4 +70,10 @@ public enum TrackKind
 
     /// <summary>Generated drum pattern; note numbers follow the General MIDI drum map.</summary>
     Drums,
+
+    /// <summary>Generated guide-tone track: the third and seventh of every chord, held as a pad.</summary>
+    GuideTones,
+
+    /// <summary>A score voice copied to a second track at another octave.</summary>
+    Doubling,
 }

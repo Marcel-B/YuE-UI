@@ -12,8 +12,9 @@ public interface IScoreArranger
 public sealed record ArrangementResult(ScoreDocument Score, IReadOnlyList<Diagnostic> Diagnostics);
 
 /// <summary>
-/// Transposes score voices by octaves and appends the generated chord, bass and drum tracks. The result is a new
-/// <see cref="ScoreDocument"/>, so JSON output and MIDI file always show the same arrangement.
+/// Transposes score voices by octaves, appends the generated chord, bass, drum and guide-tone tracks, and finally
+/// gives everything its groove and, where asked for, a monophonic shape. The result is a new
+/// <see cref="ScoreDocument"/>, so JSON output, MIDI file and Logic project always show the same arrangement.
 /// Stateless and thread-safe.
 /// </summary>
 public sealed class ScoreArranger : IScoreArranger
@@ -25,6 +26,11 @@ public sealed class ScoreArranger : IScoreArranger
         var diagnostics = new DiagnosticBag();
 
         var tracks = ShiftOctaves(score.Voices, options, diagnostics);
+        if (options.Doubling is { } doubling)
+        {
+            AddDoubling(tracks, doubling, diagnostics);
+        }
+
         if (options.Chords is { } chords && score.Chords.Count > 0)
         {
             tracks.Add(ChordTrackGenerator.Generate(score, chords));
@@ -40,8 +46,84 @@ public sealed class ScoreArranger : IScoreArranger
             tracks.Add(DrumPatternGenerator.Generate(score, drums));
         }
 
-        return new ArrangementResult(score with { Voices = tracks }, diagnostics.ToList());
+        if (options.GuideTones is { } guideTones)
+        {
+            if (score.Chords.Count == 0)
+            {
+                diagnostics.Warning(
+                    DiagnosticCodes.NoChords,
+                    "Guide tones were asked for, but the score has no chord symbols to take them from.");
+            }
+            else
+            {
+                tracks.Add(GuideToneGenerator.Generate(score, guideTones));
+            }
+        }
+
+        // The groove moves notes, so the monophonic clean-up runs after it: its guarantees have to hold
+        // for what is finally written, not for an intermediate state.
+        IReadOnlyList<VoiceTrack> result = tracks;
+        if (options.Groove is { } groove)
+        {
+            result = GrooveProcessor.Apply(score, result, groove);
+        }
+
+        if (options.Mono is { } mono)
+        {
+            result = [.. result.Select(track => IsMonophonic(track.Kind, mono) ? MonoProcessor.Apply(score, track, mono) : track)];
+        }
+
+        return new ArrangementResult(score with { Voices = result }, diagnostics.ToList());
     }
+
+    /// <summary>Chords and drums are polyphonic by nature; the single-line tracks are the ones a mono synth plays.</summary>
+    private static bool IsMonophonic(TrackKind kind, MonoOptions options) => kind switch
+    {
+        TrackKind.Melody or TrackKind.Doubling => true,
+        TrackKind.Bass => options.IncludeBass,
+        _ => false,
+    };
+
+    private static void AddDoubling(List<VoiceTrack> tracks, DoublingOptions options, DiagnosticBag diagnostics)
+    {
+        var source = tracks.Find(track =>
+            track.Kind == TrackKind.Melody && track.Id.Equals(options.VoiceId, StringComparison.OrdinalIgnoreCase));
+        if (source is null)
+        {
+            diagnostics.Warning(
+                DiagnosticCodes.UnknownVoice,
+                $"Cannot double voice '{options.VoiceId}': the score has no such voice (available: {string.Join(", ", tracks.Where(t => t.Kind == TrackKind.Melody).Select(t => t.Id))}).");
+            return;
+        }
+
+        var notes = source.Notes
+            .Where(note => note.NoteNumber + options.Semitones is >= 0 and <= 127)
+            .Select(note => note with
+            {
+                NoteNumber = note.NoteNumber + options.Semitones,
+                Velocity = options.Velocity ?? note.Velocity,
+            })
+            .ToArray();
+
+        var dropped = source.Notes.Count - notes.Length;
+        if (dropped > 0)
+        {
+            diagnostics.Warning(
+                DiagnosticCodes.PitchOutOfRange,
+                string.Create(CultureInfo.InvariantCulture, $"Doubling voice '{source.Id}' by {options.Semitones} semitone(s) moves {dropped} note(s) outside the MIDI range; they are left out."));
+        }
+
+        var id = DoublingId(source.Id, options.Semitones);
+        tracks.Add(new VoiceTrack(id, id, notes, TrackKind.Doubling));
+    }
+
+    /// <summary>Names the copy the way a score would: <c>8vb</c> an octave below, <c>8va</c> an octave above.</summary>
+    private static string DoublingId(string voiceId, int semitones) => semitones switch
+    {
+        -12 => $"{voiceId} 8vb",
+        12 => $"{voiceId} 8va",
+        _ => string.Create(CultureInfo.InvariantCulture, $"{voiceId} {semitones:+0;-0}"),
+    };
 
     private static List<VoiceTrack> ShiftOctaves(
         IReadOnlyList<VoiceTrack> voices,

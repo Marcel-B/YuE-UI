@@ -24,6 +24,10 @@ internal static class ChordTrackGenerator
     {
         var ppq = score.TicksPerQuarterNote;
         var notes = new List<NoteEvent>();
+        var octaveBase = ChordVoicing.DefaultRootOctaveBase + (12 * options.OctaveShift);
+
+        // Voice leading looks back at the chord before it, so the chords are voiced in order.
+        IReadOnlyList<int>? previous = null;
 
         foreach (var chord in score.Chords)
         {
@@ -32,7 +36,10 @@ internal static class ChordTrackGenerator
                 continue;
             }
 
-            var pitches = ChordVoicing.GetNotes(symbol, ChordVoicing.DefaultRootOctaveBase + (12 * options.OctaveShift));
+            var pitches = ChordVoicing.GetNotes(symbol, octaveBase, options.Inversion, previous);
+
+            // The slash bass sits below the voicing and is not part of what the next chord moves towards.
+            previous = symbol.BassPitchClass is null ? pitches : [.. pitches.Skip(1)];
             if (options.Pattern == ChordPattern.Block)
             {
                 notes.AddRange(pitches.Select(pitch => new NoteEvent(chord.StartTicks, chord.DurationTicks, pitch, Velocity(options, onBeat: true))));

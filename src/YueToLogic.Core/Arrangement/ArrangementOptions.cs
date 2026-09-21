@@ -1,3 +1,5 @@
+using YueToLogic.Core.Harmony;
+
 namespace YueToLogic.Core.Arrangement;
 
 /// <summary>Changes applied to a parsed score before it is rendered. The defaults leave the score untouched.</summary>
@@ -23,11 +25,116 @@ public sealed record ArrangementOptions
     /// and the chords are rendered as written, one sustained block chord per symbol.
     /// </summary>
     public ChordOptions? Chords { get; set; }
+
+    /// <summary>Adds a sustained guide-tone track (third and seventh of every chord); <c>null</c> for none.</summary>
+    public GuideToneOptions? GuideTones { get; set; }
+
+    /// <summary>Doubles a score voice at another octave on a track of its own; <c>null</c> for none.</summary>
+    public DoublingOptions? Doubling { get; set; }
+
+    /// <summary>Swing and humanization applied to every track once it is generated; <c>null</c> leaves the timing exact.</summary>
+    public GrooveOptions? Groove { get; set; }
+
+    /// <summary>
+    /// Makes the melodic tracks playable by a monophonic synthesizer; <c>null</c> leaves the notes as they are.
+    /// Applied last, so its guarantees also hold after <see cref="Groove"/> has moved notes around.
+    /// </summary>
+    public MonoOptions? Mono { get; set; }
+}
+
+/// <summary>
+/// A sustained pad of the notes that carry a chord's colour: its third and its seventh, or its fifth when the
+/// chord has no seventh. Neighbouring chords that share both notes are held as one note instead of being re-struck.
+/// </summary>
+public sealed record GuideToneOptions
+{
+    /// <summary>Octaves relative to the default register, whose lower voice starts at MIDI 52 (E3, E2 in Logic).</summary>
+    public int OctaveShift { get; set; }
+
+    public int Velocity { get; set; } = 64;
+}
+
+/// <summary>Copies a voice of the score to a second track, transposed - by default the vocal an octave down.</summary>
+public sealed record DoublingOptions
+{
+    /// <summary>Id of the voice to copy (<c>Vocal</c>, <c>Ins</c>; case-insensitive).</summary>
+    public string VoiceId { get; set; } = "Vocal";
+
+    /// <summary>Interval in semitones; -12 is the octave below.</summary>
+    public int Semitones { get; set; } = -12;
+
+    /// <summary>Velocity of the copy, so it can sit under the original; <c>null</c> keeps the original's.</summary>
+    public int? Velocity { get; set; } = 80;
+}
+
+/// <summary>
+/// Swing and humanization. Swing delays the off-beat subdivisions and shortens them by the same amount, so the
+/// following note keeps its place. Humanization moves every note a little and varies its velocity.
+/// </summary>
+public sealed record GrooveOptions
+{
+    /// <summary>0 = straight, 1 = a full triplet feel; values in between are the usual light swing.</summary>
+    public double Swing { get; set; }
+
+    /// <summary>Which subdivision is swung.</summary>
+    public SwingUnit SwingUnit { get; set; } = SwingUnit.Eighths;
+
+    /// <summary>Largest timing deviation in milliseconds; 0 keeps every note exactly on the grid.</summary>
+    public double HumanizeTimingMs { get; set; }
+
+    /// <summary>Largest velocity deviation; 0 keeps the velocities as generated.</summary>
+    public int HumanizeVelocity { get; set; }
+
+    /// <summary>
+    /// The velocity humanization starts from for a note that carries none of its own, which is every note read
+    /// from the score. It matches the renderer's default for melody tracks.
+    /// </summary>
+    public int BaseVelocity { get; set; } = 96;
+
+    /// <summary>Seed of the humanization, so the same score and options give the same result.</summary>
+    public int Seed { get; set; } = 1;
+
+    /// <summary>Swing the drum track along with the rest; off, the drums stay straight under a swung melody.</summary>
+    public bool IncludeDrums { get; set; } = true;
+}
+
+public enum SwingUnit
+{
+    /// <summary>The second eighth of every beat is delayed.</summary>
+    Eighths,
+
+    /// <summary>The second and fourth sixteenth of every beat are delayed.</summary>
+    Sixteenths,
+}
+
+/// <summary>
+/// Prepares the melodic tracks for monophonic synthesizers: never more than one note at a time, a short gap
+/// between consecutive notes so the envelope is re-triggered, and a minimum length for every note.
+/// </summary>
+public sealed record MonoOptions
+{
+    /// <summary>Gap in milliseconds a note leaves before the next one starts.</summary>
+    public double GapMs { get; set; } = 12;
+
+    /// <summary>Shortest note in milliseconds; shorter notes are stretched if there is room.</summary>
+    public double MinimumLengthMs { get; set; } = 40;
+
+    /// <summary>
+    /// Stretches every note up to the start of the next one, so the track becomes a continuous line of gates.
+    /// The gap is still kept, so the envelope re-triggers on every note.
+    /// </summary>
+    public bool Legato { get; set; }
+
+    /// <summary>Also applies to the generated bass track, which is monophonic on most synthesizers too.</summary>
+    public bool IncludeBass { get; set; } = true;
 }
 
 public sealed record ChordOptions
 {
     public ChordPattern Pattern { get; set; } = ChordPattern.Block;
+
+    /// <summary>Which inversion the chord is played in; by default every chord stands on its root.</summary>
+    public ChordInversion Inversion { get; set; } = ChordInversion.RootPosition;
 
     /// <summary>Octaves relative to the default register, whose root lies in octave 3 (MIDI 48, C2 in Logic).</summary>
     public int OctaveShift { get; set; }

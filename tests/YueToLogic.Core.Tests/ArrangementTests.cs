@@ -3,9 +3,11 @@ using Melanchall.DryWetMidi.Core;
 using YueToLogic.Core.Arrangement;
 using YueToLogic.Core.Conversion;
 using YueToLogic.Core.Diagnostics;
+using YueToLogic.Core.Harmony;
 using YueToLogic.Core.Model;
 using YueToLogic.Core.Serialization;
 using static YueToLogic.Core.Tests.TestScores;
+using NoteEvent = YueToLogic.Core.Model.NoteEvent;
 
 namespace YueToLogic.Core.Tests;
 
@@ -336,6 +338,309 @@ public class ArrangementTests
         Assert.Empty(ConversionOptionsValidator.Validate(options));
     }
 
+
+    // ---- Chord inversions ------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(ChordInversion.RootPosition, new[] { 48, 52, 55 })]
+    [InlineData(ChordInversion.First, new[] { 52, 55, 60 })]
+    [InlineData(ChordInversion.Second, new[] { 55, 60, 64 })]
+    public void Chord_inversions_keep_the_voicing_in_its_register(ChordInversion inversion, int[] expected)
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            "C"C16|
+            V: Ins
+            Z1|
+            """));
+
+        var chords = Arranger.Arrange(score, new ArrangementOptions { Chords = new ChordOptions { Inversion = inversion } }).Score;
+
+        Assert.Equal(expected, chords.Voice("Chords").Pitches());
+    }
+
+    [Fact]
+    public void Closest_voicing_moves_the_chords_as_little_as_possible()
+    {
+        // Root position would jump C-F-G over an octave; the nearest inversions stay inside one.
+        var score = ParseScore(Native("""
+            V: Vocal
+            "C"C16|"F"C16|"G"C16|
+            V: Ins
+            Z3|
+            """));
+
+        var closest = Arranger.Arrange(score, new ArrangementOptions { Chords = new ChordOptions { Inversion = ChordInversion.Closest } }).Score;
+
+        var voicings = closest.Voice("Chords").Notes.GroupBy(n => n.StartTicks).Select(g => g.Select(n => n.NoteNumber).Order().ToArray()).ToList();
+        Assert.Equal([48, 52, 55], voicings[0]);
+        Assert.Equal([48, 53, 57], voicings[1]); // F with its fifth at the bottom, a semitone from the C before it
+        Assert.Equal([50, 55, 59], voicings[2]); // G the same way, rather than jumping up to its root
+
+        // Every voicing stays inside one octave of the register the chord track lives in.
+        Assert.All(closest.Voice("Chords").Pitches(), pitch => Assert.InRange(pitch, 48, 71));
+    }
+
+    [Fact]
+    public void A_slash_bass_stays_below_the_inversion()
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            "C/E"C16|
+            V: Ins
+            Z1|
+            """));
+
+        var chords = Arranger.Arrange(score, new ArrangementOptions { Chords = new ChordOptions { Inversion = ChordInversion.Second } }).Score;
+
+        Assert.Equal([40, 55, 60, 64], chords.Voice("Chords").Pitches());
+    }
+
+    // ---- Guide tones -----------------------------------------------------------------------------
+
+    [Fact]
+    public void Guide_tones_are_the_third_and_the_seventh()
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            "Cmaj7"C16|"Dm7"C16|
+            V: Ins
+            Z2|
+            """));
+
+        var guide = Arranger.Arrange(score, new ArrangementOptions { GuideTones = new GuideToneOptions() }).Score.Voice("Guide");
+
+        // Cmaj7: E and B; Dm7: F and C - each placed in the octave above MIDI 52.
+        Assert.Equal([52, 59, 53, 60], guide.Pitches());
+        Assert.All(guide.Notes, note => Assert.Equal(64, note.Velocity));
+    }
+
+    [Fact]
+    public void A_triad_falls_back_to_its_fifth_and_neighbouring_chords_are_held()
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            "C"C16|"C"C16|"Am"C16|
+            V: Ins
+            Z3|
+            """));
+
+        var guide = Arranger.Arrange(score, new ArrangementOptions { GuideTones = new GuideToneOptions() }).Score.Voice("Guide");
+
+        // C major twice: E and G, held as one note over both bars instead of being struck again;
+        // then A minor, whose third and fifth are C and E.
+        Assert.Equal([52, 55, 52, 60], guide.Pitches());
+        Assert.Equal([0, 0, 2 * Bar, 2 * Bar], guide.Notes.Select(n => n.StartTicks));
+        Assert.Equal([2 * Bar, 2 * Bar, Bar, Bar], guide.Notes.Select(n => n.DurationTicks));
+    }
+
+    [Fact]
+    public void Guide_tones_without_chords_are_reported_instead_of_written()
+    {
+        var result = Arranger.Arrange(TwoVoices, new ArrangementOptions { GuideTones = new GuideToneOptions() });
+
+        Assert.DoesNotContain(result.Score.Voices, v => v.Kind == TrackKind.GuideTones);
+        Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCodes.NoChords);
+    }
+
+    // ---- Doubling --------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_vocal_is_doubled_on_a_track_of_its_own()
+    {
+        var result = Arranger.Arrange(TwoVoices, new ArrangementOptions { Doubling = new DoublingOptions() });
+
+        var doubled = result.Score.Voice("Vocal 8vb");
+        Assert.Equal(TrackKind.Doubling, doubled.Kind);
+        Assert.Equal([48], doubled.Pitches());
+        Assert.Equal([60], result.Score.Voice("Vocal").Pitches());
+        Assert.All(doubled.Notes, note => Assert.Equal(80, note.Velocity));
+    }
+
+    [Fact]
+    public void Doubling_follows_the_octave_shift_of_the_voice_it_copies()
+    {
+        var options = new ArrangementOptions
+        {
+            OctaveShifts = new Dictionary<string, int> { ["Vocal"] = 1 },
+            Doubling = new DoublingOptions { Semitones = 12 },
+        };
+
+        var score = Arranger.Arrange(TwoVoices, options).Score;
+
+        Assert.Equal([72], score.Voice("Vocal").Pitches());
+        Assert.Equal([84], score.Voice("Vocal 8va").Pitches());
+    }
+
+    [Fact]
+    public void Doubling_an_unknown_voice_is_reported()
+    {
+        var result = Arranger.Arrange(TwoVoices, new ArrangementOptions { Doubling = new DoublingOptions { VoiceId = "Choir" } });
+
+        Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCodes.UnknownVoice);
+        Assert.Equal(2, result.Score.Voices.Count);
+    }
+
+    // ---- Groove ----------------------------------------------------------------------------------
+
+    [Fact]
+    public void Swing_delays_the_off_beat_eighths_and_leaves_the_beats_alone()
+    {
+        // Four eighth notes: the second and fourth sit on the off-beat.
+        var score = ParseScore(Native("""
+            V: Vocal
+            C2C2C2C2C8|
+            V: Ins
+            Z1|
+            """));
+
+        var swung = Arranger.Arrange(score, new ArrangementOptions { Groove = new GrooveOptions { Swing = 1 } }).Score.Voice("Vocal");
+
+        var eighth = Ppq / 2;
+        var third = eighth / 3;
+        Assert.Equal([0, eighth + third, 2 * eighth, (3 * eighth) + third, 4 * eighth], swung.Notes.Take(5).Select(n => n.StartTicks));
+
+        // A delayed note is shortened by what it was delayed, so the next note keeps its place.
+        Assert.Equal([eighth, eighth - third, eighth, eighth - third], swung.Notes.Take(4).Select(n => n.DurationTicks));
+    }
+
+    [Fact]
+    public void Humanization_is_reproducible_and_stays_within_its_bounds()
+    {
+        var options = new ArrangementOptions
+        {
+            Drums = new DrumOptions(),
+            Groove = new GrooveOptions { HumanizeTimingMs = 20, HumanizeVelocity = 10, Seed = 7 },
+        };
+
+        var first = Arranger.Arrange(Sample, options).Score;
+        var second = Arranger.Arrange(Sample, options).Score;
+
+        Assert.Equal(first.Voice("Vocal").Notes, second.Voice("Vocal").Notes);
+        Assert.NotEqual(Sample.Voice("Vocal").Notes, first.Voice("Vocal").Notes);
+
+        // 20 ms at 88 BPM and 480 ticks per quarter is a little over 14 ticks.
+        var straight = Sample.Voice("Vocal").Notes;
+        var moved = first.Voice("Vocal").Notes;
+        Assert.All(moved.Zip(straight), pair => Assert.InRange(Math.Abs(pair.First.StartTicks - pair.Second.StartTicks), 0, 15));
+        Assert.All(moved, note => Assert.InRange(note.Velocity!.Value, 96 - 10, 96 + 10));
+    }
+
+    [Fact]
+    public void The_drums_can_stay_straight_under_a_swung_melody()
+    {
+        var options = new ArrangementOptions
+        {
+            Drums = new DrumOptions(),
+            Groove = new GrooveOptions { Swing = 1, IncludeDrums = false },
+        };
+
+        var score = Arranger.Arrange(Sample, options).Score;
+
+        var straight = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions() }).Score;
+        Assert.Equal(straight.Voice("Drums").Notes, score.Voice("Drums").Notes);
+        Assert.NotEqual(straight.Voice("Vocal").Notes, score.Voice("Vocal").Notes);
+    }
+
+    // ---- Mono and legato -------------------------------------------------------------------------
+
+    [Fact]
+    public void Mono_keeps_the_highest_of_two_notes_and_cuts_the_one_running_into_the_next()
+    {
+        // The YuE2 dialect has no chord stacks, so a score voice is monophonic already; a track that is not
+        // reaches the arranger from a host that built it itself.
+        var score = ScoreWith(
+            new NoteEvent(0, 4 * Ppq, 60),
+            new NoteEvent(0, Ppq, 64),
+            new NoteEvent(2 * Ppq, Ppq, 62));
+
+        var vocal = Arranger.Arrange(score, new ArrangementOptions { Mono = new MonoOptions() }).Score.Voice("Vocal");
+
+        // 12 ms at 88 BPM and 480 ticks per quarter is about 8 ticks.
+        Assert.Equal([64, 62], vocal.Pitches());
+        Assert.Equal([Ppq, Ppq], vocal.Notes.Select(n => n.DurationTicks));
+
+        var overlapping = Arranger.Arrange(
+            ScoreWith(new NoteEvent(0, 4 * Ppq, 60), new NoteEvent(2 * Ppq, Ppq, 62)),
+            new ArrangementOptions { Mono = new MonoOptions() }).Score.Voice("Vocal");
+        Assert.Equal([(2 * Ppq) - 8, Ppq], overlapping.Notes.Select(n => n.DurationTicks));
+    }
+
+    /// <summary>A minimal score with one vocal track, for the cases the ABC dialect itself cannot express.</summary>
+    private static ScoreDocument ScoreWith(params NoteEvent[] notes) => new(
+        Ppq,
+        Title: null,
+        TempoBpm: 88,
+        [new TimeSignatureChange(0, 4, 4)],
+        [new KeySignatureChange(0, "C", 0, false)],
+        [],
+        [new VoiceTrack("Vocal", "Vocal", notes)],
+        [],
+        notes.Max(n => n.StartTicks + n.DurationTicks));
+
+    [Fact]
+    public void Legato_closes_the_holes_between_notes_but_keeps_the_gap()
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            C2z2D2z2E8|
+            V: Ins
+            Z1|
+            """));
+
+        var legato = Arranger.Arrange(score, new ArrangementOptions { Mono = new MonoOptions { Legato = true } }).Score.Voice("Vocal");
+
+        Assert.Equal([0, Ppq, 2 * Ppq], legato.Notes.Select(n => n.StartTicks));
+        Assert.Equal([Ppq - 8, Ppq - 8], legato.Notes.Take(2).Select(n => n.DurationTicks));
+    }
+
+    [Fact]
+    public void Very_short_notes_are_stretched_to_a_length_an_envelope_can_open_on()
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            C1z15|C16|
+            V: Ins
+            Z2|
+            """, unit: "1/64"));
+
+        var vocal = Arranger.Arrange(score, new ArrangementOptions { Mono = new MonoOptions { MinimumLengthMs = 100 } }).Score.Voice("Vocal");
+
+        // 100 ms at 88 BPM and 480 ticks per quarter is about 70 ticks; the note itself is 30.
+        Assert.Equal(70, vocal.Notes[0].DurationTicks);
+    }
+
+    [Fact]
+    public void Mono_runs_after_the_groove_so_its_gaps_survive_humanization()
+    {
+        var options = new ArrangementOptions
+        {
+            Groove = new GrooveOptions { Swing = 1, HumanizeTimingMs = 30, Seed = 3 },
+            Mono = new MonoOptions(),
+        };
+
+        var vocal = Arranger.Arrange(Sample, options).Score.Voice("Vocal");
+
+        Assert.All(
+            vocal.Notes.Zip(vocal.Notes.Skip(1)),
+            pair => Assert.True(pair.First.StartTicks + pair.First.DurationTicks <= pair.Second.StartTicks, "the groove moved notes into each other"));
+    }
+
+    [Fact]
+    public void The_bass_can_be_left_polyphonic_while_the_melodies_are_not()
+    {
+        var options = new ArrangementOptions
+        {
+            Bass = new BassOptions(),
+            Mono = new MonoOptions { IncludeBass = false },
+        };
+
+        var score = Arranger.Arrange(Sample, options).Score;
+
+        var plain = Arranger.Arrange(Sample, new ArrangementOptions { Bass = new BassOptions() }).Score;
+        Assert.Equal(plain.Voice("Bass").Notes, score.Voice("Bass").Notes);
+    }
+
     [Fact]
     public void Arrangement_options_round_trip_through_json()
     {
@@ -347,6 +652,11 @@ public class ArrangementTests
                 OctaveShifts = new Dictionary<string, int> { ["Vocal"] = 1 },
                 Bass = new BassOptions { Pattern = BassPattern.RootFifth },
                 Drums = new DrumOptions { CrashOnSections = false },
+                Chords = new ChordOptions { Inversion = ChordInversion.Closest },
+                GuideTones = new GuideToneOptions { OctaveShift = 1 },
+                Doubling = new DoublingOptions { Semitones = 12 },
+                Groove = new GrooveOptions { Swing = 0.6, SwingUnit = SwingUnit.Sixteenths, HumanizeVelocity = 8 },
+                Mono = new MonoOptions { Legato = true },
             },
         };
 
@@ -354,9 +664,15 @@ public class ArrangementTests
         var restored = JsonSerializer.Deserialize(json, YueToLogicJsonContext.Default.ConversionOptions)!;
 
         Assert.Contains("\"pattern\": \"RootFifth\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"inversion\": \"Closest\"", json, StringComparison.Ordinal);
         Assert.Equal(1, restored.Arrangement.OctaveShifts["Vocal"]);
         Assert.Equal(options.Arrangement.Bass, restored.Arrangement.Bass);
         Assert.Equal(options.Arrangement.Drums, restored.Arrangement.Drums);
+        Assert.Equal(options.Arrangement.Chords, restored.Arrangement.Chords);
+        Assert.Equal(options.Arrangement.GuideTones, restored.Arrangement.GuideTones);
+        Assert.Equal(options.Arrangement.Doubling, restored.Arrangement.Doubling);
+        Assert.Equal(options.Arrangement.Groove, restored.Arrangement.Groove);
+        Assert.Equal(options.Arrangement.Mono, restored.Arrangement.Mono);
         Assert.Equal(-1, restored.Arrangement.DefaultOctaveShift);
     }
 }

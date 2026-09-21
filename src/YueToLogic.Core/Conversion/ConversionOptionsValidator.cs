@@ -14,6 +14,12 @@ public static class ConversionOptionsValidator
     public const int MaxOctaveShift = 4;
     public const int MaxBassOctaveShift = 2;
     public const int MaxChordOctaveShift = 2;
+    public const int MaxGuideToneOctaveShift = 2;
+    public const int MaxDoublingSemitones = 24;
+    public const double MaxHumanizeTimingMs = 200;
+    public const int MaxHumanizeVelocity = 64;
+    public const double MaxMonoGapMs = 500;
+    public const double MaxMonoLengthMs = 2000;
 
     /// <returns>One error diagnostic per invalid value; empty if the options are valid.</returns>
     public static IReadOnlyList<Diagnostic> Validate(ConversionOptions options)
@@ -59,6 +65,11 @@ public static class ConversionOptionsValidator
             {
                 errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.chords.pattern '{chords.Pattern}' is not supported."));
             }
+
+            if (!Enum.IsDefined(chords.Inversion))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.chords.inversion '{chords.Inversion}' is not supported."));
+            }
         }
 
         if (arrangement.Drums is { } drums && !Enum.IsDefined(drums.Pattern))
@@ -66,7 +77,70 @@ public static class ConversionOptionsValidator
             errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.drums.pattern '{drums.Pattern}' is not supported."));
         }
 
+        if (arrangement.GuideTones is { } guideTones)
+        {
+            CheckOctave(errors, "arrangement.guideTones.octaveShift", guideTones.OctaveShift, MaxGuideToneOctaveShift);
+            CheckVelocity(errors, "arrangement.guideTones.velocity", guideTones.Velocity);
+        }
+
+        if (arrangement.Doubling is { } doubling)
+        {
+            if (string.IsNullOrWhiteSpace(doubling.VoiceId))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, "arrangement.doubling.voiceId must name a voice of the score.");
+            }
+
+            if (doubling.Semitones < -MaxDoublingSemitones || doubling.Semitones > MaxDoublingSemitones)
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.doubling.semitones must be between -{MaxDoublingSemitones} and {MaxDoublingSemitones}, got {doubling.Semitones}."));
+            }
+
+            if (doubling.Velocity is { } velocity)
+            {
+                CheckVelocity(errors, "arrangement.doubling.velocity", velocity);
+            }
+        }
+
+        if (arrangement.Groove is { } groove)
+        {
+            if (groove.Swing is < 0 or > 1 || double.IsNaN(groove.Swing))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.groove.swing must be between 0 and 1, got {groove.Swing}."));
+            }
+
+            if (!Enum.IsDefined(groove.SwingUnit))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.groove.swingUnit '{groove.SwingUnit}' is not supported."));
+            }
+
+            CheckRange(errors, "arrangement.groove.humanizeTimingMs", groove.HumanizeTimingMs, 0, MaxHumanizeTimingMs);
+            CheckRange(errors, "arrangement.groove.humanizeVelocity", groove.HumanizeVelocity, 0, MaxHumanizeVelocity);
+            CheckVelocity(errors, "arrangement.groove.baseVelocity", groove.BaseVelocity);
+        }
+
+        if (arrangement.Mono is { } mono)
+        {
+            CheckRange(errors, "arrangement.mono.gapMs", mono.GapMs, 0, MaxMonoGapMs);
+            CheckRange(errors, "arrangement.mono.minimumLengthMs", mono.MinimumLengthMs, 0, MaxMonoLengthMs);
+        }
+
         return errors.ToList();
+    }
+
+    private static void CheckVelocity(DiagnosticBag errors, string name, int value)
+    {
+        if (value is < 1 or > 127)
+        {
+            errors.Error(DiagnosticCodes.InvalidOption, Invariant($"{name} must be between 1 and 127, got {value}."));
+        }
+    }
+
+    private static void CheckRange(DiagnosticBag errors, string name, double value, double min, double max)
+    {
+        if (double.IsNaN(value) || value < min || value > max)
+        {
+            errors.Error(DiagnosticCodes.InvalidOption, Invariant($"{name} must be between {min} and {max}, got {value}."));
+        }
     }
 
     private static void CheckOctave(DiagnosticBag errors, string name, int value, int max)
