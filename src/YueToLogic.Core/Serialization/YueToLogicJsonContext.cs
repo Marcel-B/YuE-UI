@@ -4,6 +4,7 @@ using YueToLogic.Core.Abc;
 using YueToLogic.Core.Conversion;
 using YueToLogic.Core.Diagnostics;
 using YueToLogic.Core.Model;
+using YueToLogic.Core.Stems;
 
 namespace YueToLogic.Core.Serialization;
 
@@ -17,4 +18,7 @@ namespace YueToLogic.Core.Serialization;
 [JsonSerializable(typeof(AbcParseResult))]
 [JsonSerializable(typeof(ScoreDocument))]
 [JsonSerializable(typeof(Diagnostic[]))]
+[JsonSerializable(typeof(StemJob))]
+[JsonSerializable(typeof(StemJobResponse))]
+[JsonSerializable(typeof(StemProblemDetails))]
 public sealed partial class YueToLogicJsonContext : JsonSerializerContext;
