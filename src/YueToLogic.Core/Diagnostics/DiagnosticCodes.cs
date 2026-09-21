@@ -40,6 +40,9 @@ public static class DiagnosticCodes
     public const string AudioLengthMismatch = "YTL052";
     public const string LogicTemplateLimitation = "YTL053";
 
+    /// <summary>The stems of a separation could not be put into the project.</summary>
+    public const string StemsUnavailable = "YTL054";
+
     // Fatal
     public const string NoMusic = "YTL040";
     public const string TickResolution = "YTL041";
