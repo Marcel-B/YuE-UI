@@ -25,6 +25,7 @@ public static class DiagnosticCodes
     // Harmony
     public const string UnknownChord = "YTL020";
     public const string ChordOutsideVocal = "YTL021";
+    public const string NoChords = "YTL022";
 
     // Arrangement
     public const string UnknownVoice = "YTL030";

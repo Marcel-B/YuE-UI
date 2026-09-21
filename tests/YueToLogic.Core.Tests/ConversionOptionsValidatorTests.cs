@@ -34,6 +34,44 @@ public class ConversionOptionsValidatorTests
     }
 
     [Fact]
+    public void The_new_arrangement_options_are_range_checked_as_well()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions
+            {
+                GuideTones = new GuideToneOptions { OctaveShift = 3, Velocity = 200 },
+                Doubling = new DoublingOptions { VoiceId = " ", Semitones = 30 },
+                Groove = new GrooveOptions { Swing = 1.5, HumanizeTimingMs = -1, HumanizeVelocity = 99, BaseVelocity = 0 },
+                Mono = new MonoOptions { GapMs = 900, MinimumLengthMs = -5 },
+            },
+        };
+
+        var errors = ConversionOptionsValidator.Validate(options);
+
+        Assert.Equal(10, errors.Count);
+        Assert.All(errors, e => Assert.Equal((DiagnosticSeverity.Error, DiagnosticCodes.InvalidOption), (e.Severity, e.Code)));
+    }
+
+    [Fact]
+    public void The_defaults_of_the_new_options_pass()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions
+            {
+                Chords = new ChordOptions(),
+                GuideTones = new GuideToneOptions(),
+                Doubling = new DoublingOptions(),
+                Groove = new GrooveOptions(),
+                Mono = new MonoOptions(),
+            },
+        };
+
+        Assert.Empty(ConversionOptionsValidator.Validate(options));
+    }
+
+    [Fact]
     public void Converter_rejects_invalid_options_without_throwing()
     {
         var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), new ConversionOptions { TicksPerQuarterNote = 0 });
