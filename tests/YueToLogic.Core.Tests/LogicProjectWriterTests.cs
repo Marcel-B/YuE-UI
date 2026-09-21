@@ -351,6 +351,99 @@ public class LogicProjectWriterTests
         }
     }
 
+
+    [Fact]
+    public async Task Sections_become_one_named_region_per_track()
+    {
+        // intro, verse, pre-chorus, chorus, verse, chorus, bridge, chorus - repeated names are numbered.
+        string[] expected = ["Intro", "Verse 1", "Pre-chorus", "Chorus 1", "Verse 2", "Chorus 2", "Bridge", "Chorus 3"];
+        var score = Convert(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "logic-template-song.abc")), withAccompaniment: true);
+
+        var package = await WriteAsync(
+            score,
+            Flac(48000, 2, 24, TemplateSongSamples),
+            new LogicProjectOptions { SplitRegionsAtSections = true });
+
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+        var arrangement = chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == 4).Payload;
+        var names = chunks.Where(c => c.Tag == "MSeq" && c.Class == 23).ToDictionary(c => c.Id, c => c.SequenceName);
+        var placements = Enumerable.Range(0, arrangement.Length / 80)
+            .Select(i => new Placement(arrangement[i * 80], ReadUInt32(arrangement, (i * 80) + 4), ReadUInt32(arrangement, (i * 80) + 8), ReadUInt32(arrangement, (i * 80) + 32)))
+            .ToList();
+
+        // The audio stays one region at bar 1.
+        Assert.Equal(34_560u, Assert.Single(placements, p => p.Head == 0x24).Start);
+
+        var midi = placements.Where(p => p.Head == 0x20).ToList();
+        Assert.Equal(midi.Count, midi.Select(p => p.Region).Distinct().Count());
+
+        // Placements of the same track share its track record; the template's five regions keep their ids,
+        // so each group can be recognized by the voice it grew out of.
+        var tracks = midi.GroupBy(p => p.Track).ToList();
+        Assert.Equal(5, tracks.Count);
+        var sectionStarts = score.Sections.Select(section => 34_560u + (2 * (uint)section.StartTicks)).ToList();
+
+        foreach (var (voice, sourceId) in new[] { ("Vocal", 44u), ("Ins", 28u), ("Chords", 32u), ("Bass", 36u), ("Drums", 40u) })
+        {
+            var regions = Assert.Single(tracks, group => group.Any(p => p.Region == sourceId)).OrderBy(p => p.Start).ToList();
+
+            // One region per section the voice plays in, named after it and starting where the section does.
+            Assert.All(regions, region => Assert.Contains(region.Start, sectionStarts));
+            var labels = regions.Select(region => names[region.Region]).ToList();
+            Assert.Equal(labels.OrderBy(l => Array.IndexOf(expected, l)), labels);
+            Assert.All(labels, label => Assert.Contains(label, expected));
+
+            // Nothing is lost or duplicated: the regions together hold the notes of the voice, each one
+            // positioned inside its own region rather than from the start of the song.
+            var sequences = regions.Select(region => chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == region.Region).Payload).ToList();
+
+            // Without a chord pattern the chord track is built from the symbols rather than from a voice.
+            var expectedNotes = voice == "Chords" && !score.Voices.Any(v => v.Kind == TrackKind.Chords)
+                ? score.Chords.Where(c => c.Symbol is not null).Sum(c => ChordVoicing.GetNotes(c.Symbol!).Count)
+                : score.Voice(voice).Notes.Count;
+            Assert.Equal(expectedNotes, sequences.Sum(sequence => NoteRecords(sequence).Count));
+            foreach (var (region, sequence) in regions.Zip(sequences).Where(pair => NoteRecords(pair.Second).Count > 0))
+            {
+                var length = ReadUInt32Sequence(chunks, region.Region);
+                var positions = NotePositions(sequence);
+                Assert.All(positions, position => Assert.InRange(position, 38_400u, 38_400u + length));
+            }
+
+            foreach (var id in regions.Select(r => r.Region).Where(id => id > 44))
+            {
+                Assert.Single(chunks, c => c.Tag == "MSeq" && c.Class == 23 && c.Id == id);
+                Assert.Single(chunks, c => c.Tag == "Trak" && c.Class == 23 && c.Id == id);
+                Assert.Single(chunks, c => c.Tag == "EvSq" && c.Class == 23 && c.Id == id);
+                Assert.Equal(2, CountEntries(chunks.Single(c => c.Tag == "Song").Payload, 23, id));
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Without_splitting_every_track_keeps_its_single_region()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273));
+
+        var arrangement = LogicProjectData.Parse(package.ProjectData).Chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == 4).Payload;
+        Assert.Equal(6, arrangement.Length / 80);
+    }
+
+    private readonly record struct Placement(byte Head, uint Start, uint Track, uint Region);
+
+    private static uint ReadUInt32Sequence(List<LogicChunk> chunks, uint regionId)
+    {
+        var region = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.Id == regionId);
+        return ReadUInt32(region.Payload, region.SequenceLengthOffset);
+    }
+
+    private static List<uint> NotePositions(byte[] sequence) =>
+        Enumerable.Range(0, sequence.Length / 16 - 1)
+            .Where(i => (sequence[i * 16] & 0xF0) == 0x90)
+            .Select(i => ReadUInt32(sequence, (i * 16) + 4))
+            .ToList();
+
     [Theory]
     [InlineData(60, 0x0000)]
     [InlineData(72, 0x2080)]
@@ -391,10 +484,13 @@ public class LogicProjectWriterTests
         return result.Score!;
     }
 
-    private static async Task<(byte[] ProjectData, IReadOnlyDictionary<string, byte[]> Files)> WriteAsync(ScoreDocument score, byte[] flac)
+    private static async Task<(byte[] ProjectData, IReadOnlyDictionary<string, byte[]> Files)> WriteAsync(
+        ScoreDocument score,
+        byte[] flac,
+        LogicProjectOptions? options = null)
     {
         var sink = new MemorySink();
-        var result = await new LogicProjectWriter().WriteAsync(score, new MemoryStream(flac), sink);
+        var result = await new LogicProjectWriter().WriteAsync(score, new MemoryStream(flac), sink, options);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var files = sink.Files.ToDictionary(f => f.Key, f => f.Value.ToArray());
         return (files[LogicTemplate.ProjectDataPath], files);

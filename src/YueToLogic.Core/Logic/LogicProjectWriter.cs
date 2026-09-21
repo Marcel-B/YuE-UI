@@ -33,6 +33,13 @@ public sealed record LogicProjectOptions
     public int MelodyVelocity { get; set; } = 96;
 
     public int ChordVelocity { get; set; } = 72;
+
+    /// <summary>
+    /// Gives every track one region per song section, named after it, instead of a single region running the whole
+    /// song. Sections can then be copied, looped or moved in Logic without cutting anything first. Without
+    /// sections in the score this changes nothing.
+    /// </summary>
+    public bool SplitRegionsAtSections { get; set; }
 }
 
 public sealed record LogicProjectResult(bool Success, FlacStreamInfo? Audio, IReadOnlyList<Diagnostic> Diagnostics);
@@ -138,7 +145,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         }
 
         var events = CollectEvents(score, options, diagnostics);
-        var projectData = BuildProjectData(score, audio, events, diagnostics);
+        var projectData = BuildProjectData(score, audio, events, options, diagnostics);
 
         await WriteFileAsync(sink, LogicTemplate.ProjectDataPath, projectData, cancellationToken).ConfigureAwait(false);
         await WriteFileAsync(sink, LogicTemplate.MetaDataPath, BuildMetaData(score, audio is not null), cancellationToken).ConfigureAwait(false);
@@ -245,7 +252,12 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
 
     // ---- ProjectData ------------------------------------------------------------------------------
 
-    private byte[] BuildProjectData(ScoreDocument score, FlacStreamInfo? audio, Dictionary<string, List<LogicNote>> events, DiagnosticBag diagnostics)
+    private byte[] BuildProjectData(
+        ScoreDocument score,
+        FlacStreamInfo? audio,
+        Dictionary<string, List<LogicNote>> events,
+        LogicProjectOptions options,
+        DiagnosticBag diagnostics)
     {
         var project = LogicProjectData.Parse(template.Files[LogicTemplate.ProjectDataPath]);
         var chunks = project.Chunks;
@@ -275,19 +287,28 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             }
         }
 
-        foreach (var sequence in chunks.Where(c => c.Tag == "EvSq" && c.Class == ArrangementClass))
+        var created = new List<(uint Class, uint Id)>();
+        if (options.SplitRegionsAtSections)
         {
-            if (regionById.TryGetValue(sequence.Id, out var region))
+            // Rebuilds the arrangement from scratch, so the single-region path below does not run at all.
+            created.AddRange(WriteSectionRegions(chunks, score, events, audio is not null, songTicks));
+        }
+        else
+        {
+            foreach (var sequence in chunks.Where(c => c.Tag == "EvSq" && c.Class == ArrangementClass))
             {
-                var channel = Regions.First(r => r.Region == region).Channel;
-                sequence.Payload = EncodeSequence(events[region], channel);
-            }
-            else if (sequence.Id == RootSequenceId)
-            {
-                PlaceRegionsAtBarOne(sequence.Payload);
-                if (audio is null)
+                if (regionById.TryGetValue(sequence.Id, out var region))
                 {
-                    sequence.Payload = WithoutAudioRegion(sequence.Payload);
+                    var channel = Regions.First(r => r.Region == region).Channel;
+                    sequence.Payload = EncodeSequence(events[region], channel);
+                }
+                else if (sequence.Id == RootSequenceId)
+                {
+                    PlaceRegionsAtBarOne(sequence.Payload);
+                    if (audio is null)
+                    {
+                        sequence.Payload = WithoutAudioRegion(sequence.Payload);
+                    }
                 }
             }
         }
@@ -300,7 +321,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             SetAudio(chunks, audio);
         }
 
-        var created = WriteChordTrack(chunks, score);
+        created.AddRange(WriteChordTrack(chunks, score));
         created.AddRange(WriteArrangementMarkers(chunks, score));
         var song = chunks.Single(c => c.Tag == "Song");
         if (removed.Count > 0)
