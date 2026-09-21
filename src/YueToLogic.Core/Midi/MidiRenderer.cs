@@ -213,9 +213,11 @@ public sealed class MidiRenderer : IMidiRenderer
                 return (FourBitNumber)(byte)(channel - 1);
             }
 
-            if (preferred is { } fallback && taken.Add(fallback))
+            // Drums name their channel and share it: a split kit plays on one channel, as a drum machine does.
+            if (preferred is { } drums)
             {
-                return (FourBitNumber)(byte)fallback;
+                taken.Add(drums);
+                return (FourBitNumber)(byte)drums;
             }
 
             while (next < 15 && (taken.Contains(next) || next == GeneralMidiDrums.Channel))

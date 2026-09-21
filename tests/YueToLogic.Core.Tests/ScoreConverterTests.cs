@@ -80,6 +80,21 @@ public class ScoreConverterTests
     }
 
     [Fact]
+    public void Every_drum_track_plays_on_the_drum_channel()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions { Drums = new DrumOptions { SeparateTracks = true } },
+        };
+
+        var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
+
+        var tracks = MidiFile.Read(new MemoryStream(result.Midi!)).GetTrackChunks().ToList();
+        Assert.Equal(["Conductor", "Vocal", "Ins", "Chords", "Kick", "Snare", "HiHat", "Crash"], tracks.Select(TrackName));
+        Assert.All(tracks.Where(t => TrackName(t) is "Kick" or "Snare" or "HiHat" or "Crash"), t => Assert.Equal(10, Channel(t)));
+    }
+
+    [Fact]
     public void Chord_track_can_be_left_out()
     {
         var result = new ScoreConverter().Convert(File.ReadAllText(SamplePath), new ConversionOptions { IncludeChordTrack = false });

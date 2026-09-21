@@ -2,12 +2,39 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>AlchemyFiles</key>
+	<array>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G5.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C7.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G4.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C8.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C3.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C5.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G5.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C4.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C8.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G6.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G3.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C6.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G6.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C5.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C3.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G7.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C7.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G4.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G7.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G3.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C6.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C4.caf</string>
+	</array>
 	<key>AudioFiles</key>
 	<array>
 		<string>Audio Files/audio_1.flac</string>
+		<string>Audio Files/vocals.wav</string>
+		<string>Audio Files/vocals_1.wav</string>
 	</array>
 	<key>BeatsPerMinute</key>
-	<real>138</real>
+	<real>133</real>
 	<key>FrameRateIndex</key>
 	<integer>1</integer>
 	<key>HasARAPlugins</key>
@@ -15,28 +42,62 @@
 	<key>HasGrid</key>
 	<false/>
 	<key>ImpulsResponsesFiles</key>
-	<array/>
+	<array>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Impulse Responses/03 Small Spaces/03 Plate Reverbs/0.7s_Drum Plate.SDIR</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Impulse Responses/01 Large Spaces/03 Plate Reverbs/2.2s_Ramp Plate.SDIR</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Impulse Responses/03 Small Spaces/01 Rooms/00.8s Drum Booth One-OST.SDIR</string>
+	</array>
 	<key>NumberOfTracks</key>
-	<integer>8</integer>
+	<integer>64</integer>
 	<key>PlaybackFiles</key>
 	<array/>
 	<key>QuicksamplerFiles</key>
-	<array/>
+	<array>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Conga Mid - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Clap 1 - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Rim - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Hi-Hat - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Tom Short - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Tom Low - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Tom Mid - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Snare 2 - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Kick 1 - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Rim - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Kick 2 - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Clave - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Tom Low - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Tom High - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Snare 2 - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Tom High - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Clap - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Crash - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Tom Mid - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Snare 1 - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Snare 1 - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Ride - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Cymbal - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Hi-Hat Open - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Hi-Hat Open - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Cowbell - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Clap 2 - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Hi-Hat 1 - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Kick 2 - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-909 Unprocessed Kit/Hi-Hat 2 - TR-909 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Kick 1 - TR-808 Unprocessed.aif</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Drums &amp; Percussion/Electronic Drums/Roland TR-808/Maracas - TR-808 Unprocessed.aif</string>
+	</array>
 	<key>SampleRate</key>
 	<integer>48000</integer>
 	<key>SamplerInstrumentsFiles</key>
 	<array>
 		<string>/Library/Application Support/Logic/EXS Factory Samples/Studio Piano/Studio Grand Piano/Studio Grand Piano (One Mic)_2_consolidated.caf</string>
-		<string>/Library/Application Support/Logic/Sampler Instruments/z_Internal/Studio Bass/Classic Bass Finger.exs</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Cowbell/Stereo/AP v1 Cowbell.exs</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Sticks/Stereo/AP v1 Sticks.exs</string>
-		<string>/Library/Application Support/Logic/EXS Factory Samples/Studio Bass/Classic Bass/Classic Bass Finger Pt1_consolidated.caf</string>
 		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Shaker/Stereo/AP v3 Shaker.exs</string>
-		<string>/Library/Application Support/Logic/Sampler Instruments/z_Internal/Studio Piano/Studio Grand Piano (One Mic).exs</string>
-		<string>/Library/Application Support/Logic/EXS Factory Samples/Studio Bass/Classic Bass/Classic Bass Pt2_consolidated.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Cowbell/Stereo/AP v1 Cowbell.exs</string>
 		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Tambourine/Stereo/AP v3 Tambourine.exs</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer/Stereo v2/SoCal Kit v2.exs</string>
 		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Claps/Stereo/AP v1 Claps.exs</string>
+		<string>/Library/Application Support/Logic/Sampler Instruments/z_Internal/Studio Piano/Studio Grand Piano (One Mic).exs</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer/Stereo v2/SoCal Kit v2.exs</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Sticks/Stereo/AP v1 Sticks.exs</string>
 		<string>/Library/Application Support/Logic/EXS Factory Samples/Studio Piano/Studio Grand Piano/Studio Grand Piano (One Mic)_consolidated.caf</string>
 	</array>
 	<key>SignatureKey</key>

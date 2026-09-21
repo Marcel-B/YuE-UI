@@ -235,6 +235,13 @@ public sealed record DrumOptions
 
     /// <summary>Plays a crash cymbal at the start of every section (verse, chorus, …).</summary>
     public bool CrashOnSections { get; set; } = true;
+
+    /// <summary>
+    /// Puts every drum on a track of its own - <c>Kick</c>, <c>Snare</c>, <c>HiHat</c> and <c>Crash</c> - instead
+    /// of one <c>Drums</c> track. Each can then have its own instrument and its own place in the mix; the notes
+    /// are the same and stay on the General MIDI drum channel.
+    /// </summary>
+    public bool SeparateTracks { get; set; }
 }
 
 public enum DrumPattern
