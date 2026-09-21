@@ -2,37 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>AlchemyFiles</key>
-	<array>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G5.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C7.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G4.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C8.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C3.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C5.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G5.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C4.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C8.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G6.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G3.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C6.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G6.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C5.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C3.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G7.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C7.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer G4.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G7.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad G3.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Pads/Analog/Lush Bright Pad/Lush Bright Pad C6.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Synth/Analog/Big Multi Layer/Big Multi Layer C4.caf</string>
-	</array>
 	<key>AudioFiles</key>
 	<array>
-		<string>Audio Files/audio.flac</string>
+		<string>Audio Files/audio_1.flac</string>
 	</array>
 	<key>BeatsPerMinute</key>
-	<real>108</real>
+	<real>138</real>
 	<key>FrameRateIndex</key>
 	<integer>1</integer>
 	<key>HasARAPlugins</key>
@@ -42,7 +17,7 @@
 	<key>ImpulsResponsesFiles</key>
 	<array/>
 	<key>NumberOfTracks</key>
-	<integer>6</integer>
+	<integer>8</integer>
 	<key>PlaybackFiles</key>
 	<array/>
 	<key>QuicksamplerFiles</key>
@@ -52,13 +27,16 @@
 	<key>SamplerInstrumentsFiles</key>
 	<array>
 		<string>/Library/Application Support/Logic/EXS Factory Samples/Studio Piano/Studio Grand Piano/Studio Grand Piano (One Mic)_2_consolidated.caf</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Shaker/Stereo/AP v3 Shaker.exs</string>
+		<string>/Library/Application Support/Logic/Sampler Instruments/z_Internal/Studio Bass/Classic Bass Finger.exs</string>
 		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Cowbell/Stereo/AP v1 Cowbell.exs</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Tambourine/Stereo/AP v3 Tambourine.exs</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Claps/Stereo/AP v1 Claps.exs</string>
-		<string>/Library/Application Support/Logic/Sampler Instruments/z_Internal/Studio Piano/Studio Grand Piano (One Mic).exs</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer/Stereo v2/SoCal Kit v2.exs</string>
 		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Sticks/Stereo/AP v1 Sticks.exs</string>
+		<string>/Library/Application Support/Logic/EXS Factory Samples/Studio Bass/Classic Bass/Classic Bass Finger Pt1_consolidated.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Shaker/Stereo/AP v3 Shaker.exs</string>
+		<string>/Library/Application Support/Logic/Sampler Instruments/z_Internal/Studio Piano/Studio Grand Piano (One Mic).exs</string>
+		<string>/Library/Application Support/Logic/EXS Factory Samples/Studio Bass/Classic Bass/Classic Bass Pt2_consolidated.caf</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Tambourine/Stereo/AP v3 Tambourine.exs</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer/Stereo v2/SoCal Kit v2.exs</string>
+		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Plug-In Settings/Sampler/z_Internal/Drum Kit Designer/Drum Kit Designer Claps/Stereo/AP v1 Claps.exs</string>
 		<string>/Library/Application Support/Logic/EXS Factory Samples/Studio Piano/Studio Grand Piano/Studio Grand Piano (One Mic)_consolidated.caf</string>
 	</array>
 	<key>SignatureKey</key>
@@ -78,7 +56,9 @@
 	<key>UltrabeatFiles</key>
 	<array/>
 	<key>UnusedAudioFiles</key>
-	<array/>
+	<array>
+		<string>Audio Files/audio.flac</string>
+	</array>
 	<key>Version</key>
 	<integer>3</integer>
 	<key>isTimeCodeBased</key>
