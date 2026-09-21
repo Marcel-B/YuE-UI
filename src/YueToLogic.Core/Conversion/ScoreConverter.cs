@@ -29,6 +29,12 @@ public sealed record ConversionOptions
 
     /// <summary>Octave shifts and generated bass/drum tracks; by default the score is rendered as written.</summary>
     public ArrangementOptions Arrangement { get; set; } = new();
+
+    /// <summary>
+    /// Fits the tempo to the length of a recording of this score, so the two do not drift apart; <c>null</c>
+    /// keeps the tempo the score names. The host measures the audio and passes its length.
+    /// </summary>
+    public TempoFitOptions? FitTempo { get; set; }
 }
 
 /// <param name="Success">Whether a score could be read; warnings in <see cref="Diagnostics"/> do not affect it.</param>
@@ -64,8 +70,18 @@ public sealed class ScoreConverter(IAbcScoreParser parser, IScoreArranger arrang
         }
 
         var arranged = arranger.Arrange(parsed.Score, options.Arrangement);
-        var midi = renderer.Render(arranged.Score, new MidiRenderOptions { IncludeChordTrack = options.IncludeChordTrack });
-        return new ConversionResult(true, arranged.Score, midi, [.. parsed.Diagnostics, .. arranged.Diagnostics]);
+        var score = arranged.Score;
+
+        // After the arrangement, so a count-in is already in place and can be left out of the comparison,
+        // and before rendering, so MIDI file, JSON and any Logic project all carry the fitted tempo.
+        var fitted = new DiagnosticBag();
+        if (options.FitTempo is { } fit)
+        {
+            score = TempoFitter.Fit(score, fit, fitted);
+        }
+
+        var midi = renderer.Render(score, new MidiRenderOptions { IncludeChordTrack = options.IncludeChordTrack });
+        return new ConversionResult(true, score, midi, [.. parsed.Diagnostics, .. arranged.Diagnostics, .. fitted.ToList()]);
     }
 
     public async Task<ConversionResult> ConvertAsync(

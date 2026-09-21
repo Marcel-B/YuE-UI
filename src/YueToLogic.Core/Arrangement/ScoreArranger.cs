@@ -73,7 +73,15 @@ public sealed class ScoreArranger : IScoreArranger
             result = [.. result.Select(track => IsMonophonic(track.Kind, mono) ? MonoProcessor.Apply(score, track, mono) : track)];
         }
 
-        return new ArrangementResult(score with { Voices = result }, diagnostics.ToList());
+        var arranged = score with { Voices = result };
+
+        // Last of all: the count-in moves the finished arrangement back, including the generated tracks.
+        if (options.CountIn is { } countIn)
+        {
+            arranged = CountInBuilder.Apply(arranged, countIn);
+        }
+
+        return new ArrangementResult(arranged, diagnostics.ToList());
     }
 
     /// <summary>Chords and drums are polyphonic by nature; the single-line tracks are the ones a mono synth plays.</summary>

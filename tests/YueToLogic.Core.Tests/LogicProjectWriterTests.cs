@@ -444,6 +444,68 @@ public class LogicProjectWriterTests
             .Select(i => ReadUInt32(sequence, (i * 16) + 4))
             .ToList();
 
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_count_in_moves_the_audio_behind_it(bool splitSections)
+    {
+        // The MIDI regions still start at bar 1 and carry the silent bars inside them; the audio has no
+        // count-in of its own, so it has to begin where the music does.
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions { Bass = new BassOptions(), CountIn = new CountInOptions { Bars = 2 } },
+        };
+        var converted = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
+        Assert.True(converted.Success, string.Join(Environment.NewLine, converted.Diagnostics));
+        var score = converted.Score!;
+        Assert.Equal(2 * Bar, score.CountInTicks);
+
+        var package = await WriteAsync(
+            score,
+            Flac(48000, 2, 24, 1_047_273),
+            new LogicProjectOptions { SplitRegionsAtSections = splitSections });
+
+        var arrangement = LogicProjectData.Parse(package.ProjectData).Chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == 4).Payload;
+        var placements = Enumerable.Range(0, arrangement.Length / 80)
+            .Select(i => (Head: arrangement[i * 80], Start: ReadUInt32(arrangement, (i * 80) + 4)))
+            .ToList();
+
+        // Logic counts at 960 ticks per quarter, so two 4/4 bars are 7680 ticks past bar 1.
+        const uint countIn = 7_680;
+        Assert.Equal(34_560u + countIn, Assert.Single(placements, p => p.Head == 0x24).Start);
+
+        var midi = placements.Where(p => p.Head == 0x20).ToList();
+        Assert.All(midi, p => Assert.True(p.Start >= 34_560u, "a region starts before bar 1"));
+        if (splitSections)
+        {
+            // The lead-in is a stretch of its own before the first section, so the clicks get a region at
+            // bar 1 while the music begins behind it.
+            Assert.Contains(midi, p => p.Start == 34_560u);
+            Assert.Contains(midi, p => p.Start == 34_560u + countIn);
+        }
+        else
+        {
+            Assert.All(midi, p => Assert.Equal(34_560u, p.Start));
+        }
+    }
+
+    [Fact]
+    public async Task A_count_in_is_left_out_of_the_audio_length_check()
+    {
+        // Without this the silent bars would look like a mismatch between score and recording.
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions { CountIn = new CountInOptions { Bars = 4 } },
+        };
+        var score = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options).Score!;
+
+        var result = await new LogicProjectWriter().WriteAsync(score, new MemoryStream(Flac(48000, 2, 24, 1_047_273)), new MemorySink());
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.AudioLengthMismatch);
+    }
+
     [Theory]
     [InlineData(60, 0x0000)]
     [InlineData(72, 0x2080)]

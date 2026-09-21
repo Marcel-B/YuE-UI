@@ -40,6 +40,30 @@ public sealed record ArrangementOptions
     /// Applied last, so its guarantees also hold after <see cref="Groove"/> has moved notes around.
     /// </summary>
     public MonoOptions? Mono { get; set; }
+
+    /// <summary>Moves the whole song back to leave silent bars in front of it; <c>null</c> starts at bar 1.</summary>
+    public CountInOptions? CountIn { get; set; }
+}
+
+/// <summary>
+/// Silent bars in front of the song, so there is a lead-in when playing the parts into hardware or recording
+/// along. Everything moves: notes, chords, sections, meter and key changes, and the audio of a Logic project.
+/// </summary>
+public sealed record CountInOptions
+{
+    /// <summary>Number of bars, counted in the meter the song starts in.</summary>
+    public int Bars { get; set; } = 1;
+
+    /// <summary>A click on every beat of the lead-in, on the drum track; without it the bars stay silent.</summary>
+    public bool Click { get; set; } = true;
+
+    /// <summary>Note of the click; the General MIDI side stick by default, which every drum kit has.</summary>
+    public int Note { get; set; } = GeneralMidiDrums.SideStick;
+
+    public int Velocity { get; set; } = 100;
+
+    /// <summary>The first beat of each lead-in bar is played harder, so the count is audible as a count.</summary>
+    public int AccentVelocity { get; set; } = 120;
 }
 
 /// <summary>
@@ -222,6 +246,7 @@ public static class GeneralMidiDrums
     public const int Channel = 9;
     public const int Kick = 36;
     public const int Snare = 38;
+    public const int SideStick = 37;
     public const int ClosedHiHat = 42;
     public const int OpenHiHat = 46;
     public const int Crash = 49;
