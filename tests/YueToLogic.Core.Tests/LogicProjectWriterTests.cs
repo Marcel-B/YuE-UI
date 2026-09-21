@@ -19,7 +19,7 @@ public class LogicProjectWriterTests
 
     /// <summary>The MIDI tracks of the bundled template, in the order its arrangement places them.</summary>
     private static readonly string[] TemplateTracks =
-        ["Ins", "Chords", "Bass", "Drums", "Kick", "Snare", "HiHat", "Crash", "Guide", "Vocal", "Vocal 8vb"];
+        ["Ins", "Chords", "Bass", "Guide", "Drums", "Kick", "Snare", "HiHat", "Crash", "Vocal", "Vocal 8vb"];
 
     [Fact]
     public void Embedded_template_round_trips_byte_for_byte()
@@ -327,6 +327,32 @@ public class LogicProjectWriterTests
         Assert.Equal(
             CountOccurrences(TemplateProjectData, "/Library/"u8.ToArray()),
             CountOccurrences(package.ProjectData, "/Library/"u8.ToArray()));
+    }
+
+    [Fact]
+    public async Task Clearing_those_paths_leaves_the_instruments_themselves_untouched()
+    {
+        // The paths sit among the plug-ins' own data. Clearing more than the text of a path destroys a patch,
+        // which is why every byte that differs has to have been readable text in the template.
+        var package = await WriteAsync(Convert(File.ReadAllText(SamplePath), false), Flac(48000, 2, 24, 1_047_273));
+
+        var template = LogicProjectData.Parse(TemplateProjectData).Chunks.Where(c => c.Tag == "AuCU").ToList();
+        var written = LogicProjectData.Parse(package.ProjectData).Chunks.Where(c => c.Tag == "AuCU").ToList();
+        Assert.Equal(template.Count, written.Count);
+
+        for (var chunk = 0; chunk < template.Count; chunk++)
+        {
+            var (before, after) = (template[chunk].Payload, written[chunk].Payload);
+            Assert.Equal(before.Length, after.Length);
+            for (var i = 0; i < before.Length; i++)
+            {
+                if (before[i] != after[i])
+                {
+                    Assert.Equal(0, after[i]);
+                    Assert.InRange(before[i], (byte)0x20, (byte)0x7E);
+                }
+            }
+        }
     }
 
     [Fact]
