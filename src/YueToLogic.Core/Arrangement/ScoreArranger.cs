@@ -43,7 +43,7 @@ public sealed class ScoreArranger : IScoreArranger
 
         if (options.Drums is { } drums)
         {
-            tracks.Add(DrumPatternGenerator.Generate(score, drums));
+            tracks.AddRange(DrumPatternGenerator.GenerateTracks(score, drums));
         }
 
         if (options.GuideTones is { } guideTones)
