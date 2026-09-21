@@ -13,12 +13,13 @@ namespace YueToLogic.Core.Tests;
 
 public class LogicProjectWriterTests
 {
-    private const int TemplateSongSamples = 15_832_768; // audio.flac of the template song, 48 kHz
+    private const int TemplateSongSamples = 14_399_936; // audio.flac of the template song, 48 kHz
 
     private static readonly byte[] TemplateProjectData = LogicTemplate.Default.Files[LogicTemplate.ProjectDataPath];
 
     /// <summary>The MIDI tracks of the bundled template, in the order its arrangement places them.</summary>
-    private static readonly string[] TemplateTracks = ["Drums", "Chords", "Bass", "Guide", "Ins", "Vocal", "Vocal 8vb"];
+    private static readonly string[] TemplateTracks =
+        ["Ins", "Chords", "Bass", "Drums", "Kick", "Snare", "HiHat", "Crash", "Guide", "Vocal", "Vocal 8vb"];
 
     [Fact]
     public void Embedded_template_round_trips_byte_for_byte()
@@ -38,10 +39,17 @@ public class LogicProjectWriterTests
 
         // Logic placed each region where its notes begin, this writer at bar 1, so positions count from the
         // first note. Everything else - pitch, velocity, length - has to be byte for byte what Logic wrote.
-        foreach (var region in new[] { "Vocal", "Ins", "Bass", "Drums", "Guide", "Vocal 8vb" })
+        foreach (var region in new[] { "Vocal", "Ins", "Bass", "Guide", "Vocal 8vb", "Kick", "Snare", "HiHat", "Crash" })
         {
-            Assert.Equal(NotesFromFirst(original[region]), NotesFromFirst(generated[region]));
+            var (expected, actual) = (NotesFromFirst(original[region]), NotesFromFirst(generated[region]));
+            Assert.True(expected.SequenceEqual(actual), $"{region} differs from Logic's encoding");
         }
+
+        // The template also carries the drum kit on one track, which is a conversion of its own.
+        var kit = await WriteAsync(
+            Convert(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "logic-template-song.abc")), withAccompaniment: true, splitDrums: false),
+            Flac(48000, 2, 24, TemplateSongSamples));
+        Assert.Equal(NotesFromFirst(original["Drums"]), NotesFromFirst(RegionEvents(kit.ProjectData)["Drums"]));
 
         // Logic additionally stores the chord names as text events; the notes themselves must match.
         Assert.Equal(NotesFromFirst(original["Chords"]), NotesFromFirst(generated["Chords"]));
@@ -258,12 +266,76 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task The_stems_go_on_the_audio_tracks_of_their_own()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);
+        var audio = new LogicAudio(
+            new MemoryStream(Flac(48000, 2, 24, 1_047_273)),
+            new MemoryStream(Wave(48000, 2, 16, 1_047_000)),
+            new MemoryStream(Wave(48000, 2, 16, 1_047_000)));
+
+        var package = await WriteAsync(score, audio);
+
+        // Three files, each on the track that plays it, and the names of the package rather than the template's.
+        Assert.Equal(
+            ["Media/Audio Files/audio.flac", "Media/Audio Files/vocals.wav", "Media/Audio Files/vocals_dry.wav"],
+            package.Files.Keys.Where(k => k.StartsWith("Media/", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+        var files = chunks.Where(c => c.Tag == "AuFl").ToList();
+        Assert.Equal(3, files.Count);
+        Assert.Equal([1_047_273L, 1_047_000, 1_047_000], files.Select(SampleCount));
+        Assert.Equal(3, chunks.Count(c => c.Tag == "AuRg"));
+
+        var arrangement = chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == 4).Payload;
+        Assert.Equal(3, Enumerable.Range(0, arrangement.Length / 80).Count(i => arrangement[i * 80] == 0x24));
+
+        var names = TrackNames(chunks);
+        Assert.Equal(["Mix", "Vocals", "Vocals dry"], names.Intersect(["Mix", "Vocals", "Vocals dry"]));
+        Assert.Equal(
+            ["Audio Files/audio.flac", "Audio Files/vocals.wav", "Audio Files/vocals_dry.wav"],
+            PlistValues(package.Files[LogicTemplate.MetaDataPath], "AudioFiles"));
+    }
+
+    [Fact]
+    public async Task A_stem_that_is_left_out_takes_its_track_with_it()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);
+        var audio = new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273)), Vocals: null, VocalsDry: new MemoryStream(Wave(48000, 2, 16, 1_047_000)));
+
+        var package = await WriteAsync(score, audio);
+
+        // The vocals were left out, so only the mix and the dry vocals are in the package and in the project.
+        Assert.DoesNotContain("Media/Audio Files/vocals.wav", package.Files.Keys);
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+        Assert.Equal(2, chunks.Count(c => c.Tag == "AuFl"));
+        var arrangement = chunks.Single(c => c.Tag == "EvSq" && c.Class == 23 && c.Id == 4).Payload;
+        Assert.Equal(2, Enumerable.Range(0, arrangement.Length / 80).Count(i => arrangement[i * 80] == 0x24));
+    }
+
+    [Fact]
+    public async Task The_project_carries_no_path_of_the_machine_the_template_was_built_on()
+    {
+        // The template's instruments remember where their samples and impulse responses were found, which is
+        // the home folder of whoever saved it. Logic finds its own library content without being told.
+        Assert.Contains("/Users/"u8.ToArray(), TemplateProjectData);
+
+        var package = await WriteAsync(Convert(File.ReadAllText(SamplePath), false), Flac(48000, 2, 24, 1_047_273));
+
+        Assert.DoesNotContain("/Users/"u8.ToArray(), package.ProjectData);
+        // Paths outside a home folder say nothing about the machine and are left as they are.
+        Assert.Equal(
+            CountOccurrences(TemplateProjectData, "/Library/"u8.ToArray()),
+            CountOccurrences(package.ProjectData, "/Library/"u8.ToArray()));
+    }
+
+    [Fact]
     public async Task Without_audio_the_project_keeps_an_empty_audio_track()
     {
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);
         var sink = new MemorySink();
 
-        var result = await new LogicProjectWriter().WriteAsync(score, flacAudio: null, sink);
+        var result = await new LogicProjectWriter().WriteAsync(score, new LogicAudio(null), sink);
 
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         Assert.Null(result.Audio);
@@ -307,7 +379,7 @@ public class LogicProjectWriterTests
         var sink = new MemorySink();
         var audio = notFlac ?? Flac(44100, 2, 16, 44_100);
 
-        var result = await new LogicProjectWriter().WriteAsync(Convert(File.ReadAllText(SamplePath), false), new MemoryStream(audio), sink);
+        var result = await new LogicProjectWriter().WriteAsync(Convert(File.ReadAllText(SamplePath), false), new LogicAudio(new MemoryStream(audio)), sink);
 
         Assert.False(result.Success);
         Assert.Contains(result.Diagnostics, d => d.Code == code && d.Severity == DiagnosticSeverity.Error);
@@ -317,7 +389,7 @@ public class LogicProjectWriterTests
     [Fact]
     public async Task Audio_of_a_different_length_is_reported()
     {
-        var result = await new LogicProjectWriter().WriteAsync(Convert(File.ReadAllText(SamplePath), false), new MemoryStream(Flac(48000, 2, 24, 48_000 * 120)), new MemorySink());
+        var result = await new LogicProjectWriter().WriteAsync(Convert(File.ReadAllText(SamplePath), false), new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 48_000 * 120))), new MemorySink());
 
         Assert.True(result.Success);
         Assert.Contains(result.Diagnostics, d => d.Code == DiagnosticCodes.AudioLengthMismatch);
@@ -386,9 +458,10 @@ public class LogicProjectWriterTests
         // New objects are listed in both registry tables of the Song chunk.
         var song = chunks.Single(c => c.Tag == "Song").Payload;
         var templateSong = LogicProjectData.Parse(TemplateProjectData).Chunks.Single(c => c.Tag == "Song").Payload;
-        // The template's unused second audio file leaves the registry, every chord region and marker beyond
+        // The audio files the project was not given leave the registry, every chord region and marker beyond
         // the template's own joins it, with an entry in each of the two tables.
-        var newObjects = (regionIds.Count - 17) + (textIds.Count - 3) - 1;
+        var templateAudio = LogicProjectData.Parse(TemplateProjectData).Chunks.Count(c => c.Tag == "AuFl");
+        var newObjects = (regionIds.Count - 17) + (textIds.Count - 3) - (templateAudio - 1);
         Assert.Equal(templateSong.Length + (newObjects * (24 + 16)), song.Length);
         foreach (var id in regionIds.Skip(17))
         {
@@ -402,7 +475,10 @@ public class LogicProjectWriterTests
     {
         // The sections of the template song, in order; repeated names are numbered.
         string[] expected =
-            ["Intro", "Verse 1", "Chorus 1", "Interlude 1", "Verse 2", "Chorus 2", "Interlude 2", "Chorus 3", "Interlude 3"];
+        [
+            "Intro", "Verse 1", "Pre-chorus 1", "Chorus 1", "Interlude 1",
+            "Verse 2", "Pre-chorus 2", "Chorus 2", "Interlude 2", "Chorus 3", "Interlude 3",
+        ];
         var score = Convert(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "logic-template-song.abc")), withAccompaniment: true);
 
         var package = await WriteAsync(
@@ -429,7 +505,12 @@ public class LogicProjectWriterTests
         Assert.Equal(TemplateTracks.Length, tracks.Count);
         var sectionStarts = score.Sections.Select(section => 34_560u + (2 * (uint)section.StartTicks)).ToList();
 
-        foreach (var (voice, sourceId) in new[] { ("Vocal", 140u), ("Ins", 44u), ("Chords", 32u), ("Bass", 36u), ("Drums", 28u), ("Guide", 40u), ("Vocal 8vb", 144u) })
+        // Which region id belongs to which part is the template's business, so it is read from there.
+        var templateRegions = LogicProjectData.Parse(TemplateProjectData).Chunks
+            .Where(c => c.Tag == "MSeq" && c.Class == 23 && TemplateTracks.Contains(c.SequenceName))
+            .ToDictionary(c => c.SequenceName, c => c.Id, StringComparer.Ordinal);
+
+        foreach (var (voice, sourceId) in TemplateTracks.Where(t => t != "Drums").Select(t => (t, templateRegions[t])))
         {
             var regions = Assert.Single(tracks, group => group.Any(p => p.Region == sourceId)).OrderBy(p => p.Start).ToList();
 
@@ -546,7 +627,7 @@ public class LogicProjectWriterTests
         };
         var score = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options).Score!;
 
-        var result = await new LogicProjectWriter().WriteAsync(score, new MemoryStream(Flac(48000, 2, 24, 1_047_273)), new MemorySink());
+        var result = await new LogicProjectWriter().WriteAsync(score, new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273))), new MemorySink());
 
         Assert.True(result.Success);
         Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.AudioLengthMismatch);
@@ -565,11 +646,14 @@ public class LogicProjectWriterTests
         var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
         var names = TrackNames(chunks);
 
-        // The audio track and the output bus keep their own names; only the MIDI tracks are renamed.
-        Assert.Equal(["audio", "Vocal", "Ins", "Vocal 8vb", "Chords", "Drums", "Bass", "Guide"], names);
+        // Every track says what it carries: the audio ones what they play, the MIDI ones their part.
+        Assert.Contains("Mix", names);
+        Assert.Equal(TemplateTracks.Order(), names.Intersect(TemplateTracks).Order());
+        Assert.DoesNotContain(names, name => name.Contains("vocals_", StringComparison.Ordinal)); // no file names left
 
+        // In the template they are named after the instrument chosen for them and the file dropped on them.
         var templateNames = TrackNames(LogicProjectData.Parse(TemplateProjectData).Chunks);
-        Assert.Equal("audio", templateNames[0]);
+        Assert.Contains("audio_1", templateNames);
         Assert.Contains("Studio Grand", templateNames);
     }
 
@@ -598,7 +682,7 @@ public class LogicProjectWriterTests
         };
         var converted = new ScoreConverter().Convert(File.ReadAllText(SamplePath), options);
 
-        var result = await new LogicProjectWriter().WriteAsync(converted.Score!, null, new MemorySink());
+        var result = await new LogicProjectWriter().WriteAsync(converted.Score!, new LogicAudio(null), new MemorySink());
 
         var warning = Assert.Single(result.Diagnostics, d => d.Code == DiagnosticCodes.LogicTemplateLimitation);
         Assert.Contains("'Ins 8vb'", warning.Message, StringComparison.Ordinal);
@@ -623,7 +707,7 @@ public class LogicProjectWriterTests
         using var zip = new MemoryStream();
         using (var sink = new ZipLogicPackageSink(zip, "My Song"))
         {
-            await new LogicProjectWriter().WriteAsync(Convert(File.ReadAllText(SamplePath), false), new MemoryStream(Flac(48000, 2, 24, 1_047_273)), sink);
+            await new LogicProjectWriter().WriteAsync(Convert(File.ReadAllText(SamplePath), false), new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273))), sink);
         }
 
         using var archive = new ZipArchive(new MemoryStream(zip.ToArray()));
@@ -632,7 +716,7 @@ public class LogicProjectWriterTests
         Assert.Equal(audio.Length, audio.CompressedLength);
     }
 
-    private static ScoreDocument Convert(string abc, bool withAccompaniment)
+    private static ScoreDocument Convert(string abc, bool withAccompaniment, bool splitDrums = true)
     {
         // With accompaniment means every track the Logic template carries, which is how the template was made.
         var options = new ConversionOptions
@@ -641,7 +725,7 @@ public class LogicProjectWriterTests
                 ? new ArrangementOptions
                 {
                     Bass = new BassOptions(),
-                    Drums = new DrumOptions(),
+                    Drums = new DrumOptions { SeparateTracks = splitDrums },
                     GuideTones = new GuideToneOptions(),
                     Doubling = new DoublingOptions(),
                 }
@@ -652,16 +736,51 @@ public class LogicProjectWriterTests
         return result.Score!;
     }
 
-    private static async Task<(byte[] ProjectData, IReadOnlyDictionary<string, byte[]> Files)> WriteAsync(
+    private static Task<(byte[] ProjectData, IReadOnlyDictionary<string, byte[]> Files)> WriteAsync(
         ScoreDocument score,
         byte[] flac,
+        LogicProjectOptions? options = null) =>
+        WriteAsync(score, new LogicAudio(new MemoryStream(flac)), options);
+
+    private static async Task<(byte[] ProjectData, IReadOnlyDictionary<string, byte[]> Files)> WriteAsync(
+        ScoreDocument score,
+        LogicAudio audio,
         LogicProjectOptions? options = null)
     {
         var sink = new MemorySink();
-        var result = await new LogicProjectWriter().WriteAsync(score, new MemoryStream(flac), sink, options);
+        var result = await new LogicProjectWriter().WriteAsync(score, audio, sink, options);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var files = sink.Files.ToDictionary(f => f.Key, f => f.Value.ToArray());
         return (files[LogicTemplate.ProjectDataPath], files);
+    }
+
+    /// <summary>The sample count an audio file object stores, behind the tag that names its format.</summary>
+    private static long SampleCount(LogicChunk file)
+    {
+        var format = Math.Max(file.Payload.AsSpan().LastIndexOf("CaLf"u8), file.Payload.AsSpan().LastIndexOf("EVAW"u8));
+        return (long)BinaryPrimitives.ReadUInt64LittleEndian(file.Payload.AsSpan(format + 12));
+    }
+
+    /// <summary>A WAVE header of the usual chunks, followed by as much silence as it says it has.</summary>
+    private static byte[] Wave(int sampleRate, int channels, int bitsPerSample, long samples)
+    {
+        var bytesPerFrame = channels * (bitsPerSample / 8);
+        var data = (int)(samples * bytesPerFrame);
+        var header = new byte[44];
+        "RIFF"u8.CopyTo(header);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4), (uint)(36 + data));
+        "WAVE"u8.CopyTo(header.AsSpan(8));
+        "fmt "u8.CopyTo(header.AsSpan(12));
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(16), 16);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(20), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(22), (ushort)channels);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(24), (uint)sampleRate);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(28), (uint)(sampleRate * bytesPerFrame));
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(32), (ushort)bytesPerFrame);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(34), (ushort)bitsPerSample);
+        "data"u8.CopyTo(header.AsSpan(36));
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(40), (uint)data);
+        return [.. header, .. new byte[Math.Min(data, 512)]];
     }
 
     /// <summary>A FLAC header (STREAMINFO) followed by filler bytes standing in for the audio frames.</summary>
@@ -755,6 +874,24 @@ public class LogicProjectWriterTests
 
     private static uint ReadUInt32(byte[] buffer, int offset) => BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(offset));
 
+    private static int CountOccurrences(byte[] buffer, byte[] pattern)
+    {
+        var count = 0;
+        for (var start = 0; start < buffer.Length;)
+        {
+            var index = buffer.AsSpan(start).IndexOf(pattern);
+            if (index < 0)
+            {
+                break;
+            }
+
+            count++;
+            start += index + 1;
+        }
+
+        return count;
+    }
+
     private static int CountUInt64(byte[] buffer, long value)
     {
         Span<byte> pattern = stackalloc byte[8];
@@ -785,6 +922,13 @@ public class LogicProjectWriterTests
         }
 
         return count;
+    }
+
+    private static List<string> PlistValues(byte[] plist, string key)
+    {
+        var dict = XDocument.Parse(System.Text.Encoding.UTF8.GetString(plist)).Root!.Element("dict")!;
+        var array = dict.Elements("key").First(k => k.Value == key).ElementsAfterSelf().First();
+        return [.. array.Elements("string").Select(e => e.Value)];
     }
 
     private static string PlistValue(byte[] plist, string key)

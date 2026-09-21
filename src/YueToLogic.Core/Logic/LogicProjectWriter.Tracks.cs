@@ -148,6 +148,15 @@ public sealed partial class LogicProjectWriter
         }
     }
 
+    /// <summary>The name a channel strip carries, which is what Logic shows in the track header.</summary>
+    private static string EnvironmentName(LogicChunk strip)
+    {
+        var length = BinaryPrimitives.ReadUInt16LittleEndian(strip.Payload.AsSpan(EnvironmentNameOffset, 2));
+        return length == 0 || EnvironmentNameOffset + 2 + length > strip.Payload.Length
+            ? string.Empty
+            : Encoding.UTF8.GetString(strip.Payload, EnvironmentNameOffset + 2, length);
+    }
+
     /// <summary>
     /// Renames a channel strip. Its name sits at a fixed offset as a length and its UTF-8 bytes, padded to an
     /// even size, exactly as a sequence name does; everything behind it simply moves along.

@@ -286,6 +286,37 @@ public class ArrangementTests
     }
 
     [Fact]
+    public void A_split_kit_puts_every_drum_on_a_track_of_its_own()
+    {
+        var options = new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.Backbeat, SeparateTracks = true } };
+
+        var score = Arranger.Arrange(Sample, options).Score;
+        var kit = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.Backbeat } }).Score.Voice("Drums");
+
+        Assert.DoesNotContain(score.Voices, v => v.Id == "Drums");
+        Assert.Equal(["Kick", "Snare", "HiHat", "Crash"], score.Voices.Where(v => v.Kind == TrackKind.Drums).Select(v => v.Id));
+        Assert.Equal([36], score.Voice("Kick").Pitches().Distinct());
+        Assert.Equal([38], score.Voice("Snare").Pitches().Distinct());
+        Assert.Equal([42, 46], score.Voice("HiHat").Pitches().Distinct().Order());
+        Assert.Equal([49], score.Voice("Crash").Pitches().Distinct());
+
+        // Splitting sorts the same notes into several tracks; nothing is added or lost.
+        var split = score.Voices.Where(v => v.Kind == TrackKind.Drums).SelectMany(v => v.Notes);
+        Assert.Equal(kit.Notes.OrderBy(n => n.StartTicks).ThenBy(n => n.NoteNumber), split.OrderBy(n => n.StartTicks).ThenBy(n => n.NoteNumber));
+    }
+
+    [Fact]
+    public void A_drum_a_pattern_never_plays_gets_no_track()
+    {
+        // Four on the floor without section crashes leaves the crash silent, so it has nothing to carry.
+        var options = new ArrangementOptions { Drums = new DrumOptions { CrashOnSections = false, SeparateTracks = true } };
+
+        var score = Arranger.Arrange(Sample, options).Score;
+
+        Assert.Equal(["Kick", "Snare", "HiHat"], score.Voices.Where(v => v.Kind == TrackKind.Drums).Select(v => v.Id));
+    }
+
+    [Fact]
     public void Half_time_plays_kick_on_one_and_snare_on_three()
     {
         var drums = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.HalfTime } }).Score.Voice("Drums");

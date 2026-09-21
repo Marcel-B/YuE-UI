@@ -35,18 +35,18 @@ public sealed partial class LogicProjectWriter
         ScoreDocument score,
         IReadOnlyList<TemplateTrack> tracks,
         Dictionary<string, List<LogicNote>> events,
-        bool withAudio,
+        IReadOnlyList<AudioTrack> audioTracks,
         uint songTicks)
     {
         var segments = Segments(score);
         var root = Chunk(chunks, "EvSq", ArrangementClass, RootSequenceId);
         var placements = Records(root.Payload, PlacementLength).ToList();
 
-        // Every MIDI placement names the region it holds; the audio placement is kept as it is.
+        // Every MIDI placement names the region it holds; the audio placements are kept as they are.
         var placementByRegion = placements
             .Where(p => ReadUInt32(p, PlacementRegionIdOffset) != NoRegion)
             .ToDictionary(p => ReadUInt32(p, PlacementRegionIdOffset));
-        var audioPlacement = placements.Find(p => p[0] == AudioPlacement);
+        var audioPlacements = placements.FindAll(p => p[0] == AudioPlacement);
 
         var regionByName = chunks
             .Where(c => c.Tag == "MSeq" && c.Class == ArrangementClass && events.ContainsKey(c.SequenceName))
@@ -58,11 +58,15 @@ public sealed partial class LogicProjectWriter
         var clones = new List<LogicChunk>();
 
         using var arrangement = new MemoryStream();
-        if (withAudio && audioPlacement is not null)
+        foreach (var placement in audioPlacements)
         {
-            var placement = audioPlacement.ToArray();
-            WriteUInt32(placement, 4, AudioStart(score));
-            arrangement.Write(placement);
+            // Only the tracks that were given a file stay; the others are removed with their objects later.
+            if (audioTracks.Any(t => t.Audio is not null && t.Region.Id == ReadUInt32(placement, AudioPlacementRegionIdOffset)))
+            {
+                var placed = placement.ToArray();
+                WriteUInt32(placed, 4, AudioStart(score));
+                arrangement.Write(placed);
+            }
         }
 
         foreach (var (name, _, _, channel) in tracks)

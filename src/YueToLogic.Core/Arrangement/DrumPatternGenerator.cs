@@ -15,6 +15,15 @@ internal static class DrumPatternGenerator
 {
     public const string TrackId = "Drums";
 
+    /// <summary>The tracks a split drum kit uses, and which of its notes belong on each.</summary>
+    public static readonly (string TrackId, int[] Notes)[] SeparateTracks =
+    [
+        ("Kick", [GeneralMidiDrums.Kick]),
+        ("Snare", [GeneralMidiDrums.Snare]),
+        ("HiHat", [GeneralMidiDrums.ClosedHiHat, GeneralMidiDrums.OpenHiHat]),
+        ("Crash", [GeneralMidiDrums.Crash]),
+    ];
+
     private const int KickVelocity = 110;
     private const int SnareVelocity = 100;
     private const int CrashVelocity = 100;
@@ -39,6 +48,27 @@ internal static class DrumPatternGenerator
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The drum track, or one track per drum when the options ask for it. Splitting only sorts the same notes
+    /// into several tracks, so both ways play exactly the same thing.
+    /// </summary>
+    public static IEnumerable<VoiceTrack> GenerateTracks(ScoreDocument score, DrumOptions options)
+    {
+        var kit = Generate(score, options);
+        if (!options.SeparateTracks)
+        {
+            return [kit];
+        }
+
+        return SeparateTracks
+            .Select(track => new VoiceTrack(
+                track.TrackId,
+                track.TrackId,
+                [.. kit.Notes.Where(note => track.Notes.Contains(note.NoteNumber))],
+                TrackKind.Drums))
+            .Where(track => track.Notes.Count > 0);
     }
 
     public static VoiceTrack Generate(ScoreDocument score, DrumOptions options)
@@ -123,6 +153,7 @@ internal static class DrumPatternGenerator
         }
 
         notes.AddRange(crashTicks.Select(tick => new NoteEvent(tick, ppq, GeneralMidiDrums.Crash, CrashVelocity)));
-        return new VoiceTrack(TrackId, TrackId, notes.OrderBy(n => n.StartTicks).ToArray(), TrackKind.Drums);
+        // Ordered by position, keeping the order the drums were added in at the same tick.
+        return new VoiceTrack(TrackId, TrackId, [.. notes.OrderBy(n => n.StartTicks)], TrackKind.Drums);
     }
 }
