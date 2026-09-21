@@ -14,9 +14,18 @@ public sealed record ScoreDocument(
     // Score voices first, followed by generated accompaniment tracks, if any.
     IReadOnlyList<VoiceTrack> Voices,
     IReadOnlyList<ChordEvent> Chords,
-    long LengthTicks)
+    long LengthTicks,
+    /// <summary>
+    /// Silent lead-in before the music, in ticks; 0 without a count-in. Everything else in this document is
+    /// already placed behind it, and a host that lines up audio with the score starts the audio here.
+    /// </summary>
+    long CountInTicks = 0)
 {
     public double DurationSeconds => LengthTicks / (double)TicksPerQuarterNote * 60.0 / TempoBpm;
+
+    /// <summary>Length of the music itself, which is what an audio recording of it can be compared against.</summary>
+    public double MusicDurationSeconds =>
+        (LengthTicks - CountInTicks) / (double)TicksPerQuarterNote * 60.0 / TempoBpm;
 
     /// <summary>Converts an absolute tick position into a 1-based bar and beat, honouring meter changes.</summary>
     public BarPosition GetBarPosition(long ticks)

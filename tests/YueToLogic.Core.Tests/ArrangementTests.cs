@@ -641,6 +641,91 @@ public class ArrangementTests
         Assert.Equal(plain.Voice("Bass").Notes, score.Voice("Bass").Notes);
     }
 
+
+    // ---- Count-in --------------------------------------------------------------------------------
+
+    [Fact]
+    public void A_count_in_moves_the_whole_song_back_and_clicks_the_beats()
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            "C"C16|"G"C16|
+            V: Ins
+            Z2|
+            """));
+
+        var result = Arranger.Arrange(score, new ArrangementOptions { CountIn = new CountInOptions() }).Score;
+
+        // One bar of 4/4 in front of everything.
+        Assert.Equal(Bar, result.CountInTicks);
+        Assert.Equal(score.LengthTicks + Bar, result.LengthTicks);
+        Assert.Equal(Bar, result.Voice("Vocal").Notes[0].StartTicks);
+        Assert.Equal([Bar, 2 * Bar], result.Chords.Select(c => c.StartTicks));
+
+        // Four clicks on the drum track, the downbeat played harder.
+        var clicks = result.Voice("Drums");
+        Assert.Equal(TrackKind.Drums, clicks.Kind);
+        Assert.Equal([0, Ppq, 2 * Ppq, 3 * Ppq], clicks.Notes.Select(n => n.StartTicks));
+        Assert.Equal([120, 100, 100, 100], clicks.Notes.Select(n => n.Velocity));
+        Assert.All(clicks.Notes, n => Assert.Equal(GeneralMidiDrums.SideStick, n.NoteNumber));
+
+        // The music itself is unchanged in length; only the document grew.
+        Assert.Equal(score.DurationSeconds, result.MusicDurationSeconds, 6);
+    }
+
+    [Fact]
+    public void A_count_in_keeps_the_opening_meter_and_key_in_place_and_moves_the_changes()
+    {
+        var score = ParseScore(Native("""
+            V: Vocal
+            C16|
+            V: Ins
+            Z1|
+            V: Vocal
+            K:Fm
+            M:3/4
+            C12|
+            V: Ins
+            K:Fm
+            M:3/4
+            Z1|
+            """));
+        Assert.Equal([0L, Bar], score.TimeSignatures.Select(t => t.StartTicks));
+
+        var result = Arranger.Arrange(score, new ArrangementOptions { CountIn = new CountInOptions { Bars = 2 } }).Score;
+
+        // The signature and key the song opens in govern the lead-in too, so those stay at tick 0.
+        Assert.Equal([0L, 3 * Bar], result.TimeSignatures.Select(t => t.StartTicks));
+        Assert.Equal([0L, 3 * Bar], result.KeySignatures.Select(k => k.StartTicks));
+        Assert.Equal(2 * Bar, result.CountInTicks);
+        Assert.Equal(8, result.Voice("Drums").Notes.Count);
+    }
+
+    [Fact]
+    public void A_count_in_clicks_in_front_of_an_existing_drum_track()
+    {
+        var options = new ArrangementOptions { Drums = new DrumOptions(), CountIn = new CountInOptions() };
+
+        var result = Arranger.Arrange(Sample, options).Score;
+
+        var plain = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions() }).Score;
+        var drums = result.Voice("Drums");
+        Assert.Equal(plain.Voice("Drums").Notes.Count + 4, drums.Notes.Count);
+        Assert.All(drums.Notes.Take(4), n => Assert.Equal(GeneralMidiDrums.SideStick, n.NoteNumber));
+        Assert.All(drums.Notes.Skip(4), n => Assert.True(n.StartTicks >= Bar, "a drum note landed in the count-in"));
+    }
+
+    [Fact]
+    public void A_silent_count_in_adds_no_drum_track()
+    {
+        var options = new ArrangementOptions { CountIn = new CountInOptions { Click = false } };
+
+        var result = Arranger.Arrange(TwoVoices, options).Score;
+
+        Assert.DoesNotContain(result.Voices, v => v.Kind == TrackKind.Drums);
+        Assert.Equal(Bar, result.CountInTicks);
+    }
+
     [Fact]
     public void Arrangement_options_round_trip_through_json()
     {
@@ -657,7 +742,9 @@ public class ArrangementTests
                 Doubling = new DoublingOptions { Semitones = 12 },
                 Groove = new GrooveOptions { Swing = 0.6, SwingUnit = SwingUnit.Sixteenths, HumanizeVelocity = 8 },
                 Mono = new MonoOptions { Legato = true },
+                CountIn = new CountInOptions { Bars = 2, Click = false },
             },
+            FitTempo = new TempoFitOptions { AudioSeconds = 352.68, MaxDeviation = 0.02 },
         };
 
         var json = JsonSerializer.Serialize(options, YueToLogicJsonContext.Default.ConversionOptions);
@@ -673,6 +760,8 @@ public class ArrangementTests
         Assert.Equal(options.Arrangement.Doubling, restored.Arrangement.Doubling);
         Assert.Equal(options.Arrangement.Groove, restored.Arrangement.Groove);
         Assert.Equal(options.Arrangement.Mono, restored.Arrangement.Mono);
+        Assert.Equal(options.Arrangement.CountIn, restored.Arrangement.CountIn);
+        Assert.Equal(options.FitTempo, restored.FitTempo);
         Assert.Equal(-1, restored.Arrangement.DefaultOctaveShift);
     }
 }

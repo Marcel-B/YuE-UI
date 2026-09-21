@@ -304,7 +304,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
                 }
                 else if (sequence.Id == RootSequenceId)
                 {
-                    PlaceRegionsAtBarOne(sequence.Payload);
+                    PlaceRegionsAtBarOne(sequence.Payload, AudioStart(score));
                     if (audio is null)
                     {
                         sequence.Payload = WithoutAudioRegion(sequence.Payload);
@@ -337,17 +337,24 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         return project.Serialize();
     }
 
-    /// <summary>The arrangement lists each region as five records; the first holds its start position.</summary>
-    private static void PlaceRegionsAtBarOne(byte[] arrangement)
+    /// <summary>
+    /// The arrangement lists each region as five records; the first holds its start position. The MIDI regions
+    /// begin at bar 1 and carry the count-in inside them; the audio, which has none, begins behind it.
+    /// </summary>
+    private static void PlaceRegionsAtBarOne(byte[] arrangement, uint audioStart)
     {
         for (var i = 0; i + 32 <= arrangement.Length; i += 16)
         {
             if (arrangement[i] is 0x20 or 0x24 && arrangement[i + 16 + 7] == 0x89)
             {
-                WriteUInt32(arrangement, i + 4, ArrangementBar1);
+                WriteUInt32(arrangement, i + 4, arrangement[i] == AudioPlacement ? audioStart : ArrangementBar1);
             }
         }
     }
+
+    /// <summary>Where the audio starts in the arrangement: bar 1, or behind the count-in if the score has one.</summary>
+    private static uint AudioStart(ScoreDocument score) =>
+        checked((uint)(ArrangementBar1 + ToLogicTicks(score.CountInTicks, score.TicksPerQuarterNote)));
 
     /// <summary>
     /// Drops the audio file and its region from a project written without audio; without this Logic would report
@@ -419,12 +426,14 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
             diagnostics.Warning(DiagnosticCodes.InvalidAudio, Invariant($"The audio has {audio.Channels} channel(s); the template's audio track is stereo."));
         }
 
-        var difference = Math.Abs(audio.DurationSeconds - score.DurationSeconds);
-        if (difference > Math.Max(5, score.DurationSeconds * 0.05))
+        // Only the music is compared: a count-in is silence the recording never had.
+        var music = score.MusicDurationSeconds;
+        var difference = Math.Abs(audio.DurationSeconds - music);
+        if (difference > Math.Max(5, music * 0.05))
         {
             diagnostics.Warning(
                 DiagnosticCodes.AudioLengthMismatch,
-                Invariant($"The audio lasts {audio.DurationSeconds:0.0} s but the score {score.DurationSeconds:0.0} s; is it the audio.flac from the same YuE run?"));
+                Invariant($"The audio lasts {audio.DurationSeconds:0.0} s but the score {music:0.0} s; is it the audio.flac from the same YuE run? '--fit-tempo' adjusts the tempo when the difference is a drift."));
         }
     }
 

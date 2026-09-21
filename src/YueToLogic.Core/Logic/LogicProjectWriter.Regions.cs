@@ -60,7 +60,7 @@ public sealed partial class LogicProjectWriter
         if (withAudio && audioPlacement is not null)
         {
             var placement = audioPlacement.ToArray();
-            WriteUInt32(placement, 4, ArrangementBar1);
+            WriteUInt32(placement, 4, AudioStart(score));
             arrangement.Write(placement);
         }
 

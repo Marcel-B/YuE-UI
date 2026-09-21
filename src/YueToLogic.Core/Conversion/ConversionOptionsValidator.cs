@@ -20,6 +20,10 @@ public static class ConversionOptionsValidator
     public const int MaxHumanizeVelocity = 64;
     public const double MaxMonoGapMs = 500;
     public const double MaxMonoLengthMs = 2000;
+    public const int MaxCountInBars = 8;
+
+    /// <summary>The widest difference between score and audio a tempo fit may be asked to accept.</summary>
+    public const double MaxTempoDeviation = 0.5;
 
     /// <returns>One error diagnostic per invalid value; empty if the options are valid.</returns>
     public static IReadOnlyList<Diagnostic> Validate(ConversionOptions options)
@@ -122,6 +126,32 @@ public static class ConversionOptionsValidator
         {
             CheckRange(errors, "arrangement.mono.gapMs", mono.GapMs, 0, MaxMonoGapMs);
             CheckRange(errors, "arrangement.mono.minimumLengthMs", mono.MinimumLengthMs, 0, MaxMonoLengthMs);
+        }
+
+        if (arrangement.CountIn is { } countIn)
+        {
+            if (countIn.Bars is < 0 or > MaxCountInBars)
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.countIn.bars must be between 0 and {MaxCountInBars}, got {countIn.Bars}."));
+            }
+
+            if (countIn.Note is < 0 or > 127)
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.countIn.note must be between 0 and 127, got {countIn.Note}."));
+            }
+
+            CheckVelocity(errors, "arrangement.countIn.velocity", countIn.Velocity);
+            CheckVelocity(errors, "arrangement.countIn.accentVelocity", countIn.AccentVelocity);
+        }
+
+        if (options.FitTempo is { } fit)
+        {
+            if (fit.AudioSeconds <= 0 || double.IsNaN(fit.AudioSeconds) || double.IsInfinity(fit.AudioSeconds))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"fitTempo.audioSeconds must be a positive number of seconds, got {fit.AudioSeconds}."));
+            }
+
+            CheckRange(errors, "fitTempo.maxDeviation", fit.MaxDeviation, 0, MaxTempoDeviation);
         }
 
         return errors.ToList();

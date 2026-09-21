@@ -30,6 +30,10 @@ public static class DiagnosticCodes
     // Arrangement
     public const string UnknownVoice = "YTL030";
 
+    // Tempo
+    public const string TempoFitted = "YTL060";
+    public const string TempoNotFitted = "YTL061";
+
     // Logic Pro project
     public const string InvalidAudio = "YTL050";
     public const string UnsupportedSampleRate = "YTL051";
