@@ -244,6 +244,20 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task A_track_plays_on_the_channel_it_was_given()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions { Channels = new Dictionary<string, int> { ["bass"] = 7 } };
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273), options);
+
+        // Logic stores the channel in every note record; the other tracks keep the template's.
+        var regions = RegionEvents(package.ProjectData);
+        Assert.All(NoteRecords(regions["Bass"]), record => Assert.Equal("96", record[..2])); // 0x90 | 6
+        Assert.All(NoteRecords(regions["Drums"]), record => Assert.Equal("99", record[..2])); // drums on 10
+    }
+
+    [Fact]
     public async Task Without_audio_the_project_keeps_an_empty_audio_track()
     {
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);

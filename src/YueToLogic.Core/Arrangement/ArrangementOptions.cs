@@ -180,6 +180,12 @@ public enum ChordPattern
 
     /// <summary>The notes of the chord one after another in eighths, from the bottom up.</summary>
     ArpeggioUp,
+
+    /// <summary>The notes of the chord in eighths, up and back down without repeating the turning points.</summary>
+    ArpeggioUpDown,
+
+    /// <summary>The whole chord on every sixteenth note, a bed for fast passages.</summary>
+    Sixteenths,
 }
 
 public sealed record BassOptions
@@ -215,6 +221,12 @@ public enum BassPattern
 
     /// <summary>One long note per chord.</summary>
     Sustained,
+
+    /// <summary>
+    /// Quarter notes walking from the chord's bass note over its third and fifth to the next chord, a step
+    /// away from its bass note - the jazz and blues way of joining two chords.
+    /// </summary>
+    Walking,
 }
 
 public sealed record DrumOptions
@@ -238,6 +250,15 @@ public enum DrumPattern
 
     /// <summary>Kick on every beat, snare on 2 and 4, and an open hi-hat on every off-beat.</summary>
     Disco,
+
+    /// <summary>Kick on 1 and 3, snare on 2 and 4, hi-hat in sixteenths - the busier pop groove.</summary>
+    SixteenthHats,
+
+    /// <summary>
+    /// Kick on 1 and 3, snare on 2 and 4, hi-hat on the first and third eighth-note triplet of every beat:
+    /// the shuffle, which swings whatever the groove settings say.
+    /// </summary>
+    Shuffle,
 }
 
 /// <summary>Note numbers of the General MIDI drum map, which Logic's drum kits follow.</summary>

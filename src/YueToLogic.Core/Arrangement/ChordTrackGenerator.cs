@@ -46,7 +46,7 @@ internal static class ChordTrackGenerator
                 continue;
             }
 
-            var step = Math.Max(1, ppq / 2);
+            var step = Math.Max(1, options.Pattern == ChordPattern.Sixteenths ? ppq / 4 : ppq / 2);
             var end = chord.StartTicks + chord.DurationTicks;
             var index = 0;
 
@@ -73,8 +73,26 @@ internal static class ChordTrackGenerator
     }
 
     /// <summary>An arpeggio plays one note per step, the other patterns the whole chord.</summary>
-    private static IEnumerable<int> Voicing(ChordPattern pattern, IReadOnlyList<int> pitches, int index) =>
-        pattern == ChordPattern.ArpeggioUp ? [pitches[index % pitches.Count]] : pitches;
+    /// <summary>
+    /// An arpeggio plays one note per step, the other patterns the whole chord. Up and down turns around at
+    /// the top and the bottom without playing either note twice, so a triad repeats every four steps.
+    /// </summary>
+    private static IEnumerable<int> Voicing(ChordPattern pattern, IReadOnlyList<int> pitches, int index)
+    {
+        switch (pattern)
+        {
+            case ChordPattern.ArpeggioUp:
+                return [pitches[index % pitches.Count]];
+            case ChordPattern.ArpeggioUpDown when pitches.Count > 2:
+                var period = (2 * pitches.Count) - 2;
+                var step = index % period;
+                return [pitches[step < pitches.Count ? step : period - step]];
+            case ChordPattern.ArpeggioUpDown:
+                return [pitches[index % pitches.Count]];
+            default:
+                return pitches;
+        }
+    }
 
     private static int Velocity(ChordOptions options, bool onBeat) =>
         Math.Clamp(onBeat ? options.Velocity : options.Velocity - OffBeatSoftening, 1, 127);
