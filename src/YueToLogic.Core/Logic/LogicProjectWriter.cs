@@ -108,6 +108,12 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
     /// <summary>Where macOS keeps the home folders, and with them everything that is true of one machine only.</summary>
     private static readonly byte[] UserFolder = "/Users/"u8.ToArray();
 
+    /// <summary>Content Logic keeps itself and finds again without being told where it once was.</summary>
+    private static readonly string[] LibraryContent = ["Logic Pro Library.bundle", ".logicx/"];
+
+    /// <summary>Longer than any path a file system hands out, so a run of text this long is not one.</summary>
+    private const int MaxPathLength = 1024;
+
     /// <summary>An audio file object opens with the name of its file: its length in characters, then UTF-16.</summary>
     private const int AudioFileNameLengthOffset = 8;
     private const int AudioFileNameOffset = 10;
@@ -413,23 +419,43 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
     }
 
     /// <summary>
-    /// Clears the paths that point into the home folder of the machine the template was built on. Logic saves
-    /// where it found a sample or an impulse response, which is of no use anywhere else, and it looks its own
-    /// library content up by itself. Paths outside a home folder, such as /Library, are left alone.
+    /// Clears the paths that say where Logic's own library content was found on the machine the template was
+    /// built on - samples and impulse responses under its library bundle, or inside a project package. Logic
+    /// finds that content by itself, and the path is of no use anywhere else. Every other path is left alone:
+    /// a plug-in pointing somewhere of its own may well need it.
     /// </summary>
     /// <remarks>
-    /// The strings sit in the channel strips (<c>AuCU</c>) as null-terminated text in fields of a fixed size,
-    /// so they are blanked in place and nothing moves.
+    /// The strings sit in the channel strips (<c>AuCU</c>) as text among the plug-ins' own data, so they are
+    /// blanked in place and nothing moves. Cleared is the run of printable characters and no byte more, which
+    /// keeps the plug-in data around it - a patch of its own would otherwise be destroyed along with the path.
     /// </remarks>
     private static void BlankUserPaths(List<LogicChunk> chunks)
     {
         foreach (var chunk in chunks.Where(c => c.Tag == "AuCU"))
         {
-            var payload = chunk.Payload.AsSpan();
-            for (var start = payload.IndexOf(UserFolder); start >= 0; start = payload.IndexOf(UserFolder))
+            var payload = chunk.Payload;
+            for (var offset = 0; offset < payload.Length;)
             {
-                var end = payload[start..].IndexOf((byte)0);
-                payload[start..(end < 0 ? payload.Length : start + end)].Clear();
+                var found = payload.AsSpan(offset).IndexOf(UserFolder);
+                if (found < 0)
+                {
+                    break;
+                }
+
+                var start = offset + found;
+                var end = start;
+                while (end < payload.Length && end - start <= MaxPathLength && payload[end] is >= 0x20 and < 0x7F)
+                {
+                    end++;
+                }
+
+                var path = Encoding.UTF8.GetString(payload, start, end - start);
+                if (LibraryContent.Any(part => path.Contains(part, StringComparison.Ordinal)))
+                {
+                    payload.AsSpan(start, end - start).Clear();
+                }
+
+                offset = start + UserFolder.Length;
             }
         }
     }
