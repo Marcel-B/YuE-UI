@@ -69,7 +69,7 @@ public sealed partial class LogicProjectWriter
             }
         }
 
-        foreach (var (name, _, _, channel) in tracks)
+        foreach (var (name, _, _, channel, _) in tracks)
         {
             var sourceId = regionByName[name];
             var notes = events[name];

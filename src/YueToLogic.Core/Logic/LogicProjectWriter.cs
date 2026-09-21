@@ -55,6 +55,32 @@ public sealed record LogicProjectOptions
     /// template's region. Logic sends a track's notes on this channel to an external instrument.
     /// </summary>
     public IReadOnlyDictionary<string, int> Channels { get; set; } = new Dictionary<string, int>();
+
+    /// <summary>
+    /// The hardware instrument a track plays, keyed by track name. It puts the instrument's channel on the
+    /// track's notes, ahead of <see cref="Channels"/>, and names the track after both, e.g. "Bass · Mother32".
+    /// </summary>
+    public IReadOnlyDictionary<string, LogicInstrument> Instruments { get; set; } = new Dictionary<string, LogicInstrument>();
+}
+
+/// <summary>
+/// An external instrument: a name of the user's choosing for a MIDI port and channel, e.g. "Mother32" on
+/// "MIDI4x4 Midi Out 1", channel 12. Properties rather than positional parameters, so that a JSON document
+/// may leave any of them out.
+/// </summary>
+public sealed record LogicInstrument
+{
+    /// <summary>What the user calls the instrument; it becomes part of the track name.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The MIDI output as Web MIDI names it on the Mac: device and port ("MIDI4x4 Midi Out 1"), or one name
+    /// when they are the same ("Scarlett 8i6 USB"). Kept for routing the track to that port; not written yet.
+    /// </summary>
+    public string Port { get; set; } = string.Empty;
+
+    /// <summary>MIDI channel 1-16, as the device counts them.</summary>
+    public int Channel { get; set; }
 }
 
 public sealed record LogicProjectResult(bool Success, AudioStreamInfo? Audio, IReadOnlyList<Diagnostic> Diagnostics);
@@ -301,7 +327,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         var songTicks = checked((uint)ToLogicTicks(score.LengthTicks, score.TicksPerQuarterNote));
 
         // Which MIDI tracks exist comes from the template, so one saved with further tracks fills them too.
-        var tracks = WithChannels(ReadTracks(chunks), options.Channels);
+        var tracks = WithRouting(ReadTracks(chunks), options.Channels, options.Instruments);
         if (tracks.Count == 0)
         {
             throw new InvalidOperationException("The Logic template has no MIDI region in its arrangement.");
