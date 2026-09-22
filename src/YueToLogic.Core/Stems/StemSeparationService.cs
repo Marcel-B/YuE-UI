@@ -19,7 +19,17 @@ public interface IStemSeparationService
 {
     /// <summary>Hands the recording over; the job runs on by itself.</summary>
     /// <param name="dereverb">Also separates the reverb from the vocals, which takes longer.</param>
-    Task<StemJob> StartAsync(Stream flacAudio, bool dereverb = false, CancellationToken cancellationToken = default);
+    /// <param name="model">
+    /// Which separation model does the work, an id from <see cref="ListModelsAsync"/>; without one the
+    /// service takes its own default.
+    /// </param>
+    Task<StemJob> StartAsync(Stream flacAudio, bool dereverb = false, string? model = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The models the service can separate with. The gateway answers this out of its own knowledge, so the
+    /// list is there even while the Mac is not; a host shows it as the choice a job is started with.
+    /// </summary>
+    Task<IReadOnlyList<SeparationModel>> ListModelsAsync(CancellationToken cancellationToken = default);
 
     Task<StemJob> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
@@ -45,13 +55,15 @@ public interface IStemSeparationService
 /// <param name="LastError">Why the job failed, if it did.</param>
 /// <param name="CreatedUtc">When the recording was handed over; the list of jobs is sorted by it.</param>
 /// <param name="UpdatedUtc">When the service last changed the job, e.g. the start of another attempt.</param>
+/// <param name="Model">Which separation model the job runs with; the service names it back on every answer.</param>
 public sealed record StemJob(
     Guid Id,
     string Status,
     int Attempts = 0,
     string? LastError = null,
     DateTimeOffset? CreatedUtc = null,
-    DateTimeOffset? UpdatedUtc = null)
+    DateTimeOffset? UpdatedUtc = null,
+    string? Model = null)
 {
     // Read here rather than sent: a host that serializes the job passes on what the service said, no more.
     [JsonIgnore]
@@ -60,6 +72,35 @@ public sealed record StemJob(
     [JsonIgnore]
     public bool IsFailed => StemJobStatus.Failed.Equals(Status, StringComparison.OrdinalIgnoreCase);
 }
+
+/// <summary>
+/// One of the separation models the service offers. Which one is chosen decides both how long the job runs
+/// and which stems come back, so a host shows more than the name: the id goes into the job, the rest is what
+/// the choice is made by.
+/// </summary>
+/// <param name="Id">The identifier a job is started with.</param>
+/// <param name="Name">How the service names the model for people.</param>
+/// <param name="Family">The family it belongs to, e.g. several models of the same separator.</param>
+/// <param name="Task">What it separates: vocals, instrumental, karaoke, 4stem, 6stem or drums.</param>
+/// <param name="Stems">The files the result ZIP then holds, each without its .wav ending.</param>
+/// <param name="Speed">How much it computes: fast, moderate, slow or verySlow.</param>
+/// <param name="RealtimeFactor">
+/// Audio length divided by computing time: 0.3 means a four-minute song takes about thirteen minutes.
+/// </param>
+/// <param name="Measured">False when the estimate comes from a comparable model rather than a measurement.</param>
+/// <param name="Notes">What the service says about the model, if anything.</param>
+/// <param name="IsDefault">The model a job without a choice runs with.</param>
+public sealed record SeparationModel(
+    string Id,
+    string Name,
+    string? Family = null,
+    string? Task = null,
+    IReadOnlyList<string>? Stems = null,
+    string? Speed = null,
+    double? RealtimeFactor = null,
+    bool Measured = false,
+    string? Notes = null,
+    bool IsDefault = false);
 
 public static class StemJobStatus
 {
@@ -84,15 +125,34 @@ public sealed class StemSeparationService(HttpClient client) : IStemSeparationSe
     /// <summary>The gateway takes the file as the request body rather than as a form.</summary>
     private const string AudioMediaType = "audio/flac";
 
-    public async Task<StemJob> StartAsync(Stream flacAudio, bool dereverb = false, CancellationToken cancellationToken = default)
+    public async Task<StemJob> StartAsync(Stream flacAudio, bool dereverb = false, string? model = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(flacAudio);
         using var content = new StreamContent(flacAudio);
         content.Headers.ContentType = new MediaTypeHeaderValue(AudioMediaType);
 
-        using var response = await SendAsync(() => client.PostAsync($"api/jobs?dereverb={(dereverb ? "true" : "false")}", content, cancellationToken), cancellationToken).ConfigureAwait(false);
+        // No model means the service's own default, so an empty choice is left out rather than sent empty.
+        var url = $"api/jobs?dereverb={(dereverb ? "true" : "false")}";
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            url += $"&model={Uri.EscapeDataString(model)}";
+        }
+
+        using var response = await SendAsync(() => client.PostAsync(url, content, cancellationToken), cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         return await ReadJobAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<SeparationModel>> ListModelsAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(() => client.GetAsync("api/models", cancellationToken), cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        var models = await response.Content
+            .ReadFromJsonAsync(YueToLogicJsonContext.Default.SeparationModelResponseArray, cancellationToken)
+            .ConfigureAwait(false);
+        return models is null
+            ? throw new StemSeparationException("The stem service answered without a list of models.")
+            : Array.ConvertAll(models, ToModel);
     }
 
     public async Task<StemJob> GetAsync(Guid id, CancellationToken cancellationToken = default)
@@ -167,7 +227,20 @@ public sealed class StemSeparationService(HttpClient client) : IStemSeparationSe
     }
 
     private static StemJob ToJob(StemJobResponse job) =>
-        new(job.Id, job.Status ?? StemJobStatus.Queued, job.Attempts, job.LastError, job.CreatedUtc, job.UpdatedUtc);
+        new(job.Id, job.Status ?? StemJobStatus.Queued, job.Attempts, job.LastError, job.CreatedUtc, job.UpdatedUtc, job.Model);
+
+    private static SeparationModel ToModel(SeparationModelResponse model) =>
+        new(
+            model.Id,
+            string.IsNullOrWhiteSpace(model.Name) ? model.Id : model.Name,
+            model.Family,
+            model.Task,
+            model.Stems ?? [],
+            model.Speed,
+            model.RealtimeFactor,
+            model.Measured,
+            model.Notes,
+            model.IsDefault);
 
     /// <summary>Turns a refusal into a message the host can show, since a stem job is optional anyway.</summary>
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -215,6 +288,20 @@ public sealed record StemJobResponse(
     int Attempts = 0,
     string? LastError = null,
     DateTimeOffset? CreatedUtc = null,
-    DateTimeOffset? UpdatedUtc = null);
+    DateTimeOffset? UpdatedUtc = null,
+    string? Model = null);
+
+/// <summary>The model as the gateway writes it; mapped to <see cref="SeparationModel"/> right away.</summary>
+public sealed record SeparationModelResponse(
+    string Id,
+    string? Name = null,
+    string? Family = null,
+    string? Task = null,
+    string[]? Stems = null,
+    string? Speed = null,
+    double? RealtimeFactor = null,
+    bool Measured = false,
+    string? Notes = null,
+    bool IsDefault = false);
 
 public sealed record StemProblemDetails(string? Title, string? Detail);
