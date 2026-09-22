@@ -366,6 +366,14 @@ public class LogicProjectWriterTests
         Assert.Equal("Midi Out 1", Text(slot.Payload, 452, 64));
         Assert.Equal("MIDI4x4", Text(slot.Payload, 516, 32));
 
+        // Switched on, not bypassed: Logic keeps that in the state's header and in the first parameter.
+        Assert.Equal(0, slot.Payload[112]);
+        Assert.Equal(0u, ReadUInt32(slot.Payload, 328));
+
+        // The track's MIDI input is off, so a keyboard does not play the hardware through every routed track.
+        Assert.Equal(0x3f, Strip(chunks, "Bass").Payload[32]);
+        Assert.Equal(0x3e, Strip(chunks, "Vocal").Payload[32]);
+
         // The strip object says the instrument is external (else Logic shows it switched off), and the channel
         // strip setting the template's sound came from ("Agile Synth Bass") is gone with the sound.
         Assert.Equal(1, StripObject(chunks, "Bass").Payload[110]);
@@ -449,6 +457,13 @@ public class LogicProjectWriterTests
         StripObjects(chunks, "AuCU", track).Where(c => c.Payload.Length != 192).OrderBy(c => ReadUInt32(c.Header, 18)).First();
 
     private static LogicChunk StripObject(List<LogicChunk> chunks, string track) => StripObjects(chunks, "AuCO", track).Single();
+
+    /// <summary>The environment object (channel strip) a track's region lies on.</summary>
+    private static LogicChunk Strip(List<LogicChunk> chunks, string track)
+    {
+        var region = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.SequenceName == track);
+        return chunks.Single(c => c.Tag == "Envi" && c.Class == 20 && c.Id == ReadUInt32(region.Payload, region.SequenceLengthOffset - 60 + 204));
+    }
 
     private static LogicChunk SettingObject(List<LogicChunk> chunks, string track) => StripObjects(chunks, "AuCU", track).Single(c => c.Payload.Length == 192);
 

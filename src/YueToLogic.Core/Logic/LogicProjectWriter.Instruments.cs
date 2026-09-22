@@ -9,7 +9,8 @@ namespace YueToLogic.Core.Logic;
 /// output of the Mac's MIDI interfaces, on one channel.
 /// </summary>
 /// <remarks>
-/// Learned from a project Logic Pro 12.3 saved with eight such tracks. A channel strip's plug-ins are <c>AuCU</c>
+/// Learned from a project Logic Pro 12.3 saved with eight such tracks, and from one it saved after this writer
+/// had put the plug-in on a track. A channel strip's plug-ins are <c>AuCU</c>
 /// chunks (class 14) whose header names the strip at byte 14 and the slot at byte 18; the instrument sits in the
 /// lowest slot. Which strip an environment object is, stands right behind its name, counted from one. The
 /// External Instrument's state is 568 bytes: a 144-byte plug-in header, the destination's display name at 196,
@@ -19,7 +20,10 @@ namespace YueToLogic.Core.Logic;
 /// needs no entry there. Two more objects of the strip know about the instrument: the strip object (<c>AuCO</c>)
 /// flags an external instrument at byte 110 - without it Logic shows the plug-in switched off - and a 192-byte
 /// object carries the name of the channel strip setting the sound was chosen from, which is cleared as a
-/// strip with an External Instrument has none.
+/// strip with an External Instrument has none. The plug-in state itself is one Logic saved switched on: byte
+/// 112 of its header and its first parameter are 1 while it is bypassed. Bit 0 of byte 32 of the environment
+/// object turns the track's MIDI input off, so that playing a keyboard does not reach the hardware through
+/// every routed track at once - set on the routed tracks of the reference project as well.
 /// </remarks>
 public sealed partial class LogicProjectWriter
 {
@@ -34,6 +38,10 @@ public sealed partial class LogicProjectWriter
 
     /// <summary>In a strip object: 1 when the instrument is an External Instrument, 0 for a software instrument.</summary>
     private const int ExternalInstrumentFlagOffset = 110;
+
+    /// <summary>In an environment object: the byte whose lowest bit switches the track's MIDI input off.</summary>
+    private const int MidiInputFlagOffset = 32;
+    private const byte MidiInputOff = 0x01;
 
     /// <summary>The strip's setting object: its name and category from byte 14 up to the UUID at 176.</summary>
     private const int SettingObjectLength = 192;
@@ -105,6 +113,7 @@ public sealed partial class LogicProjectWriter
 
             var number = StripNumber(strip);
             slot.Payload = ExternalInstrument(output, track.Channel + 1, timestamp++);
+            strip.Payload[MidiInputFlagOffset] |= MidiInputOff;
             foreach (var stripObject in StripObjects(chunks, "AuCO", number).Where(c => c.Payload.Length > ExternalInstrumentFlagOffset))
             {
                 stripObject.Payload[ExternalInstrumentFlagOffset] = 1;
