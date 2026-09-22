@@ -158,10 +158,15 @@ public sealed class VoiceConversionException(string message, HttpStatusCode? sta
     public string? Code { get; } = code;
 
     /// <summary>
-    /// Whether the same request is worth repeating later. A full queue, a rate limit and an absent Mac pass;
-    /// a recording the service cannot use never will, however often it is sent.
+    /// Whether the same request is worth repeating later. A full queue, a rate limit, an absent Mac and a
+    /// gateway with nothing behind it pass; a recording the service cannot use never will, however often it
+    /// is sent.
     /// </summary>
-    public bool CanRetryLater => StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable;
+    public bool CanRetryLater => StatusCode
+        is HttpStatusCode.TooManyRequests
+        or HttpStatusCode.ServiceUnavailable
+        or HttpStatusCode.BadGateway
+        or HttpStatusCode.GatewayTimeout;
 }
 
 /// <summary>The reasons ChangeMyVoice names in the <c>code</c> field of a problem document.</summary>
@@ -399,6 +404,15 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
         if (response.IsSuccessStatusCode)
         {
             return;
+        }
+
+        // The gateway's own failure, not the service's: nothing there read the request, so this reads like a
+        // service that cannot be reached rather than like one that refused something.
+        if (response.StatusCode is HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout)
+        {
+            throw new VoiceConversionException(
+                $"The voice service cannot be reached: its gateway answered HTTP {(int)response.StatusCode}, so the service behind it is probably not running.",
+                response.StatusCode);
         }
 
         var problem = await ProblemAsync(response, cancellationToken).ConfigureAwait(false);

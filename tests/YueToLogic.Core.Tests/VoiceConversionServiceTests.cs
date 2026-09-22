@@ -253,6 +253,22 @@ public class VoiceConversionServiceTests
         Assert.Contains("the model did not load", exception.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The gateway in front of the service answers 502 when nothing is running behind it. That is not a
+    /// refusal - no one read the request - and it is worth trying again, which the message and the flag say.
+    /// </summary>
+    [Fact]
+    public async Task A_gateway_with_nothing_behind_it_reads_as_a_service_that_is_away()
+    {
+        var handler = new StubHandler(HttpStatusCode.BadGateway, "<html><body>502 Bad Gateway</body></html>");
+
+        var exception = await Assert.ThrowsAsync<VoiceConversionException>(() => Service(handler).ListVoicesAsync());
+
+        Assert.Contains("cannot be reached", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("probably not running", exception.Message, StringComparison.Ordinal);
+        Assert.True(exception.CanRetryLater);
+    }
+
     [Fact]
     public async Task A_service_that_cannot_be_reached_says_so_instead_of_throwing_something_else()
     {
