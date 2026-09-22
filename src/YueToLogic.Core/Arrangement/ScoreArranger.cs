@@ -78,7 +78,7 @@ public sealed class ScoreArranger : IScoreArranger
         // Last of all: the count-in moves the finished arrangement back, including the generated tracks.
         if (options.CountIn is { } countIn)
         {
-            arranged = CountInBuilder.Apply(arranged, countIn);
+            arranged = CountInBuilder.Apply(arranged, countIn, options.Drums?.Notes);
         }
 
         return new ArrangementResult(arranged, diagnostics.ToList());

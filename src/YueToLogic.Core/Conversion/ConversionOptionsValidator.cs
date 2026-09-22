@@ -1,4 +1,5 @@
 using System.Globalization;
+using YueToLogic.Core.Arrangement;
 using YueToLogic.Core.Diagnostics;
 
 namespace YueToLogic.Core.Conversion;
@@ -92,9 +93,20 @@ public static class ConversionOptionsValidator
             }
         }
 
-        if (arrangement.Drums is { } drums && !Enum.IsDefined(drums.Pattern))
+        if (arrangement.Drums is { } drums)
         {
-            errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.drums.pattern '{drums.Pattern}' is not supported."));
+            if (!Enum.IsDefined(drums.Pattern))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.drums.pattern '{drums.Pattern}' is not supported."));
+            }
+
+            if (drums.Notes is { } notes)
+            {
+                foreach (var drum in Enum.GetValues<Drum>())
+                {
+                    CheckNote(errors, $"arrangement.drums.notes.{DrumNotes.JsonName(drum)}", notes.Of(drum));
+                }
+            }
         }
 
         if (arrangement.GuideTones is { } guideTones)
@@ -151,9 +163,9 @@ public static class ConversionOptionsValidator
                 errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.countIn.bars must be between 0 and {MaxCountInBars}, got {countIn.Bars}."));
             }
 
-            if (countIn.Note is < 0 or > 127)
+            if (countIn.Note is { } note)
             {
-                errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.countIn.note must be between 0 and 127, got {countIn.Note}."));
+                CheckNote(errors, "arrangement.countIn.note", note);
             }
 
             CheckVelocity(errors, "arrangement.countIn.velocity", countIn.Velocity);
@@ -171,6 +183,14 @@ public static class ConversionOptionsValidator
         }
 
         return errors.ToList();
+    }
+
+    private static void CheckNote(DiagnosticBag errors, string name, int value)
+    {
+        if (value is < 0 or > 127)
+        {
+            errors.Error(DiagnosticCodes.InvalidOption, Invariant($"{name} must be between 0 and 127, got {value}."));
+        }
     }
 
     private static void CheckVelocity(DiagnosticBag errors, string name, int value)
