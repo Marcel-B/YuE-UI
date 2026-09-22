@@ -11,8 +11,10 @@ namespace YueToLogic.Core.Logic;
 /// <remarks>
 /// Learned from a project Logic Pro 12.3 saved with eight such tracks, and from one it saved after this writer
 /// had put the plug-in on a track. A channel strip's plug-ins are <c>AuCU</c>
-/// chunks (class 14) whose header names the strip at byte 14 and the slot at byte 18; the instrument sits in the
-/// lowest slot. Which strip an environment object is, stands right behind its name, counted from one. The
+/// chunks (class 14) whose header names the strip at byte 14 and the slot at byte 18. Byte 4 of such a chunk
+/// says what it holds - 1 a plug-in instance, 5 the strip's setting, 7 a smart-control archive - and the
+/// number at byte 6 which one: instance 0 is the instrument, 1 and up are the inserts. Which strip an
+/// environment object is, stands right behind its name, counted from one. The
 /// External Instrument's state is 568 bytes: a 144-byte plug-in header, the destination's display name at 196,
 /// its position in Logic's output list (counted from one, 0 = none) at 336, the MIDI channel at 344, the
 /// output's CoreMIDI entry - unique id, port name, device name, the same 100 bytes as in the <c>CorM</c> list of
@@ -20,7 +22,9 @@ namespace YueToLogic.Core.Logic;
 /// needs no entry there. Two more objects of the strip know about the instrument: the strip object (<c>AuCO</c>)
 /// flags an external instrument at byte 110 - without it Logic shows the plug-in switched off - and a 192-byte
 /// object carries the name of the channel strip setting the sound was chosen from, which is cleared as a
-/// strip with an External Instrument has none. The plug-in state itself is one Logic saved switched on: byte
+/// strip with an External Instrument has none. The inserts that came with that setting (an EQ, a compressor,
+/// a reverb) go too, as they do when the sound is removed in Logic, along with their flags in the strip
+/// object at 144 + 4 · index. The plug-in state itself is one Logic saved switched on: byte
 /// 112 of its header and its first parameter are 1 while it is bypassed. Bit 0 of byte 32 of the environment
 /// object turns the track's MIDI input off, so that playing a keyboard does not reach the hardware through
 /// every routed track at once - set on the routed tracks of the reference project as well.
@@ -38,6 +42,15 @@ public sealed partial class LogicProjectWriter
 
     /// <summary>In a strip object: 1 when the instrument is an External Instrument, 0 for a software instrument.</summary>
     private const int ExternalInstrumentFlagOffset = 110;
+
+    /// <summary>In a strip object: one byte per plug-in instance, 1 while it is there; the instrument's, then the inserts'.</summary>
+    private const int PluginFlagsOffset = 144;
+    private const int PluginFlagStride = 4;
+
+    /// <summary>In a plug-in chunk's payload: what it holds at byte 4 (1 = a plug-in instance) and which one at byte 6.</summary>
+    private const int PayloadKindOffset = 4;
+    private const byte PluginInstanceKind = 1;
+    private const int PluginIndexOffset = 6;
 
     /// <summary>In an environment object: the byte whose lowest bit switches the track's MIDI input off.</summary>
     private const int MidiInputFlagOffset = 32;
@@ -114,9 +127,17 @@ public sealed partial class LogicProjectWriter
             var number = StripNumber(strip);
             slot.Payload = ExternalInstrument(output, track.Channel + 1, timestamp++);
             strip.Payload[MidiInputFlagOffset] |= MidiInputOff;
+
+            // The inserts belonged to the sound the template had here; a hardware synthesizer brings its own.
+            var inserts = PluginInstances(chunks, number).Where(c => PluginIndex(c) > 0).ToList();
+            chunks.RemoveAll(inserts.Contains);
             foreach (var stripObject in StripObjects(chunks, "AuCO", number).Where(c => c.Payload.Length > ExternalInstrumentFlagOffset))
             {
                 stripObject.Payload[ExternalInstrumentFlagOffset] = 1;
+                foreach (var flag in inserts.Select(i => PluginFlagsOffset + (PluginFlagStride * PluginIndex(i))).Where(f => f < stripObject.Payload.Length))
+                {
+                    stripObject.Payload[flag] = 0;
+                }
             }
 
             foreach (var setting in StripObjects(chunks, "AuCU", number).Where(c => c.Payload.Length == SettingObjectLength))
@@ -174,12 +195,15 @@ public sealed partial class LogicProjectWriter
         return offset + 2 <= strip.Payload.Length ? BinaryPrimitives.ReadUInt16LittleEndian(strip.Payload.AsSpan(offset, 2)) - 1u : uint.MaxValue;
     }
 
-    /// <summary>The plug-in in the strip's instrument slot: the lowest slot among its plug-ins, the setting object aside.</summary>
+    /// <summary>The plug-in in the strip's instrument slot: plug-in instance 0.</summary>
     private static LogicChunk? InstrumentSlot(List<LogicChunk> chunks, uint strip) =>
-        StripObjects(chunks, "AuCU", strip)
-            .Where(c => c.Payload.Length != SettingObjectLength)
-            .OrderBy(c => ReadUInt32(c.Header, PluginSlotOffset))
-            .FirstOrDefault();
+        PluginInstances(chunks, strip).FirstOrDefault(c => PluginIndex(c) == 0);
+
+    /// <summary>The strip's plug-in instances: the instrument and the inserts, not the setting or the smart-control archives.</summary>
+    private static IEnumerable<LogicChunk> PluginInstances(List<LogicChunk> chunks, uint strip) =>
+        StripObjects(chunks, "AuCU", strip).Where(c => c.Payload.Length > PluginIndexOffset + 2 && c.Payload[PayloadKindOffset] == PluginInstanceKind);
+
+    private static int PluginIndex(LogicChunk plugin) => BinaryPrimitives.ReadUInt16LittleEndian(plugin.Payload.AsSpan(PluginIndexOffset, 2));
 
     /// <summary>The External Instrument's state, sending to <paramref name="output"/> on <paramref name="channel"/> (1-16).</summary>
     private static byte[] ExternalInstrument(MidiOutput output, int channel, long timestamp)

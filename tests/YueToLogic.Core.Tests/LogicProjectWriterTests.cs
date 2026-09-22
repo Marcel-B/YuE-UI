@@ -400,12 +400,22 @@ public class LogicProjectWriterTests
 
         var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273), options);
 
-        var slot = InstrumentSlot(LogicProjectData.Parse(package.ProjectData).Chunks, "Vocal");
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+        var slot = InstrumentSlot(chunks, "Vocal");
         Assert.Equal("External", PluginName(slot));
         Assert.Equal("Scarlett 8i6 USB", Text(slot.Payload, 196, 128));
         Assert.Equal(1u, ReadUInt32(slot.Payload, 336));
         Assert.Equal(1u, ReadUInt32(slot.Payload, 344));
         Assert.Equal("Scarlett 8i6 USB", Text(slot.Payload, 452, 64));
+
+        // The template's vocal sound came with an EQ, a compressor and a reverb; a hardware synthesizer brings its own.
+        var templateChunks = LogicProjectData.Parse(TemplateProjectData).Chunks;
+        Assert.Equal(["Piano", "Channel EQ", "Compressor", "ChromaVerb"], PluginInstances(templateChunks, "Vocal").Select(PluginName));
+        Assert.Equal(["External"], PluginInstances(chunks, "Vocal").Select(PluginName));
+        Assert.Equal([1, 1, 1, 1], Enumerable.Range(0, 4).Select(i => (int)StripObject(templateChunks, "Vocal").Payload[144 + (4 * i)]));
+        Assert.Equal([1, 0, 0, 0], Enumerable.Range(0, 4).Select(i => (int)StripObject(chunks, "Vocal").Payload[144 + (4 * i)]));
+        // The smart-control archives and the setting object stay, as Logic leaves them when the sound goes.
+        Assert.Equal(StripObjects(templateChunks, "AuCU", "Vocal").Count() - 3, StripObjects(chunks, "AuCU", "Vocal").Count());
     }
 
     [Fact]
@@ -454,7 +464,11 @@ public class LogicProjectWriterTests
     /// carries its number behind its name, and the strip's plug-ins carry that number in their headers.
     /// </summary>
     private static LogicChunk InstrumentSlot(List<LogicChunk> chunks, string track) =>
-        StripObjects(chunks, "AuCU", track).Where(c => c.Payload.Length != 192).OrderBy(c => ReadUInt32(c.Header, 18)).First();
+        PluginInstances(chunks, track).Single(c => BinaryPrimitives.ReadUInt16LittleEndian(c.Payload.AsSpan(6, 2)) == 0);
+
+    /// <summary>The instrument and the inserts of a track's strip, in slot order: the chunks whose payload byte 4 marks a plug-in instance.</summary>
+    private static IEnumerable<LogicChunk> PluginInstances(List<LogicChunk> chunks, string track) =>
+        StripObjects(chunks, "AuCU", track).Where(c => c.Payload[4] == 1).OrderBy(c => ReadUInt32(c.Header, 18));
 
     private static LogicChunk StripObject(List<LogicChunk> chunks, string track) => StripObjects(chunks, "AuCO", track).Single();
 
