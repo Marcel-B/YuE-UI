@@ -360,7 +360,7 @@ public class LogicProjectWriterTests
 
         // The destination is written three times, as Logic saves it: display name, position in the output list, CoreMIDI entry.
         Assert.Equal("MIDI4x4 Midi Out 1", Text(slot.Payload, 196, 128));
-        Assert.Equal(2u, ReadUInt32(slot.Payload, 336)); // second output of the template's list, counted from one
+        Assert.Equal(3u, ReadUInt32(slot.Payload, 336)); // third output of the template's list, counted from one
         Assert.Equal(12u, ReadUInt32(slot.Payload, 344));
         Assert.Equal(917_622_827, BinaryPrimitives.ReadInt32LittleEndian(slot.Payload.AsSpan(448))); // the unique id the template's Mac gave the port
         Assert.Equal("Midi Out 1", Text(slot.Payload, 452, 64));
@@ -404,7 +404,7 @@ public class LogicProjectWriterTests
         var slot = InstrumentSlot(chunks, "Vocal");
         Assert.Equal("External", PluginName(slot));
         Assert.Equal("Scarlett 8i6 USB", Text(slot.Payload, 196, 128));
-        Assert.Equal(1u, ReadUInt32(slot.Payload, 336));
+        Assert.Equal(2u, ReadUInt32(slot.Payload, 336));
         Assert.Equal(1u, ReadUInt32(slot.Payload, 344));
         Assert.Equal("Scarlett 8i6 USB", Text(slot.Payload, 452, 64));
 
@@ -412,7 +412,7 @@ public class LogicProjectWriterTests
         var templateChunks = LogicProjectData.Parse(TemplateProjectData).Chunks;
         Assert.Equal(["Piano", "Channel EQ", "Compressor", "ChromaVerb"], PluginInstances(templateChunks, "Vocal").Select(PluginName));
         Assert.Equal(["External"], PluginInstances(chunks, "Vocal").Select(PluginName));
-        Assert.Equal([1, 1, 1, 1], Enumerable.Range(0, 4).Select(i => (int)StripObject(templateChunks, "Vocal").Payload[144 + (4 * i)]));
+        Assert.Equal(1, StripObject(templateChunks, "Vocal").Payload[148]);
         Assert.Equal([1, 0, 0, 0], Enumerable.Range(0, 4).Select(i => (int)StripObject(chunks, "Vocal").Payload[144 + (4 * i)]));
         // The smart-control archives and the setting object stay, as Logic leaves them when the sound goes.
         Assert.Equal(StripObjects(templateChunks, "AuCU", "Vocal").Count() - 3, StripObjects(chunks, "AuCU", "Vocal").Count());
@@ -444,9 +444,9 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
-    public async Task A_drum_machine_designer_track_cannot_be_routed_and_says_why()
+    public async Task An_empty_instrument_slot_takes_the_external_instrument_as_a_new_chunk()
     {
-        // The template's Kick, Snare and HiHat are Drum Machine Designer tracks: an aux each, with the sound on strips of its own.
+        // The template's Kick, Snare and HiHat are instrument tracks with nothing in the instrument slot.
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
         var options = new LogicProjectOptions
         {
@@ -457,11 +457,23 @@ public class LogicProjectWriterTests
         var result = await new LogicProjectWriter().WriteAsync(score, new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273))), sink, options);
 
         Assert.True(result.Success);
-        var warning = Assert.Single(result.Diagnostics, d => d.Code == DiagnosticCodes.LogicTemplateLimitation && d.Message.Contains("Kick", StringComparison.Ordinal));
-        Assert.Contains("Drum Machine Designer", warning.Message, StringComparison.Ordinal);
-        Assert.Contains("Drumbrute Impact", warning.Message, StringComparison.Ordinal);
-        // The name and the channel still go in.
-        Assert.Contains("Kick · Drumbrute Impact", TrackNames(LogicProjectData.Parse(sink.Files[LogicTemplate.ProjectDataPath].ToArray()).Chunks));
+        Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.LogicTemplateLimitation);
+        var chunks = LogicProjectData.Parse(sink.Files[LogicTemplate.ProjectDataPath].ToArray()).Chunks;
+        Assert.Empty(PluginInstances(LogicProjectData.Parse(TemplateProjectData).Chunks, "Kick"));
+        var slot = Assert.Single(PluginInstances(chunks, "Kick"));
+        Assert.Equal("External", PluginName(slot));
+        Assert.Equal("MIDI4x4 Midi Out 2", Text(slot.Payload, 196, 128));
+        Assert.Equal(8u, ReadUInt32(slot.Payload, 344));
+
+        // The new chunk sits right behind the strip object, in the slot the project gives instruments, and the strip object knows it is there.
+        var stripObject = StripObject(chunks, "Kick");
+        Assert.Same(slot, chunks[chunks.IndexOf(stripObject) + 1]);
+        Assert.Equal(ReadUInt32(InstrumentSlot(chunks, "Bass").Header, 18), ReadUInt32(slot.Header, 18));
+        Assert.Equal(ReadUInt32(stripObject.Header, 14), ReadUInt32(slot.Header, 14));
+        Assert.Equal(1, stripObject.Payload[110]);
+        Assert.Equal(1, stripObject.Payload[144]);
+        Assert.Equal(0, StripObject(LogicProjectData.Parse(TemplateProjectData).Chunks, "Kick").Payload[144]);
+        Assert.Contains("Kick · Drumbrute Impact", TrackNames(chunks));
     }
 
     [Fact]
