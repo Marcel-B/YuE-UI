@@ -36,6 +36,24 @@ public class StemSeparationServiceTests
     }
 
     [Fact]
+    public async Task The_list_of_jobs_comes_with_their_timestamps()
+    {
+        var handler = new StubHandler(
+            HttpStatusCode.OK,
+            $$"""[{"id":"{{JobId}}","status":"processing","attempts":2,"lastError":null,"createdUtc":"2026-09-22T08:00:00+00:00","updatedUtc":"2026-09-22T08:05:00+00:00"},{"id":"22222222-2222-3333-4444-555555555555","status":"queued","attempts":0,"lastError":null,"createdUtc":"2026-09-22T07:00:00+00:00","updatedUtc":"2026-09-22T07:00:00+00:00"}]""");
+
+        var jobs = await Service(handler).ListAsync();
+
+        Assert.Equal("/api/jobs", handler.Request!.RequestUri!.PathAndQuery);
+        Assert.Equal(2, jobs.Count);
+        Assert.Equal(JobId, jobs[0].Id);
+        Assert.Equal((StemJobStatus.Processing, 2), (jobs[0].Status, jobs[0].Attempts));
+        Assert.Equal(new DateTimeOffset(2026, 9, 22, 8, 0, 0, TimeSpan.Zero), jobs[0].CreatedUtc);
+        Assert.Equal(new DateTimeOffset(2026, 9, 22, 8, 5, 0, TimeSpan.Zero), jobs[0].UpdatedUtc);
+        Assert.Equal(StemJobStatus.Queued, jobs[1].Status);
+    }
+
+    [Fact]
     public async Task The_result_is_handed_on_as_a_stream()
     {
         var handler = new StubHandler(HttpStatusCode.OK, "PKstems");
@@ -61,6 +79,7 @@ public class StemSeparationServiceTests
     [InlineData(HttpStatusCode.Unauthorized, "API key")]
     [InlineData(HttpStatusCode.TooManyRequests, "queue is full")]
     [InlineData(HttpStatusCode.RequestEntityTooLarge, "larger than the service accepts")]
+    [InlineData(HttpStatusCode.Conflict, "being transferred")]
     public async Task A_refused_request_says_what_the_service_answered(HttpStatusCode status, string expected)
     {
         var handler = new StubHandler(status, string.Empty);
@@ -135,7 +154,7 @@ public class StemSeparationServiceTests
 
             return new HttpResponseMessage(status)
             {
-                Content = new StringContent(body, Encoding.UTF8, body.StartsWith('{') ? "application/json" : "application/octet-stream"),
+                Content = new StringContent(body, Encoding.UTF8, body.StartsWith('{') || body.StartsWith('[') ? "application/json" : "application/octet-stream"),
             };
         }
     }
