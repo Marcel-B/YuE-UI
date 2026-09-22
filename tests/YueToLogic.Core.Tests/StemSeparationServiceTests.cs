@@ -17,10 +17,50 @@ public class StemSeparationServiceTests
 
         Assert.Equal(new StemJob(JobId, "queued"), job);
         Assert.Equal(HttpMethod.Post, handler.Request!.Method);
+        // No model chosen: the parameter stays away so that the service takes its own default.
         Assert.Equal("/api/jobs?dereverb=true", handler.Request.RequestUri!.PathAndQuery);
         Assert.Equal("audio/flac", handler.Request.Content!.Headers.ContentType!.MediaType);
         Assert.Equal("fLaC", handler.Body);
         Assert.Equal("secret", Assert.Single(handler.Request.Headers.GetValues("X-Api-Key")));
+    }
+
+    [Fact]
+    public async Task The_chosen_model_travels_with_the_job_and_comes_back_with_it()
+    {
+        var handler = new StubHandler(HttpStatusCode.Accepted, $$"""{"id":"{{JobId}}","status":"queued","model":"mel_roformer"}""");
+
+        var job = await Service(handler).StartAsync(new MemoryStream("fLaC"u8.ToArray()), dereverb: false, model: "mel_roformer");
+
+        Assert.Equal("/api/jobs?dereverb=false&model=mel_roformer", handler.Request!.RequestUri!.PathAndQuery);
+        Assert.Equal("mel_roformer", job.Model);
+    }
+
+    [Fact]
+    public async Task The_models_of_the_service_are_read_with_what_the_choice_is_made_by()
+    {
+        var handler = new StubHandler(
+            HttpStatusCode.OK,
+            """[{"id":"htdemucs","name":"HTDemucs","family":"demucs","task":"4stem","stems":["vocals","drums","bass","other"],"speed":"fast","realtimeFactor":2.5,"measured":true,"notes":null,"isDefault":true},{"id":"mel_roformer","name":"Mel-RoFormer","family":"roformer","task":"vocals","stems":["vocals","instrumental"],"speed":"slow","realtimeFactor":0.3,"measured":false,"notes":"the cleanest vocals","isDefault":false}]""");
+
+        var models = await Service(handler).ListModelsAsync();
+
+        Assert.Equal("/api/models", handler.Request!.RequestUri!.PathAndQuery);
+        Assert.Equal(2, models.Count);
+        Assert.Equal(("htdemucs", "HTDemucs", "4stem"), (models[0].Id, models[0].Name, models[0].Task));
+        Assert.Equal(["vocals", "drums", "bass", "other"], models[0].Stems!);
+        Assert.Equal((2.5, true, true), (models[0].RealtimeFactor, models[0].Measured, models[0].IsDefault));
+        Assert.Equal(("slow", "the cleanest vocals", false), (models[1].Speed, models[1].Notes, models[1].IsDefault));
+    }
+
+    [Fact]
+    public async Task A_model_without_a_name_is_known_by_its_id()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, """[{"id":"htdemucs"}]""");
+
+        var model = Assert.Single(await Service(handler).ListModelsAsync());
+
+        Assert.Equal(("htdemucs", "htdemucs"), (model.Id, model.Name));
+        Assert.Empty(model.Stems!);
     }
 
     [Fact]
