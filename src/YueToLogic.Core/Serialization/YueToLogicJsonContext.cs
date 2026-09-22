@@ -38,5 +38,7 @@ namespace YueToLogic.Core.Serialization;
 [JsonSerializable(typeof(VoiceJob[]))]
 [JsonSerializable(typeof(VoiceJobResponse))]
 [JsonSerializable(typeof(VoiceJobResponse[]))]
+[JsonSerializable(typeof(VoiceJobPage))]
+[JsonSerializable(typeof(VoiceJobListResponse))]
 [JsonSerializable(typeof(VoiceProblemDetails))]
 public sealed partial class YueToLogicJsonContext : JsonSerializerContext;

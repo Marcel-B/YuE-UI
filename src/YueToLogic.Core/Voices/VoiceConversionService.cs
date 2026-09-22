@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -42,11 +43,19 @@ public interface IVoiceConversionService
     Task<VoiceJob> GetJobAsync(string jobId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Every job the service knows, newest first. Not every ChangeMyVoice answers this yet; one that does not
-    /// refuses with <see cref="HttpStatusCode.NotFound"/>, which a host shows as "this service cannot list
-    /// its jobs" rather than as a failure.
+    /// A page of the service's jobs, newest first. The answer is paged because a job that has been cleared
+    /// away stays on as a record, so the list only ever grows. Not every ChangeMyVoice answers this; one that
+    /// does not refuses with <see cref="HttpStatusCode.NotFound"/>, which a host shows as "this service cannot
+    /// list its jobs" rather than as a failure.
     /// </summary>
-    Task<IReadOnlyList<VoiceJob>> ListJobsAsync(CancellationToken cancellationToken = default);
+    /// <param name="status">Only jobs in this state: QUEUED, RUNNING, COMPLETED, FAILED or CANCELLED.</param>
+    /// <param name="limit">How many jobs the page holds, 1 to 200; without one the service takes 50.</param>
+    /// <param name="offset">How many jobs to skip; this is how the next page is asked for.</param>
+    Task<VoiceJobPage> ListJobsAsync(
+        string? status = null,
+        int? limit = null,
+        int? offset = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>The converted recording as a WAV; the caller owns the stream.</summary>
     Task<Stream> DownloadResultAsync(string jobId, CancellationToken cancellationToken = default);
@@ -98,6 +107,12 @@ public sealed record VoiceJob(
     [JsonIgnore]
     public bool IsFailed => VoiceJobStatus.Failed.Equals(Status, StringComparison.OrdinalIgnoreCase);
 }
+
+/// <summary>
+/// One page of the job list, with what is needed to ask for the next: <paramref name="Total"/> counts every
+/// job the filter matches, not the ones on this page.
+/// </summary>
+public sealed record VoiceJobPage(IReadOnlyList<VoiceJob> Jobs, int Total, int Limit, int Offset);
 
 /// <summary>
 /// What the model is told beyond the two recordings. Every value is optional; left out, the service takes its
@@ -199,9 +214,9 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
         form.Add(source, "source", FileName(fileName));
 
         // Every setting is optional; what is not chosen stays away so the service takes its own default.
-        Add(form, "diffusionSteps", settings?.DiffusionSteps?.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        Add(form, "inferenceCfgRate", settings?.InferenceCfgRate?.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        Add(form, "lengthAdjust", settings?.LengthAdjust?.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Add(form, "diffusionSteps", settings?.DiffusionSteps?.ToString(CultureInfo.InvariantCulture));
+        Add(form, "inferenceCfgRate", settings?.InferenceCfgRate?.ToString(CultureInfo.InvariantCulture));
+        Add(form, "lengthAdjust", settings?.LengthAdjust?.ToString(CultureInfo.InvariantCulture));
         Add(form, "f0Condition", settings?.F0Condition?.ToString().ToLowerInvariant());
         Add(form, "fp16", settings?.Fp16?.ToString().ToLowerInvariant());
 
@@ -217,16 +232,38 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
         return await ReadJobAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<VoiceJob>> ListJobsAsync(CancellationToken cancellationToken = default)
+    public async Task<VoiceJobPage> ListJobsAsync(
+        string? status = null,
+        int? limit = null,
+        int? offset = null,
+        CancellationToken cancellationToken = default)
     {
-        using var response = await SendAsync(() => client.GetAsync(Jobs, cancellationToken), cancellationToken).ConfigureAwait(false);
+        // What is not asked for stays out of the query, so the service's own defaults apply.
+        var query = new List<string>(3);
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query.Add($"status={Uri.EscapeDataString(status)}");
+        }
+
+        if (limit is { } count)
+        {
+            query.Add($"limit={count.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        if (offset is { } skip)
+        {
+            query.Add($"offset={skip.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        var url = query.Count == 0 ? Jobs : $"{Jobs}?{string.Join('&', query)}";
+        using var response = await SendAsync(() => client.GetAsync(url, cancellationToken), cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
-        var jobs = await response.Content
-            .ReadFromJsonAsync(YueToLogicJsonContext.Default.VoiceJobResponseArray, cancellationToken)
+        var page = await response.Content
+            .ReadFromJsonAsync(YueToLogicJsonContext.Default.VoiceJobListResponse, cancellationToken)
             .ConfigureAwait(false);
-        return jobs is null
+        return page is null
             ? throw new VoiceConversionException("The voice service answered without a list of jobs.")
-            : Array.ConvertAll(jobs, ToJob);
+            : new VoiceJobPage(Array.ConvertAll(page.Items ?? [], ToJob), page.Total, page.Limit, page.Offset);
     }
 
     public async Task<Stream> DownloadResultAsync(string jobId, CancellationToken cancellationToken = default)
@@ -358,6 +395,13 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
         }
     }
 }
+
+/// <summary>A page of jobs as the service writes it; mapped to <see cref="VoiceJobPage"/> right away.</summary>
+public sealed record VoiceJobListResponse(
+    VoiceJobResponse[]? Items = null,
+    int Total = 0,
+    int Limit = 0,
+    int Offset = 0);
 
 /// <summary>The job as the service writes it; mapped to <see cref="VoiceJob"/> right away.</summary>
 public sealed record VoiceJobResponse(

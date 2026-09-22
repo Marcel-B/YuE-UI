@@ -108,22 +108,37 @@ public class VoiceConversionServiceTests
     }
 
     [Fact]
-    public async Task The_list_of_jobs_comes_with_their_timestamps()
+    public async Task The_list_of_jobs_comes_as_a_page_with_their_timestamps()
     {
         var handler = new StubHandler(
             HttpStatusCode.OK,
             $$"""
-            [{"jobId":"{{JobId}}","status":"RUNNING","voiceLabel":"Marcel","createdAtUtc":"2026-09-22T08:00:00+00:00","startedAtUtc":"2026-09-22T08:01:00+00:00"},
-             {"jobId":"job-0815","status":"CANCELLED","createdAtUtc":"2026-09-22T07:00:00+00:00"}]
+            {"items":
+              [{"jobId":"{{JobId}}","status":"RUNNING","voiceLabel":"Marcel","createdAtUtc":"2026-09-22T08:00:00+00:00","startedAtUtc":"2026-09-22T08:01:00+00:00"},
+               {"jobId":"job-0815","status":"CANCELLED","createdAtUtc":"2026-09-22T07:00:00+00:00"}],
+             "total":137,"limit":25,"offset":50}
             """);
 
-        var jobs = await Service(handler).ListJobsAsync();
+        var page = await Service(handler).ListJobsAsync();
 
+        // Nothing was asked for, so the service's own page size and order apply.
         Assert.Equal("/api/v1/jobs", handler.Request!.RequestUri!.PathAndQuery);
-        Assert.Equal(2, jobs.Count);
-        Assert.Equal((JobId, VoiceJobStatus.Running, "Marcel"), (jobs[0].Id, jobs[0].Status, jobs[0].VoiceLabel));
-        Assert.Equal(new DateTimeOffset(2026, 9, 22, 8, 1, 0, TimeSpan.Zero), jobs[0].StartedUtc);
-        Assert.Equal(VoiceJobStatus.Cancelled, jobs[1].Status);
+        Assert.Equal((137, 25, 50), (page.Total, page.Limit, page.Offset));
+        Assert.Equal(2, page.Jobs.Count);
+        Assert.Equal((JobId, VoiceJobStatus.Running, "Marcel"), (page.Jobs[0].Id, page.Jobs[0].Status, page.Jobs[0].VoiceLabel));
+        Assert.Equal(new DateTimeOffset(2026, 9, 22, 8, 1, 0, TimeSpan.Zero), page.Jobs[0].StartedUtc);
+        Assert.Equal(VoiceJobStatus.Cancelled, page.Jobs[1].Status);
+    }
+
+    [Fact]
+    public async Task A_page_is_asked_for_by_state_size_and_offset()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, """{"items":[],"total":0,"limit":25,"offset":0}""");
+
+        var page = await Service(handler).ListJobsAsync(VoiceJobStatus.Failed, 25, 50);
+
+        Assert.Equal("/api/v1/jobs?status=FAILED&limit=25&offset=50", handler.Request!.RequestUri!.PathAndQuery);
+        Assert.Empty(page.Jobs);
     }
 
     /// <summary>
