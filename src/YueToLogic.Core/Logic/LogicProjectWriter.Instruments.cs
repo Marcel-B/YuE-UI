@@ -43,6 +43,10 @@ public sealed partial class LogicProjectWriter
     /// <summary>In a strip object: 1 when the instrument is an External Instrument, 0 for a software instrument.</summary>
     private const int ExternalInstrumentFlagOffset = 110;
 
+    /// <summary>In a strip object: what kind of strip it is, as Logic names it (" Inst 7", " Aux 4"), zero-padded.</summary>
+    private const int StripKindOffset = 60;
+    private const int StripKindLength = 16;
+
     /// <summary>In a strip object: one byte per plug-in instance, 1 while it is there; the instrument's, then the inserts'.</summary>
     private const int PluginFlagsOffset = 144;
     private const int PluginFlagStride = 4;
@@ -118,9 +122,15 @@ public sealed partial class LogicProjectWriter
 
             if (!strips.TryGetValue(track.Environment, out var strip) || InstrumentSlot(chunks, StripNumber(strip)) is not { } slot)
             {
+                // A Drum Machine Designer track lies on an aux; its sounds sit on sub-strips of their own, which a
+                // MIDI region on the track does not reach through an External Instrument.
+                var kind = strip is null ? null : StripObjects(chunks, "AuCO", StripNumber(strip)).Select(StripKind).FirstOrDefault();
+                var reason = kind is { Length: > 0 } && kind.StartsWith("Aux", StringComparison.Ordinal)
+                    ? "lies on an aux in the Logic template - a Drum Machine Designer track, whose sounds sit on strips of their own - so it has no instrument slot"
+                    : "has no instrument slot in the Logic template";
                 diagnostics.Warning(
                     DiagnosticCodes.LogicTemplateLimitation,
-                    $"Track '{track.Region}' has no instrument slot in the Logic template, so instrument '{track.Instrument}' could not be put on it.");
+                    $"Track '{track.Region}' {reason}; instrument '{track.Instrument}' could not be put on it. A template saved with an ordinary software instrument track of that name can be routed.");
                 continue;
             }
 
@@ -146,6 +156,12 @@ public sealed partial class LogicProjectWriter
             }
         }
     }
+
+    /// <summary>What a strip object says its strip is: "Inst 7", "Aux 4", "Bus 1" and so on.</summary>
+    private static string StripKind(LogicChunk stripObject) =>
+        stripObject.Payload.Length >= StripKindOffset + StripKindLength
+            ? FixedString(stripObject.Payload, StripKindOffset, StripKindLength)
+            : string.Empty;
 
     /// <summary>The audio objects of a channel strip with the given tag: plug-in instances (<c>AuCU</c>) or the strip object itself (<c>AuCO</c>).</summary>
     private static IEnumerable<LogicChunk> StripObjects(List<LogicChunk> chunks, string tag, uint strip) =>

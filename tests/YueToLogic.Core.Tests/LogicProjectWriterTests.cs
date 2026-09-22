@@ -444,6 +444,27 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task A_drum_machine_designer_track_cannot_be_routed_and_says_why()
+    {
+        // The template's Kick, Snare and HiHat are Drum Machine Designer tracks: an aux each, with the sound on strips of its own.
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            Instruments = new Dictionary<string, LogicInstrument> { ["Kick"] = new() { Name = "Drumbrute Impact", Port = "MIDI4x4 Midi Out 2", Channel = 8 } },
+        };
+
+        var sink = new MemorySink();
+        var result = await new LogicProjectWriter().WriteAsync(score, new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273))), sink, options);
+
+        Assert.True(result.Success);
+        var warning = Assert.Single(result.Diagnostics, d => d.Code == DiagnosticCodes.LogicTemplateLimitation && d.Message.Contains("Kick", StringComparison.Ordinal));
+        Assert.Contains("Drum Machine Designer", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("Drumbrute Impact", warning.Message, StringComparison.Ordinal);
+        // The name and the channel still go in.
+        Assert.Contains("Kick · Drumbrute Impact", TrackNames(LogicProjectData.Parse(sink.Files[LogicTemplate.ProjectDataPath].ToArray()).Chunks));
+    }
+
+    [Fact]
     public async Task An_instrument_without_an_output_keeps_the_template_instrument()
     {
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
