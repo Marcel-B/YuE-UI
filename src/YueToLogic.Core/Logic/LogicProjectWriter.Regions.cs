@@ -69,8 +69,9 @@ public sealed partial class LogicProjectWriter
             }
         }
 
-        foreach (var (name, _, _, channel, _) in tracks)
+        foreach (var track in tracks)
         {
+            var (name, channel) = (track.Region, track.Channel);
             var sourceId = regionByName[name];
             var notes = events[name];
             var slices = new List<(RegionSegment Segment, List<LogicNote> Notes)>();

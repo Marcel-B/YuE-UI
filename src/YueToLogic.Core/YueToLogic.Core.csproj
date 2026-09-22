@@ -19,6 +19,7 @@
   <ItemGroup>
     <!-- Logic Pro template (saved by Logic Pro 12.3), filled by LogicProjectWriter. -->
     <EmbeddedResource Include="Logic/Template/*" LogicalName="YueToLogic.LogicTemplate.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Logic/ExternalInstrument.bin" LogicalName="YueToLogic.ExternalInstrument" />
   </ItemGroup>
 
 </Project>

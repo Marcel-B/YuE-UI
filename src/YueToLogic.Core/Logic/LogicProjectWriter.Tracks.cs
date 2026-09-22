@@ -33,9 +33,15 @@ public sealed partial class LogicProjectWriter
 
     /// <summary>
     /// A MIDI track of the template: the region on it, its channel strip, the channel it plays on and, if the
-    /// caller named one, the instrument it plays.
+    /// caller named one, the instrument it plays and the MIDI output that instrument listens on.
     /// </summary>
-    private readonly record struct TemplateTrack(string Region, uint RegionId, uint Environment, int Channel, string? Instrument = null)
+    private readonly record struct TemplateTrack(
+        string Region,
+        uint RegionId,
+        uint Environment,
+        int Channel,
+        string? Instrument = null,
+        string? Port = null)
     {
         /// <summary>The name for the track header: the part alone, or the part and its instrument.</summary>
         public string Title => Instrument is null ? Region : Region + InstrumentSeparator + Instrument;
@@ -136,6 +142,7 @@ public sealed partial class LogicProjectWriter
                 return track with
                 {
                     Instrument = instrument.Name.Trim(),
+                    Port = string.IsNullOrWhiteSpace(instrument.Port) ? null : instrument.Port.Trim(),
                     Channel = instrument.Channel is >= 1 and <= 16 ? instrument.Channel - 1 : track.Channel,
                 };
             }
