@@ -338,6 +338,168 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task An_instrument_with_a_known_output_puts_an_external_instrument_on_the_track()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            Instruments = new Dictionary<string, LogicInstrument>
+            {
+                ["Bass"] = new() { Name = "Mother32", Port = "MIDI4x4 Midi Out 1", Channel = 12 },
+            },
+        };
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273), options);
+
+        // The template's Alchemy in the bass strip's instrument slot gives way to Logic's External Instrument.
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+        Assert.Equal("Alchemy", PluginName(InstrumentSlot(LogicProjectData.Parse(TemplateProjectData).Chunks, "Bass")));
+        var slot = InstrumentSlot(chunks, "Bass");
+        Assert.Equal("External", PluginName(slot));
+        Assert.Equal(568, slot.Payload.Length);
+
+        // The destination is written three times, as Logic saves it: display name, position in the output list, CoreMIDI entry.
+        Assert.Equal("MIDI4x4 Midi Out 1", Text(slot.Payload, 196, 128));
+        Assert.Equal(2u, ReadUInt32(slot.Payload, 336)); // second output of the template's list, counted from one
+        Assert.Equal(12u, ReadUInt32(slot.Payload, 344));
+        Assert.Equal(917_622_827, BinaryPrimitives.ReadInt32LittleEndian(slot.Payload.AsSpan(448))); // the unique id the template's Mac gave the port
+        Assert.Equal("Midi Out 1", Text(slot.Payload, 452, 64));
+        Assert.Equal("MIDI4x4", Text(slot.Payload, 516, 32));
+
+        // Switched on, not bypassed: Logic keeps that in the state's header and in the first parameter.
+        Assert.Equal(0, slot.Payload[112]);
+        Assert.Equal(0u, ReadUInt32(slot.Payload, 328));
+
+        // The track's MIDI input is off, so a keyboard does not play the hardware through every routed track.
+        Assert.Equal(0x3f, Strip(chunks, "Bass").Payload[32]);
+        Assert.Equal(0x3e, Strip(chunks, "Vocal").Payload[32]);
+
+        // The strip object says the instrument is external (else Logic shows it switched off), and the channel
+        // strip setting the template's sound came from ("Agile Synth Bass") is gone with the sound.
+        Assert.Equal(1, StripObject(chunks, "Bass").Payload[110]);
+        Assert.Equal(0, StripObject(chunks, "Vocal").Payload[110]);
+        Assert.Equal("", Text(SettingObject(chunks, "Bass").Payload, 16, 64));
+        Assert.Equal("Agile Synth Bass", Text(SettingObject(LogicProjectData.Parse(TemplateProjectData).Chunks, "Bass").Payload, 16, 64));
+        Assert.Equal("Studio Grand", Text(SettingObject(chunks, "Vocal").Payload, 16, 64));
+
+        // The other tracks keep their software instruments.
+        Assert.Equal("Piano", PluginName(InstrumentSlot(chunks, "Vocal")));
+    }
+
+    [Fact]
+    public async Task An_output_named_like_its_device_is_matched_by_that_one_name()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            Instruments = new Dictionary<string, LogicInstrument>
+            {
+                ["Vocal"] = new() { Name = "WASP Deluxe", Port = " scarlett 8i6 usb ", Channel = 1 },
+            },
+        };
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273), options);
+
+        var chunks = LogicProjectData.Parse(package.ProjectData).Chunks;
+        var slot = InstrumentSlot(chunks, "Vocal");
+        Assert.Equal("External", PluginName(slot));
+        Assert.Equal("Scarlett 8i6 USB", Text(slot.Payload, 196, 128));
+        Assert.Equal(1u, ReadUInt32(slot.Payload, 336));
+        Assert.Equal(1u, ReadUInt32(slot.Payload, 344));
+        Assert.Equal("Scarlett 8i6 USB", Text(slot.Payload, 452, 64));
+
+        // The template's vocal sound came with an EQ, a compressor and a reverb; a hardware synthesizer brings its own.
+        var templateChunks = LogicProjectData.Parse(TemplateProjectData).Chunks;
+        Assert.Equal(["Piano", "Channel EQ", "Compressor", "ChromaVerb"], PluginInstances(templateChunks, "Vocal").Select(PluginName));
+        Assert.Equal(["External"], PluginInstances(chunks, "Vocal").Select(PluginName));
+        Assert.Equal([1, 1, 1, 1], Enumerable.Range(0, 4).Select(i => (int)StripObject(templateChunks, "Vocal").Payload[144 + (4 * i)]));
+        Assert.Equal([1, 0, 0, 0], Enumerable.Range(0, 4).Select(i => (int)StripObject(chunks, "Vocal").Payload[144 + (4 * i)]));
+        // The smart-control archives and the setting object stay, as Logic leaves them when the sound goes.
+        Assert.Equal(StripObjects(templateChunks, "AuCU", "Vocal").Count() - 3, StripObjects(chunks, "AuCU", "Vocal").Count());
+    }
+
+    [Fact]
+    public async Task An_output_the_template_does_not_know_leaves_the_instrument_and_says_so()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            Instruments = new Dictionary<string, LogicInstrument>
+            {
+                ["Bass"] = new() { Name = "Mother32", Port = "Fake Port 9", Channel = 12 },
+            },
+        };
+
+        var sink = new MemorySink();
+        var result = await new LogicProjectWriter().WriteAsync(score, new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273))), sink, options);
+
+        Assert.True(result.Success);
+        var warning = Assert.Single(result.Diagnostics, d => d.Code == DiagnosticCodes.MidiPortUnknown);
+        Assert.Contains("Fake Port 9", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("MIDI4x4 Midi Out 1", warning.Message, StringComparison.Ordinal);
+        var chunks = LogicProjectData.Parse(sink.Files[LogicTemplate.ProjectDataPath].ToArray()).Chunks;
+        Assert.Equal("Alchemy", PluginName(InstrumentSlot(chunks, "Bass")));
+        // The name and the channel are still worth having.
+        Assert.Contains("Bass · Mother32", TrackNames(chunks));
+    }
+
+    [Fact]
+    public async Task An_instrument_without_an_output_keeps_the_template_instrument()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            Instruments = new Dictionary<string, LogicInstrument> { ["Bass"] = new() { Name = "Mother32", Channel = 12 } },
+        };
+
+        var sink = new MemorySink();
+        var result = await new LogicProjectWriter().WriteAsync(score, new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273))), sink, options);
+
+        Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.MidiPortUnknown);
+        Assert.Equal("Alchemy", PluginName(InstrumentSlot(LogicProjectData.Parse(sink.Files[LogicTemplate.ProjectDataPath].ToArray()).Chunks, "Bass")));
+    }
+
+    /// <summary>
+    /// The plug-in in the instrument slot of the strip a track lies on: the region names its strip, the strip
+    /// carries its number behind its name, and the strip's plug-ins carry that number in their headers.
+    /// </summary>
+    private static LogicChunk InstrumentSlot(List<LogicChunk> chunks, string track) =>
+        PluginInstances(chunks, track).Single(c => BinaryPrimitives.ReadUInt16LittleEndian(c.Payload.AsSpan(6, 2)) == 0);
+
+    /// <summary>The instrument and the inserts of a track's strip, in slot order: the chunks whose payload byte 4 marks a plug-in instance.</summary>
+    private static IEnumerable<LogicChunk> PluginInstances(List<LogicChunk> chunks, string track) =>
+        StripObjects(chunks, "AuCU", track).Where(c => c.Payload[4] == 1).OrderBy(c => ReadUInt32(c.Header, 18));
+
+    private static LogicChunk StripObject(List<LogicChunk> chunks, string track) => StripObjects(chunks, "AuCO", track).Single();
+
+    /// <summary>The environment object (channel strip) a track's region lies on.</summary>
+    private static LogicChunk Strip(List<LogicChunk> chunks, string track)
+    {
+        var region = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.SequenceName == track);
+        return chunks.Single(c => c.Tag == "Envi" && c.Class == 20 && c.Id == ReadUInt32(region.Payload, region.SequenceLengthOffset - 60 + 204));
+    }
+
+    private static LogicChunk SettingObject(List<LogicChunk> chunks, string track) => StripObjects(chunks, "AuCU", track).Single(c => c.Payload.Length == 192);
+
+    private static IEnumerable<LogicChunk> StripObjects(List<LogicChunk> chunks, string tag, string track)
+    {
+        var region = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.SequenceName == track);
+        var strip = chunks.Single(c => c.Tag == "Envi" && c.Class == 20 && c.Id == ReadUInt32(region.Payload, region.SequenceLengthOffset - 60 + 204));
+        var nameLength = BinaryPrimitives.ReadUInt16LittleEndian(strip.Payload.AsSpan(158, 2));
+        var number = BinaryPrimitives.ReadUInt16LittleEndian(strip.Payload.AsSpan(160 + nameLength + (nameLength & 1), 2)) - 1u;
+        return chunks.Where(c => c.Tag == tag && c.Class == 14 && ReadUInt32(c.Header, 10) == 36 && ReadUInt32(c.Header, 14) == number);
+    }
+
+    private static string PluginName(LogicChunk plugin) => Text(plugin.Payload, 120, 12);
+
+    private static string Text(byte[] buffer, int offset, int length)
+    {
+        var field = buffer.AsSpan(offset, length);
+        var end = field.IndexOf((byte)0);
+        return System.Text.Encoding.UTF8.GetString(end < 0 ? field : field[..end]);
+    }
+
+    [Fact]
     public void An_instrument_read_from_json_may_leave_the_port_out()
     {
         var instruments = System.Text.Json.JsonSerializer.Deserialize(

@@ -14,7 +14,7 @@ internal static class LogicObjectRegistry
     private const int TimestampEntryLength = 16;
 
     /// <summary>100-ns intervals between the Gregorian calendar reform (UUID epoch) and 0001-01-01.</summary>
-    private const long UuidEpochTicks = 499_163_040_000_000_000;
+    internal const long UuidEpochTicks = 499_163_040_000_000_000;
 
     public static byte[] Register(byte[] song, IReadOnlyCollection<(uint Class, uint Id)> objects, DateTimeOffset now, Random random)
     {
@@ -132,7 +132,8 @@ internal static class LogicObjectRegistry
     }
 
     /// <summary>An RFC 4122 version-1 UUID (big-endian, as Logic stores it) with random clock sequence and node.</summary>
-    private static (byte[] Uuid, ulong Timestamp) NewTimeBasedUuid(long timestamp, Random random)
+    /// <summary>A version-1 UUID as Logic writes them, from a timestamp in 100-ns intervals since the UUID epoch.</summary>
+    internal static (byte[] Uuid, ulong Timestamp) NewTimeBasedUuid(long timestamp, Random random)
     {
         var timeLow = (uint)timestamp;
         var timeMid = (ushort)(timestamp >> 32);

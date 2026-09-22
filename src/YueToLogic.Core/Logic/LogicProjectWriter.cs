@@ -58,7 +58,9 @@ public sealed record LogicProjectOptions
 
     /// <summary>
     /// The hardware instrument a track plays, keyed by track name. It puts the instrument's channel on the
-    /// track's notes, ahead of <see cref="Channels"/>, and names the track after both, e.g. "Bass · Mother32".
+    /// track's notes, ahead of <see cref="Channels"/>, names the track after both, e.g. "Bass · Mother32", and,
+    /// when the instrument names a MIDI output the template knows, replaces the track's software instrument
+    /// with Logic's External Instrument sending to that output and channel.
     /// </summary>
     public IReadOnlyDictionary<string, LogicInstrument> Instruments { get; set; } = new Dictionary<string, LogicInstrument>();
 }
@@ -75,7 +77,8 @@ public sealed record LogicInstrument
 
     /// <summary>
     /// The MIDI output as Web MIDI names it on the Mac: device and port ("MIDI4x4 Midi Out 1"), or one name
-    /// when they are the same ("Scarlett 8i6 USB"). Kept for routing the track to that port; not written yet.
+    /// when they are the same ("Scarlett 8i6 USB"). The track is routed to it through an External Instrument
+    /// if the output is among those the template lists; otherwise the project says so and keeps its instrument.
     /// </summary>
     public string Port { get; set; } = string.Empty;
 
@@ -381,6 +384,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
 
         // Renamed before the regions are cut up, while the track list still matches the placements one to one.
         WriteTrackNames(chunks, tracks);
+        WriteExternalInstruments(chunks, tracks, diagnostics);
 
         created.AddRange(WriteChordTrack(chunks, score));
         created.AddRange(WriteArrangementMarkers(chunks, score));

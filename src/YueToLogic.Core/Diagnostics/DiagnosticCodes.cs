@@ -43,6 +43,9 @@ public static class DiagnosticCodes
     /// <summary>The stems of a separation could not be put into the project.</summary>
     public const string StemsUnavailable = "YTL054";
 
+    /// <summary>An instrument names a MIDI output the Logic template does not know, so its track is not routed.</summary>
+    public const string MidiPortUnknown = "YTL055";
+
     // Fatal
     public const string NoMusic = "YTL040";
     public const string TickResolution = "YTL041";
