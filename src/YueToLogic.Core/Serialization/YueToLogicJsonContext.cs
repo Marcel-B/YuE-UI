@@ -21,6 +21,8 @@ namespace YueToLogic.Core.Serialization;
 [JsonSerializable(typeof(Diagnostic[]))]
 [JsonSerializable(typeof(Dictionary<string, LogicInstrument>))]
 [JsonSerializable(typeof(StemJob))]
+[JsonSerializable(typeof(StemJob[]))]
 [JsonSerializable(typeof(StemJobResponse))]
+[JsonSerializable(typeof(StemJobResponse[]))]
 [JsonSerializable(typeof(StemProblemDetails))]
 public sealed partial class YueToLogicJsonContext : JsonSerializerContext;

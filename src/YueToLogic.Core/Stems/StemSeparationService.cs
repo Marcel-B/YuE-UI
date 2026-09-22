@@ -23,17 +23,35 @@ public interface IStemSeparationService
 
     Task<StemJob> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Every job the service knows, newest first. The service takes only a couple of waiting jobs at a time,
+    /// so this is how a host finds out what is holding the queue up and what can be removed.
+    /// </summary>
+    Task<IReadOnlyList<StemJob>> ListAsync(CancellationToken cancellationToken = default);
+
     /// <summary>The result as a ZIP of WAV files; the caller owns the stream.</summary>
     Task<Stream> DownloadAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>Confirms the import, whereupon the service removes the result and the job.</summary>
+    /// <summary>
+    /// Confirms the import, whereupon the service removes the result and the job. The same call cancels a job
+    /// that is still queued and frees its place; only a job being transferred to the Mac cannot be removed,
+    /// which the service refuses with <see cref="HttpStatusCode.Conflict"/>.
+    /// </summary>
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
 /// <param name="Status">What the service reports: queued, processing, completed or failed.</param>
 /// <param name="Attempts">How often the separation has been tried; it is retried after a network error.</param>
 /// <param name="LastError">Why the job failed, if it did.</param>
-public sealed record StemJob(Guid Id, string Status, int Attempts = 0, string? LastError = null)
+/// <param name="CreatedUtc">When the recording was handed over; the list of jobs is sorted by it.</param>
+/// <param name="UpdatedUtc">When the service last changed the job, e.g. the start of another attempt.</param>
+public sealed record StemJob(
+    Guid Id,
+    string Status,
+    int Attempts = 0,
+    string? LastError = null,
+    DateTimeOffset? CreatedUtc = null,
+    DateTimeOffset? UpdatedUtc = null)
 {
     // Read here rather than sent: a host that serializes the job passes on what the service said, no more.
     [JsonIgnore]
@@ -82,6 +100,18 @@ public sealed class StemSeparationService(HttpClient client) : IStemSeparationSe
         using var response = await SendAsync(() => client.GetAsync($"api/jobs/{id}", cancellationToken), cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         return await ReadJobAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<StemJob>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(() => client.GetAsync("api/jobs", cancellationToken), cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        var jobs = await response.Content
+            .ReadFromJsonAsync(YueToLogicJsonContext.Default.StemJobResponseArray, cancellationToken)
+            .ConfigureAwait(false);
+        return jobs is null
+            ? throw new StemSeparationException("The stem service answered without a list of jobs.")
+            : Array.ConvertAll(jobs, ToJob);
     }
 
     public async Task<Stream> DownloadAsync(Guid id, CancellationToken cancellationToken = default)
@@ -133,8 +163,11 @@ public sealed class StemSeparationService(HttpClient client) : IStemSeparationSe
             .ConfigureAwait(false);
         return job is null
             ? throw new StemSeparationException("The stem service answered without a job.")
-            : new StemJob(job.Id, job.Status ?? StemJobStatus.Queued, job.Attempts, job.LastError);
+            : ToJob(job);
     }
+
+    private static StemJob ToJob(StemJobResponse job) =>
+        new(job.Id, job.Status ?? StemJobStatus.Queued, job.Attempts, job.LastError, job.CreatedUtc, job.UpdatedUtc);
 
     /// <summary>Turns a refusal into a message the host can show, since a stem job is optional anyway.</summary>
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -151,6 +184,7 @@ public sealed class StemSeparationService(HttpClient client) : IStemSeparationSe
             HttpStatusCode.RequestEntityTooLarge => "the recording is larger than the service accepts",
             HttpStatusCode.UnsupportedMediaType => "the file is not a FLAC",
             HttpStatusCode.TooManyRequests => "the service is busy; its queue is full",
+            HttpStatusCode.Conflict => "the job is being transferred to the Mac right now and cannot be removed until that is over",
             _ => await DetailAsync(response, cancellationToken).ConfigureAwait(false),
         };
 
@@ -175,6 +209,12 @@ public sealed class StemSeparationService(HttpClient client) : IStemSeparationSe
 }
 
 /// <summary>The job as the gateway writes it; mapped to <see cref="StemJob"/> right away.</summary>
-public sealed record StemJobResponse(Guid Id, string? Status, int Attempts = 0, string? LastError = null);
+public sealed record StemJobResponse(
+    Guid Id,
+    string? Status,
+    int Attempts = 0,
+    string? LastError = null,
+    DateTimeOffset? CreatedUtc = null,
+    DateTimeOffset? UpdatedUtc = null);
 
 public sealed record StemProblemDetails(string? Title, string? Detail);
