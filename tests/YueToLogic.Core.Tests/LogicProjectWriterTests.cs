@@ -366,6 +366,14 @@ public class LogicProjectWriterTests
         Assert.Equal("Midi Out 1", Text(slot.Payload, 452, 64));
         Assert.Equal("MIDI4x4", Text(slot.Payload, 516, 32));
 
+        // The strip object says the instrument is external (else Logic shows it switched off), and the channel
+        // strip setting the template's sound came from ("Agile Synth Bass") is gone with the sound.
+        Assert.Equal(1, StripObject(chunks, "Bass").Payload[110]);
+        Assert.Equal(0, StripObject(chunks, "Vocal").Payload[110]);
+        Assert.Equal("", Text(SettingObject(chunks, "Bass").Payload, 16, 64));
+        Assert.Equal("Agile Synth Bass", Text(SettingObject(LogicProjectData.Parse(TemplateProjectData).Chunks, "Bass").Payload, 16, 64));
+        Assert.Equal("Studio Grand", Text(SettingObject(chunks, "Vocal").Payload, 16, 64));
+
         // The other tracks keep their software instruments.
         Assert.Equal("Piano", PluginName(InstrumentSlot(chunks, "Vocal")));
     }
@@ -437,16 +445,20 @@ public class LogicProjectWriterTests
     /// The plug-in in the instrument slot of the strip a track lies on: the region names its strip, the strip
     /// carries its number behind its name, and the strip's plug-ins carry that number in their headers.
     /// </summary>
-    private static LogicChunk InstrumentSlot(List<LogicChunk> chunks, string track)
+    private static LogicChunk InstrumentSlot(List<LogicChunk> chunks, string track) =>
+        StripObjects(chunks, "AuCU", track).Where(c => c.Payload.Length != 192).OrderBy(c => ReadUInt32(c.Header, 18)).First();
+
+    private static LogicChunk StripObject(List<LogicChunk> chunks, string track) => StripObjects(chunks, "AuCO", track).Single();
+
+    private static LogicChunk SettingObject(List<LogicChunk> chunks, string track) => StripObjects(chunks, "AuCU", track).Single(c => c.Payload.Length == 192);
+
+    private static IEnumerable<LogicChunk> StripObjects(List<LogicChunk> chunks, string tag, string track)
     {
         var region = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.SequenceName == track);
         var strip = chunks.Single(c => c.Tag == "Envi" && c.Class == 20 && c.Id == ReadUInt32(region.Payload, region.SequenceLengthOffset - 60 + 204));
         var nameLength = BinaryPrimitives.ReadUInt16LittleEndian(strip.Payload.AsSpan(158, 2));
         var number = BinaryPrimitives.ReadUInt16LittleEndian(strip.Payload.AsSpan(160 + nameLength + (nameLength & 1), 2)) - 1u;
-        return chunks
-            .Where(c => c.Tag == "AuCU" && c.Class == 14 && ReadUInt32(c.Header, 10) == 36 && ReadUInt32(c.Header, 14) == number)
-            .OrderBy(c => ReadUInt32(c.Header, 18))
-            .First();
+        return chunks.Where(c => c.Tag == tag && c.Class == 14 && ReadUInt32(c.Header, 10) == 36 && ReadUInt32(c.Header, 14) == number);
     }
 
     private static string PluginName(LogicChunk plugin) => Text(plugin.Payload, 120, 12);
