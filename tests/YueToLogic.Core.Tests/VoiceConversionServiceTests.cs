@@ -94,7 +94,7 @@ public class VoiceConversionServiceTests
     {
         var done = await Service(new StubHandler(
             HttpStatusCode.OK,
-            $$"""{"jobId":"{{JobId}}","status":"COMPLETED","resultSizeBytes":8372364,"finishedAtUtc":"2026-09-22T09:00:00+00:00"}""")).GetJobAsync(JobId);
+            $$"""{"jobId":"{{JobId}}","status":"COMPLETED","resultSizeBytes":8372364,"resultSha256":"a1b2c3","finishedAtUtc":"2026-09-22T09:00:00+00:00"}""")).GetJobAsync(JobId);
         var failed = await Service(new StubHandler(
             HttpStatusCode.OK,
             $$$"""{"jobId":"{{{JobId}}}","status":"FAILED","error":{"code":"MODEL_ERROR","message":"the Mac said no"}}""")).GetJobAsync(JobId);
@@ -102,6 +102,8 @@ public class VoiceConversionServiceTests
         Assert.True(done.IsDone);
         Assert.False(done.IsFailed);
         Assert.Equal(8372364, done.ResultSizeBytes);
+        // The checksum comes along so that an import can tell a complete transfer from one that broke off.
+        Assert.Equal("a1b2c3", done.ResultSha256);
         Assert.Equal(new DateTimeOffset(2026, 9, 22, 9, 0, 0, TimeSpan.Zero), done.FinishedUtc);
         Assert.True(failed.IsFailed);
         Assert.Equal(("MODEL_ERROR", "the Mac said no"), (failed.ErrorCode, failed.ErrorMessage));
@@ -184,10 +186,9 @@ public class VoiceConversionServiceTests
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, "API key")]
     [InlineData(HttpStatusCode.Forbidden, "addresses it answers")]
-    [InlineData(HttpStatusCode.Conflict, "still waits for")]
-    [InlineData(HttpStatusCode.Gone, "cleared away")]
+    [InlineData(HttpStatusCode.TooManyRequests, "rate limit")]
     [InlineData(HttpStatusCode.RequestEntityTooLarge, "larger than the service accepts")]
-    [InlineData(HttpStatusCode.ServiceUnavailable, "queue is full")]
+    [InlineData(HttpStatusCode.Gone, "cleared away")]
     public async Task A_refused_request_says_what_the_service_answered(HttpStatusCode status, string expected)
     {
         var handler = new StubHandler(status, string.Empty);
@@ -196,6 +197,50 @@ public class VoiceConversionServiceTests
 
         Assert.Equal(status, exception.StatusCode);
         Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The service names its own reason in the problem document, and that says more than the status: three
+    /// different things answer 409, and a host that wants to say which needs the code rather than the number.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, VoiceConversionCode.InvalidAudio, "cannot be read as audio")]
+    [InlineData(HttpStatusCode.BadRequest, VoiceConversionCode.UnsupportedFormat, "format it does not take")]
+    [InlineData(HttpStatusCode.BadRequest, VoiceConversionCode.ReferenceTooShort, "too short")]
+    [InlineData(HttpStatusCode.Conflict, VoiceConversionCode.DuplicateVoiceLabel, "name is already there")]
+    [InlineData(HttpStatusCode.Conflict, VoiceConversionCode.VoiceInUse, "still waits for that voice")]
+    [InlineData(HttpStatusCode.Conflict, VoiceConversionCode.ResultNotReady, "not there yet")]
+    [InlineData(HttpStatusCode.Gone, VoiceConversionCode.ResultGone, "cleared away")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, VoiceConversionCode.QueueFull, "queue is full")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, VoiceConversionCode.UpstreamUnavailable, "Mac that converts")]
+    public async Task The_code_of_the_service_says_which_of_several_reasons_it_was(HttpStatusCode status, string code, string expected)
+    {
+        var handler = new StubHandler(status, $$"""{"title":"Refused","code":"{{code}}"}""");
+
+        var exception = await Assert.ThrowsAsync<VoiceConversionException>(() => Service(handler).GetJobAsync(JobId));
+
+        Assert.Equal(code, exception.Code);
+        Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Whether the same request is worth repeating: a busy service or a rate limit passes, a recording the
+    /// service cannot use never will.
+    /// </summary>
+    [Fact]
+    public async Task A_service_that_is_only_busy_is_worth_asking_again()
+    {
+        var busy = new StubHandler(HttpStatusCode.ServiceUnavailable, """{"code":"QUEUE_FULL"}""");
+        var limited = new StubHandler(HttpStatusCode.TooManyRequests, string.Empty);
+        var refused = new StubHandler(HttpStatusCode.BadRequest, """{"code":"INVALID_AUDIO"}""");
+
+        var queue = await Assert.ThrowsAsync<VoiceConversionException>(() => Service(busy).GetJobAsync(JobId));
+        var rate = await Assert.ThrowsAsync<VoiceConversionException>(() => Service(limited).GetJobAsync(JobId));
+        var audio = await Assert.ThrowsAsync<VoiceConversionException>(() => Service(refused).GetJobAsync(JobId));
+
+        Assert.True(queue.CanRetryLater);
+        Assert.True(rate.CanRetryLater);
+        Assert.False(audio.CanRetryLater);
     }
 
     [Fact]

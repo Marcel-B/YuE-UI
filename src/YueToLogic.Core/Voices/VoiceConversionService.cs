@@ -88,6 +88,9 @@ public sealed record ReferenceVoice(
 /// <param name="VoiceLabel">The reference voice's name when the job was accepted; it may be gone by now.</param>
 /// <param name="ErrorCode">The service's own code for the failure, if the job failed.</param>
 /// <param name="ResultSizeBytes">How large the converted recording is, once it is there.</param>
+/// <param name="ResultSha256">
+/// The checksum of the result, with which a transfer that broke off can be told from a complete one.
+/// </param>
 public sealed record VoiceJob(
     string Id,
     string Status,
@@ -98,7 +101,8 @@ public sealed record VoiceJob(
     DateTimeOffset? FinishedUtc = null,
     string? ErrorCode = null,
     string? ErrorMessage = null,
-    long? ResultSizeBytes = null)
+    long? ResultSizeBytes = null,
+    string? ResultSha256 = null)
 {
     // Read here rather than sent: a host that serializes the job passes on what the service said, no more.
     [JsonIgnore]
@@ -140,9 +144,38 @@ public static class VoiceJobStatus
 }
 
 /// <summary>A request the voice service refused, with the reason it gave.</summary>
-public sealed class VoiceConversionException(string message, HttpStatusCode? statusCode = null) : Exception(message)
+/// <remarks>
+/// The service names its own reason in the <c>code</c> field of the problem document, which says more than
+/// the status: a 409 is a name that is taken, a voice a job still waits for, or a result that is not there
+/// yet. <see cref="VoiceConversionCode"/> holds the ones the service documents.
+/// </remarks>
+public sealed class VoiceConversionException(string message, HttpStatusCode? statusCode = null, string? code = null)
+    : Exception(message)
 {
     public HttpStatusCode? StatusCode { get; } = statusCode;
+
+    /// <summary>The service's own reason, e.g. <c>QUEUE_FULL</c>; null when it named none.</summary>
+    public string? Code { get; } = code;
+
+    /// <summary>
+    /// Whether the same request is worth repeating later. A full queue, a rate limit and an absent Mac pass;
+    /// a recording the service cannot use never will, however often it is sent.
+    /// </summary>
+    public bool CanRetryLater => StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable;
+}
+
+/// <summary>The reasons ChangeMyVoice names in the <c>code</c> field of a problem document.</summary>
+public static class VoiceConversionCode
+{
+    public const string InvalidAudio = "INVALID_AUDIO";
+    public const string UnsupportedFormat = "UNSUPPORTED_FORMAT";
+    public const string ReferenceTooShort = "REFERENCE_TOO_SHORT";
+    public const string DuplicateVoiceLabel = "DUPLICATE_VOICE_LABEL";
+    public const string VoiceInUse = "VOICE_IN_USE";
+    public const string ResultNotReady = "RESULT_NOT_READY";
+    public const string ResultGone = "RESULT_GONE";
+    public const string QueueFull = "QUEUE_FULL";
+    public const string UpstreamUnavailable = "UPSTREAM_UNAVAILABLE";
 }
 
 /// <summary>
@@ -343,7 +376,8 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
             job.FinishedAtUtc,
             job.Error?.Code,
             job.Error?.Message,
-            job.ResultSizeBytes);
+            job.ResultSizeBytes,
+            job.ResultSha256);
 
     private static ReferenceVoice ToVoice(ReferenceVoiceResponse voice) =>
         new(
@@ -356,7 +390,10 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
     private static AudioProperties? ToProperties(AudioPropertiesResponse? properties) =>
         properties is null ? null : new AudioProperties(properties.Codec ?? string.Empty, properties.DurationSeconds, properties.SampleRate, properties.Channels);
 
-    /// <summary>Turns a refusal into a message the host can show, since changing the voice is optional anyway.</summary>
+    /// <summary>
+    /// Turns a refusal into a message the host can show, since changing the voice is optional anyway. The
+    /// service's own <c>code</c> is read first: it tells apart what the status alone leaves open.
+    /// </summary>
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
@@ -364,35 +401,55 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
             return;
         }
 
-        var reason = response.StatusCode switch
+        var problem = await ProblemAsync(response, cancellationToken).ConfigureAwait(false);
+        var reason = problem?.Code switch
         {
-            HttpStatusCode.Unauthorized => "the API key is not accepted",
-            HttpStatusCode.Forbidden => "this server is not among the addresses it answers",
-            HttpStatusCode.NotFound => "it knows neither that job nor that voice; it may have been removed already",
-            HttpStatusCode.Conflict => "a voice that a job still waits for cannot be removed, and a result that is not there yet cannot be fetched",
-            HttpStatusCode.Gone => "the result has been cleared away; the job would have to run again",
-            HttpStatusCode.RequestEntityTooLarge => "the recording is larger than the service accepts",
-            HttpStatusCode.ServiceUnavailable => "the service is busy; its queue is full",
-            _ => await DetailAsync(response, cancellationToken).ConfigureAwait(false),
+            VoiceConversionCode.InvalidAudio => "the recording cannot be read as audio",
+            VoiceConversionCode.UnsupportedFormat => "the file is in a format it does not take; WAV, MP3, FLAC, M4A/AAC and OGG/Opus work",
+            VoiceConversionCode.ReferenceTooShort => "the recording of the voice is too short to model a timbre from",
+            VoiceConversionCode.DuplicateVoiceLabel => "a voice of that name is already there",
+            VoiceConversionCode.VoiceInUse => "a job still waits for that voice, so it cannot be removed yet",
+            VoiceConversionCode.ResultNotReady => "the result is not there yet",
+            VoiceConversionCode.ResultGone => "the result has been cleared away; the job would have to run again",
+            VoiceConversionCode.QueueFull => "the service is busy; its queue is full",
+            VoiceConversionCode.UpstreamUnavailable => "the Mac that converts cannot be reached right now",
+            _ => response.StatusCode switch
+            {
+                HttpStatusCode.Unauthorized => "the API key is not accepted",
+                HttpStatusCode.Forbidden => "this server is not among the addresses it answers",
+                HttpStatusCode.NotFound => "it knows neither that job nor that voice; it may have been removed already",
+                HttpStatusCode.TooManyRequests => "too many requests; this key's rate limit is reached",
+                HttpStatusCode.RequestEntityTooLarge => "the recording is larger than the service accepts",
+                // The service names a code for all of these; without one, its status is all there is to go on.
+                HttpStatusCode.Conflict => "the request does not fit what it has right now",
+                HttpStatusCode.Gone => "the result has been cleared away; the job would have to run again",
+                HttpStatusCode.ServiceUnavailable => "the service is not available right now",
+                _ => Detail(problem, response.StatusCode),
+            },
         };
 
-        throw new VoiceConversionException($"The voice service refused the request: {reason}.", response.StatusCode);
+        throw new VoiceConversionException($"The voice service refused the request: {reason}.", response.StatusCode, problem?.Code);
     }
 
-    private static async Task<string> DetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<VoiceProblemDetails?> ProblemAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         try
         {
-            var problem = await response.Content
+            return await response.Content
                 .ReadFromJsonAsync(YueToLogicJsonContext.Default.VoiceProblemDetails, cancellationToken)
                 .ConfigureAwait(false);
-            var detail = problem?.Detail ?? problem?.Title;
-            return string.IsNullOrWhiteSpace(detail) ? $"HTTP {(int)response.StatusCode}" : detail;
         }
         catch (Exception exception) when (exception is HttpRequestException or NotSupportedException or System.Text.Json.JsonException)
         {
-            return $"HTTP {(int)response.StatusCode}";
+            // An answer that is not a problem document says nothing beyond its status, which is used below.
+            return null;
         }
+    }
+
+    private static string Detail(VoiceProblemDetails? problem, HttpStatusCode status)
+    {
+        var detail = problem?.Detail ?? problem?.Title;
+        return string.IsNullOrWhiteSpace(detail) ? $"HTTP {(int)status}" : detail;
     }
 }
 
@@ -433,4 +490,5 @@ public sealed record AudioPropertiesResponse(
     int SampleRate = 0,
     int Channels = 0);
 
-public sealed record VoiceProblemDetails(string? Title, string? Detail);
+/// <param name="Code">The service's own reason, e.g. <c>QUEUE_FULL</c>; see <see cref="VoiceConversionCode"/>.</param>
+public sealed record VoiceProblemDetails(string? Title = null, string? Detail = null, string? Code = null);
