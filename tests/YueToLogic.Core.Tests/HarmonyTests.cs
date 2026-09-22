@@ -6,6 +6,45 @@ namespace YueToLogic.Core.Tests;
 public class HarmonyTests
 {
     [Theory]
+    [InlineData("36", 36)]
+    [InlineData("C1", 36)]
+    [InlineData(" c1 ", 36)]
+    [InlineData("F#1", 42)]
+    [InlineData("Gb1", 42)]
+    [InlineData("Bb0", 34)]
+    [InlineData("C3", 60)]
+    [InlineData("C-2", 0)]
+    [InlineData("G8", 127)]
+    public void Note_names_follow_logic_where_middle_c_is_c3(string text, int expected)
+    {
+        Assert.True(NoteNames.TryParse(text, out var note));
+        Assert.Equal(expected, note);
+        Assert.Equal(expected, NoteNames.TryParse(NoteNames.Name(expected), out var again) ? again : -1);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("H1")]
+    [InlineData("C")]
+    [InlineData("128")]
+    [InlineData("-1")]
+    [InlineData("G#8")]
+    [InlineData("kick")]
+    public void What_is_not_a_note_is_refused(string text)
+    {
+        Assert.False(NoteNames.TryParse(text, out _));
+    }
+
+    [Fact]
+    public void Notes_are_named_with_sharps_in_logic_octaves()
+    {
+        Assert.Equal("C1", NoteNames.Name(36));
+        Assert.Equal("D#1", NoteNames.Name(39));
+        Assert.Equal("A#1", NoteNames.Name(46));
+        Assert.Equal("C-2", NoteNames.Name(0));
+    }
+
+    [Theory]
     [InlineData("C", 0, ChordQuality.Major, null)]
     [InlineData("Am", 9, ChordQuality.Minor, null)]
     [InlineData("Bdim", 11, ChordQuality.Diminished, null)]

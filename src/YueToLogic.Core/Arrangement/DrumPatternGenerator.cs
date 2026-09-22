@@ -9,19 +9,20 @@ namespace YueToLogic.Core.Arrangement;
 /// <see cref="DrumPattern.Disco"/> combines the kick on every beat with an open hi-hat on every off-beat. The snare
 /// falls on every second beat, in half time only in the middle of the bar. Optionally a crash cymbal replaces the
 /// hi-hat where a section starts. Compound meters such as 6/8 count dotted quarters as beats and play the hi-hat on
-/// every eighth.
+/// every eighth. The patterns are written in drums, not in notes; which note a drum is played on comes from
+/// <see cref="DrumOptions.Notes"/>, General MIDI unless a drum machine says otherwise.
 /// </summary>
 internal static class DrumPatternGenerator
 {
     public const string TrackId = "Drums";
 
-    /// <summary>The tracks a split drum kit uses, and which of its notes belong on each.</summary>
-    public static readonly (string TrackId, int[] Notes)[] SeparateTracks =
+    /// <summary>The tracks a split drum kit uses, and which of its drums belong on each.</summary>
+    public static readonly (string TrackId, Drum[] Drums)[] SeparateTracks =
     [
-        ("Kick", [GeneralMidiDrums.Kick]),
-        ("Snare", [GeneralMidiDrums.Snare]),
-        ("HiHat", [GeneralMidiDrums.ClosedHiHat, GeneralMidiDrums.OpenHiHat]),
-        ("Crash", [GeneralMidiDrums.Crash]),
+        ("Kick", [Drum.Kick]),
+        ("Snare", [Drum.Snare]),
+        ("HiHat", [Drum.ClosedHiHat, Drum.OpenHiHat]),
+        ("Crash", [Drum.Crash]),
     ];
 
     private const int KickVelocity = 110;
@@ -30,6 +31,9 @@ internal static class DrumPatternGenerator
     private const int HiHatOnBeatVelocity = 80;
     private const int HiHatOffBeatVelocity = 60;
     private const int OpenHiHatVelocity = 75;
+
+    /// <summary>A hit of the pattern, still named by its drum so a split kit sorts by drum and not by note number.</summary>
+    private readonly record struct Hit(Drum Drum, long StartTicks, long DurationTicks, int Velocity);
 
     /// <summary>Every hi-hat position of the segment: each beat opens one, the offsets fill it.</summary>
     private static IEnumerable<long> HiHatTicks(long start, long end, long beatTicks, int beatsPerBar, long[] offsets)
@@ -51,27 +55,36 @@ internal static class DrumPatternGenerator
     }
 
     /// <summary>
-    /// The drum track, or one track per drum when the options ask for it. Splitting only sorts the same notes
-    /// into several tracks, so both ways play exactly the same thing.
+    /// The drum track, or one track per drum when the options ask for it. Splitting only sorts the same hits
+    /// into several tracks, so both ways play exactly the same thing. The sorting goes by drum, not by note:
+    /// a map that gives two drums one note still keeps every hit on one track.
     /// </summary>
     public static IEnumerable<VoiceTrack> GenerateTracks(ScoreDocument score, DrumOptions options)
     {
-        var kit = Generate(score, options);
+        var notes = options.Notes ?? new DrumNotes();
+        var hits = Hits(score, options);
         if (!options.SeparateTracks)
         {
-            return [kit];
+            return [new VoiceTrack(TrackId, TrackId, [.. hits.Select(hit => ToNote(hit, notes))], TrackKind.Drums)];
         }
 
         return SeparateTracks
             .Select(track => new VoiceTrack(
                 track.TrackId,
                 track.TrackId,
-                [.. kit.Notes.Where(note => track.Notes.Contains(note.NoteNumber))],
+                [.. hits.Where(hit => track.Drums.Contains(hit.Drum)).Select(hit => ToNote(hit, notes))],
                 TrackKind.Drums))
             .Where(track => track.Notes.Count > 0);
     }
 
-    public static VoiceTrack Generate(ScoreDocument score, DrumOptions options)
+    public static VoiceTrack Generate(ScoreDocument score, DrumOptions options) =>
+        GenerateTracks(score, options with { SeparateTracks = false }).Single();
+
+    private static NoteEvent ToNote(Hit hit, DrumNotes notes) =>
+        new(hit.StartTicks, hit.DurationTicks, Math.Clamp(notes.Of(hit.Drum), 0, 127), hit.Velocity);
+
+    /// <summary>The pattern over the whole score, ordered by position, in the order the drums were added at the same tick.</summary>
+    private static List<Hit> Hits(ScoreDocument score, DrumOptions options)
     {
         var ppq = score.TicksPerQuarterNote;
         var hitTicks = Math.Max(1, ppq / 4);
@@ -79,7 +92,7 @@ internal static class DrumPatternGenerator
         var crashTicks = options.CrashOnSections
             ? score.Sections.Select(s => s.StartTicks).Where(t => t < score.LengthTicks).ToHashSet()
             : [];
-        var notes = new List<NoteEvent>();
+        var hits = new List<Hit>();
 
         for (var i = 0; i < score.TimeSignatures.Count; i++)
         {
@@ -114,13 +127,13 @@ internal static class DrumPatternGenerator
                     };
                     if (kick)
                     {
-                        notes.Add(new NoteEvent(tick, hitTicks, GeneralMidiDrums.Kick, KickVelocity));
+                        hits.Add(new Hit(Drum.Kick, tick, hitTicks, KickVelocity));
                     }
 
                     var snare = pattern == DrumPattern.HalfTime ? beat == beatsPerBar / 2 : beat % 2 == 1;
                     if (snare && beat > 0)
                     {
-                        notes.Add(new NoteEvent(tick, hitTicks, GeneralMidiDrums.Snare, SnareVelocity));
+                        hits.Add(new Hit(Drum.Snare, tick, hitTicks, SnareVelocity));
                     }
                 }
             }
@@ -144,16 +157,16 @@ internal static class DrumPatternGenerator
                 };
                 if (open)
                 {
-                    notes.Add(new NoteEvent(tick, hiHatTicks, GeneralMidiDrums.OpenHiHat, OpenHiHatVelocity));
+                    hits.Add(new Hit(Drum.OpenHiHat, tick, hiHatTicks, OpenHiHatVelocity));
                     continue;
                 }
 
-                notes.Add(new NoteEvent(tick, hitTicks, GeneralMidiDrums.ClosedHiHat, onBeat ? HiHatOnBeatVelocity : HiHatOffBeatVelocity));
+                hits.Add(new Hit(Drum.ClosedHiHat, tick, hitTicks, onBeat ? HiHatOnBeatVelocity : HiHatOffBeatVelocity));
             }
         }
 
-        notes.AddRange(crashTicks.Select(tick => new NoteEvent(tick, ppq, GeneralMidiDrums.Crash, CrashVelocity)));
+        hits.AddRange(crashTicks.Select(tick => new Hit(Drum.Crash, tick, ppq, CrashVelocity)));
         // Ordered by position, keeping the order the drums were added in at the same tick.
-        return new VoiceTrack(TrackId, TrackId, [.. notes.OrderBy(n => n.StartTicks)], TrackKind.Drums);
+        return [.. hits.OrderBy(hit => hit.StartTicks)];
     }
 }

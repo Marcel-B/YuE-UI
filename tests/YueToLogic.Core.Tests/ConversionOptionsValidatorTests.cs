@@ -34,6 +34,27 @@ public class ConversionOptionsValidatorTests
     }
 
     [Fact]
+    public void Drum_notes_and_the_count_in_note_must_be_on_the_keyboard()
+    {
+        var options = new ConversionOptions
+        {
+            Arrangement = new ArrangementOptions
+            {
+                Drums = new DrumOptions { Notes = new DrumNotes { Kick = -1, OpenHiHat = 128 } },
+                CountIn = new CountInOptions { Note = 200 },
+            },
+        };
+
+        var errors = ConversionOptionsValidator.Validate(options);
+
+        Assert.Equal(3, errors.Count);
+        Assert.Contains(errors, e => e.Message.StartsWith("arrangement.drums.notes.kick ", StringComparison.Ordinal));
+        Assert.Contains(errors, e => e.Message.StartsWith("arrangement.drums.notes.openHiHat ", StringComparison.Ordinal));
+        Assert.Contains(errors, e => e.Message.StartsWith("arrangement.countIn.note ", StringComparison.Ordinal));
+        Assert.Empty(ConversionOptionsValidator.Validate(new ConversionOptions { Arrangement = new ArrangementOptions { Drums = new DrumOptions { Notes = new DrumNotes() }, CountIn = new CountInOptions() } }));
+    }
+
+    [Fact]
     public void The_new_arrangement_options_are_range_checked_as_well()
     {
         var options = new ConversionOptions

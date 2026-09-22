@@ -11,7 +11,8 @@ internal static class CountInBuilder
 {
     public const string ClickTrackId = "Drums";
 
-    public static ScoreDocument Apply(ScoreDocument score, CountInOptions options)
+    /// <param name="drumNotes">The drum machine's notes when the drums play one; the click then takes its clap.</param>
+    public static ScoreDocument Apply(ScoreDocument score, CountInOptions options, DrumNotes? drumNotes = null)
     {
         var bars = Math.Max(0, options.Bars);
         if (bars == 0)
@@ -39,7 +40,7 @@ internal static class CountInBuilder
 
         if (options.Click)
         {
-            AddClick(voices, options, beatTicks, signature.Numerator, bars);
+            AddClick(voices, options, ClickNote(options, drumNotes), beatTicks, signature.Numerator, bars);
         }
 
         return score with
@@ -59,12 +60,18 @@ internal static class CountInBuilder
         [.. items.Select((item, index) => index == 0 ? item : move(item, start(item) + offset))];
 
     /// <summary>
+    /// The side stick, which every General MIDI kit has, unless the drums go to a drum machine: those rarely
+    /// have one, and whatever sits on note 37 there would count in instead, so the click takes the clap.
+    /// </summary>
+    private static int ClickNote(CountInOptions options, DrumNotes? drumNotes) =>
+        Math.Clamp(options.Note ?? drumNotes?.Clap ?? GeneralMidiDrums.SideStick, 0, 127);
+
+    /// <summary>
     /// The click goes on the drum track, which is where a drum kit is already listening; a score without drums
     /// gets one for it. Its notes sit in front of the music, which has been moved out of the way.
     /// </summary>
-    private static void AddClick(List<VoiceTrack> voices, CountInOptions options, long beatTicks, int beatsPerBar, int bars)
+    private static void AddClick(List<VoiceTrack> voices, CountInOptions options, int note, long beatTicks, int beatsPerBar, int bars)
     {
-        var note = Math.Clamp(options.Note, 0, 127);
         var accent = Math.Clamp(options.AccentVelocity, 1, 127);
         var plain = Math.Clamp(options.Velocity, 1, 127);
         var clicks = Enumerable.Range(0, beatsPerBar * bars).Select(beat => new NoteEvent(

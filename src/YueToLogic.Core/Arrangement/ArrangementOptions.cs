@@ -1,3 +1,4 @@
+using YueToLogic.Core.Conversion;
 using YueToLogic.Core.Harmony;
 
 namespace YueToLogic.Core.Arrangement;
@@ -57,8 +58,12 @@ public sealed record CountInOptions
     /// <summary>A click on every beat of the lead-in, on the drum track; without it the bars stay silent.</summary>
     public bool Click { get; set; } = true;
 
-    /// <summary>Note of the click; the General MIDI side stick by default, which every drum kit has.</summary>
-    public int Note { get; set; } = GeneralMidiDrums.SideStick;
+    /// <summary>
+    /// Note of the click. Without one it is the General MIDI side stick, which every drum kit has - unless the
+    /// drums play on a drum machine with notes of its own (<see cref="DrumOptions.Notes"/>), which rarely has a
+    /// side stick; the click then takes that machine's clap.
+    /// </summary>
+    public int? Note { get; set; }
 
     public int Velocity { get; set; } = 100;
 
@@ -242,6 +247,60 @@ public sealed record DrumOptions
     /// are the same and stay on the General MIDI drum channel.
     /// </summary>
     public bool SeparateTracks { get; set; }
+
+    /// <summary>
+    /// Which note plays which drum; <c>null</c> for the General MIDI map, which Logic's kits and most sound
+    /// modules follow. A drum machine that listens on notes of its own - a DrumBrute, say - gets its map here,
+    /// so that the kick region really triggers its kick.
+    /// </summary>
+    public DrumNotes? Notes { get; set; }
+}
+
+/// <summary>
+/// The note each drum of the generated kit is played on. The defaults are the General MIDI drum map; a drum
+/// machine with a map of its own overrides them. <c>set</c> rather than <c>init</c> for the same reason as
+/// <see cref="ConversionOptions"/>: a partial JSON object keeps the defaults for what it leaves out.
+/// </summary>
+public sealed record DrumNotes
+{
+    public int Kick { get; set; } = GeneralMidiDrums.Kick;
+
+    public int Snare { get; set; } = GeneralMidiDrums.Snare;
+
+    public int ClosedHiHat { get; set; } = GeneralMidiDrums.ClosedHiHat;
+
+    public int OpenHiHat { get; set; } = GeneralMidiDrums.OpenHiHat;
+
+    public int Crash { get; set; } = GeneralMidiDrums.Crash;
+
+    /// <summary>No pattern plays the clap yet; the count-in clicks with it when the drums go to a drum machine.</summary>
+    public int Clap { get; set; } = GeneralMidiDrums.Clap;
+
+    /// <summary>The drum's name as JSON spells it (<c>closedHiHat</c>), for messages that point at a field.</summary>
+    public static string JsonName(Drum drum) => char.ToLowerInvariant(drum.ToString()[0]) + drum.ToString()[1..];
+
+    /// <summary>The note of a drum, so the generator can loop over the kit.</summary>
+    public int Of(Drum drum) => drum switch
+    {
+        Drum.Kick => Kick,
+        Drum.Snare => Snare,
+        Drum.ClosedHiHat => ClosedHiHat,
+        Drum.OpenHiHat => OpenHiHat,
+        Drum.Crash => Crash,
+        Drum.Clap => Clap,
+        _ => throw new ArgumentOutOfRangeException(nameof(drum), drum, "Not a drum of the kit."),
+    };
+}
+
+/// <summary>The drums the generated kit consists of, whatever notes they are played on.</summary>
+public enum Drum
+{
+    Kick,
+    Snare,
+    ClosedHiHat,
+    OpenHiHat,
+    Crash,
+    Clap,
 }
 
 public enum DrumPattern
@@ -278,4 +337,5 @@ public static class GeneralMidiDrums
     public const int ClosedHiHat = 42;
     public const int OpenHiHat = 46;
     public const int Crash = 49;
+    public const int Clap = 39;
 }

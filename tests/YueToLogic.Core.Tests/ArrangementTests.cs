@@ -306,6 +306,42 @@ public class ArrangementTests
     }
 
     [Fact]
+    public void A_drum_machine_plays_the_kit_on_its_own_notes()
+    {
+        // A DrumBrute-style map: kick C1 stays, the rest sits where the machine listens.
+        var notes = new DrumNotes { Kick = 36, Snare = 37, ClosedHiHat = 44, OpenHiHat = 45, Crash = 51, Clap = 39 };
+        var options = new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.Backbeat, Notes = notes } };
+
+        var drums = Arranger.Arrange(Sample, options).Score.Voice("Drums");
+        var generalMidi = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.Backbeat } }).Score.Voice("Drums");
+
+        Assert.Equal([36, 37, 44, 45, 51], drums.Pitches().Distinct().Order());
+        Assert.Equal(generalMidi.Notes.Count, drums.Notes.Count);
+        // Only the notes changed; every hit keeps its place, length and velocity.
+        Assert.Equal(
+            generalMidi.Notes.Select(n => (n.StartTicks, n.DurationTicks, n.Velocity)),
+            drums.Notes.Select(n => (n.StartTicks, n.DurationTicks, n.Velocity)));
+        Assert.Equal(generalMidi.Notes.Count(n => n.NoteNumber == GeneralMidiDrums.OpenHiHat), drums.Notes.Count(n => n.NoteNumber == 45));
+    }
+
+    [Fact]
+    public void A_split_kit_sorts_by_drum_even_when_two_drums_share_a_note()
+    {
+        // A machine with one hi-hat sound: closed and open on the same note, the snare on the kick's neighbour.
+        var notes = new DrumNotes { Kick = 60, Snare = 61, ClosedHiHat = 62, OpenHiHat = 62, Crash = 63 };
+        var options = new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.Backbeat, SeparateTracks = true, Notes = notes } };
+
+        var score = Arranger.Arrange(Sample, options).Score;
+        var kit = Arranger.Arrange(Sample, new ArrangementOptions { Drums = new DrumOptions { Pattern = DrumPattern.Backbeat, Notes = notes } }).Score.Voice("Drums");
+
+        Assert.Equal([60], score.Voice("Kick").Pitches().Distinct());
+        Assert.Equal([61], score.Voice("Snare").Pitches().Distinct());
+        Assert.Equal([62], score.Voice("HiHat").Pitches().Distinct());
+        Assert.Equal([63], score.Voice("Crash").Pitches().Distinct());
+        Assert.Equal(kit.Notes.Count, score.Voices.Where(v => v.Kind == TrackKind.Drums).Sum(v => v.Notes.Count));
+    }
+
+    [Fact]
     public void A_drum_a_pattern_never_plays_gets_no_track()
     {
         // Four on the floor without section crashes leaves the crash silent, so it has nothing to carry.
@@ -807,6 +843,21 @@ public class ArrangementTests
     }
 
     [Fact]
+    public void A_count_in_on_a_drum_machine_clicks_with_its_clap()
+    {
+        var notes = new DrumNotes { Clap = 50 };
+        var options = new ArrangementOptions { Drums = new DrumOptions { Notes = notes }, CountIn = new CountInOptions() };
+
+        var drums = Arranger.Arrange(Sample, options).Score.Voice("Drums");
+
+        Assert.All(drums.Notes.Take(4), n => Assert.Equal(50, n.NoteNumber));
+
+        // A note chosen for the click wins over the clap.
+        var chosen = new ArrangementOptions { Drums = new DrumOptions { Notes = notes }, CountIn = new CountInOptions { Note = 75 } };
+        Assert.All(Arranger.Arrange(Sample, chosen).Score.Voice("Drums").Notes.Take(4), n => Assert.Equal(75, n.NoteNumber));
+    }
+
+    [Fact]
     public void A_silent_count_in_adds_no_drum_track()
     {
         var options = new ArrangementOptions { CountIn = new CountInOptions { Click = false } };
@@ -827,7 +878,7 @@ public class ArrangementTests
                 DefaultOctaveShift = -1,
                 OctaveShifts = new Dictionary<string, int> { ["Vocal"] = 1 },
                 Bass = new BassOptions { Pattern = BassPattern.RootFifth },
-                Drums = new DrumOptions { CrashOnSections = false },
+                Drums = new DrumOptions { CrashOnSections = false, Notes = new DrumNotes { Kick = 60, Clap = 61 } },
                 Chords = new ChordOptions { Inversion = ChordInversion.Closest },
                 GuideTones = new GuideToneOptions { OctaveShift = 1 },
                 Doubling = new DoublingOptions { Semitones = 12 },
@@ -843,6 +894,7 @@ public class ArrangementTests
 
         Assert.Contains("\"pattern\": \"RootFifth\"", json, StringComparison.Ordinal);
         Assert.Contains("\"inversion\": \"Closest\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"closedHiHat\": 42", json, StringComparison.Ordinal);
         Assert.Equal(1, restored.Arrangement.OctaveShifts["Vocal"]);
         Assert.Equal(options.Arrangement.Bass, restored.Arrangement.Bass);
         Assert.Equal(options.Arrangement.Drums, restored.Arrangement.Drums);
