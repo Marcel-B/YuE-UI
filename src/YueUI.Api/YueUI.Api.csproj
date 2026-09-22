@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Vue frontend (Vite). In development SpaProxy starts its dev server; dotnet publish bundles it into wwwroot/ui. -->
+    <SpaRoot>ClientApp\</SpaRoot>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(SpaRoot)node_modules\**;$(SpaRoot)dist\**</DefaultItemExcludes>
+    <!-- Pass -p:SkipClientAppBuild=true when the frontend is built separately. -->
+    <SkipClientAppBuild Condition="'$(SkipClientAppBuild)' == ''">false</SkipClientAppBuild>
+    <SpaProxyServerUrl>http://127.0.0.1:5174/ui/</SpaProxyServerUrl>
+    <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="$(SpaRoot)**" />
+    <Content Remove="$(SpaRoot)**" />
+    <EmbeddedResource Remove="$(SpaRoot)**" />
+    <None Remove="$(SpaRoot)**" />
+    <None Include="$(SpaRoot)**" Exclude="$(SpaRoot)node_modules\**;$(SpaRoot)dist\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.SpaProxy" Version="10.0.12" />
+  </ItemGroup>
+
+  <!-- SpaProxy runs "npm run dev" but does not install packages; do that once for a fresh checkout. -->
+  <Target Name="EnsureClientAppDependencies" BeforeTargets="Build" Condition="'$(Configuration)' == 'Debug' And '$(SkipClientAppBuild)' != 'true' And !Exists('$(SpaRoot)node_modules')">
+    <Exec Command="node --version" ContinueOnError="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="NodeExitCode" />
+    </Exec>
+    <Warning Condition="'$(NodeExitCode)' != '0'" Text="Node.js was not found, so the web interface cannot run. Install Node.js 22.12 or later from https://nodejs.org/." />
+    <Message Condition="'$(NodeExitCode)' == '0'" Importance="high" Text="Installing the web interface's npm packages (first build only) ..." />
+    <Exec Condition="'$(NodeExitCode)' == '0'" WorkingDirectory="$(SpaRoot)" Command="npm ci" />
+  </Target>
+
+  <!-- dotnet publish: build the frontend and ship it as wwwroot/ui. -->
+  <Target Name="PublishClientApp" AfterTargets="ComputeFilesToPublish" Condition="'$(SkipClientAppBuild)' != 'true'">
+    <Exec WorkingDirectory="$(MSBuildThisFileDirectory)$(SpaRoot)" Command="npm ci" />
+    <Exec WorkingDirectory="$(MSBuildThisFileDirectory)$(SpaRoot)" Command="npm run build" />
+    <ItemGroup>
+      <ClientAppDistFiles Include="$(MSBuildThisFileDirectory)$(SpaRoot)dist\**" />
+      <ResolvedFileToPublish Include="@(ClientAppDistFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot/ui/%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+</Project>

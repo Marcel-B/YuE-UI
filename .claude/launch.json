@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "yueui",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/YueUI.Api"],
+      "port": 5090
+    }
+  ]
+}
