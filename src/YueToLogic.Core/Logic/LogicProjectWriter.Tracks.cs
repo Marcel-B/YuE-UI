@@ -28,8 +28,18 @@ public sealed partial class LogicProjectWriter
     /// </summary>
     private const int RegionEnvironmentOffset = 204;
 
-    /// <summary>A MIDI track of the template: the region on it, its channel strip and the channel it plays on.</summary>
-    private readonly record struct TemplateTrack(string Region, uint RegionId, uint Environment, int Channel);
+    /// <summary>Between a track's part and its instrument in the name Logic shows: "Bass · Mother32".</summary>
+    private const string InstrumentSeparator = " · ";
+
+    /// <summary>
+    /// A MIDI track of the template: the region on it, its channel strip, the channel it plays on and, if the
+    /// caller named one, the instrument it plays.
+    /// </summary>
+    private readonly record struct TemplateTrack(string Region, uint RegionId, uint Environment, int Channel, string? Instrument = null)
+    {
+        /// <summary>The name for the track header: the part alone, or the part and its instrument.</summary>
+        public string Title => Instrument is null ? Region : Region + InstrumentSeparator + Instrument;
+    }
 
     /// <summary>
     /// The template's MIDI tracks, in the order the arrangement places them. Only regions placed in the root
@@ -103,20 +113,37 @@ public sealed partial class LogicProjectWriter
     }
 
     /// <summary>
-    /// Puts the channels the caller chose on the tracks they name; the rest keep the channel of the template's
-    /// region. Counted from one outside, as Logic and every MIDI device do.
+    /// Puts the instruments and channels the caller chose on the tracks they name; the rest keep the channel of
+    /// the template's region. An instrument decides the channel ahead of a bare channel entry, and names the
+    /// track. Channels are counted from one outside, as Logic and every MIDI device do.
     /// </summary>
-    private static List<TemplateTrack> WithChannels(List<TemplateTrack> tracks, IReadOnlyDictionary<string, int> channels)
+    private static List<TemplateTrack> WithRouting(
+        List<TemplateTrack> tracks,
+        IReadOnlyDictionary<string, int> channels,
+        IReadOnlyDictionary<string, LogicInstrument> instruments)
     {
-        if (channels.Count == 0)
+        if (channels.Count == 0 && instruments.Count == 0)
         {
             return tracks;
         }
 
-        var given = new Dictionary<string, int>(channels, StringComparer.OrdinalIgnoreCase);
-        return [.. tracks.Select(track => given.TryGetValue(track.Region, out var channel) && channel is >= 1 and <= 16
-            ? track with { Channel = channel - 1 }
-            : track)];
+        var givenChannels = new Dictionary<string, int>(channels, StringComparer.OrdinalIgnoreCase);
+        var givenInstruments = new Dictionary<string, LogicInstrument>(instruments, StringComparer.OrdinalIgnoreCase);
+        return [.. tracks.Select(track =>
+        {
+            if (givenInstruments.TryGetValue(track.Region, out var instrument) && !string.IsNullOrWhiteSpace(instrument.Name))
+            {
+                return track with
+                {
+                    Instrument = instrument.Name.Trim(),
+                    Channel = instrument.Channel is >= 1 and <= 16 ? instrument.Channel - 1 : track.Channel,
+                };
+            }
+
+            return givenChannels.TryGetValue(track.Region, out var channel) && channel is >= 1 and <= 16
+                ? track with { Channel = channel - 1 }
+                : track;
+        })];
     }
 
     /// <summary>
@@ -130,8 +157,9 @@ public sealed partial class LogicProjectWriter
 
     /// <summary>
     /// Names each track after the part it carries, so the arrangement reads "Vocal" instead of the instrument
-    /// that happened to be chosen for it in the template. Every MIDI region names its own channel strip, so the
-    /// audio track and the output keep theirs, however the tracks are ordered.
+    /// that happened to be chosen for it in the template - or "Bass · Mother32" where the caller said which
+    /// hardware plays it. Every MIDI region names its own channel strip, so the audio track and the output keep
+    /// theirs, however the tracks are ordered.
     /// </summary>
     private static void WriteTrackNames(List<LogicChunk> chunks, IReadOnlyList<TemplateTrack> tracks)
     {
@@ -143,7 +171,7 @@ public sealed partial class LogicProjectWriter
         {
             if (environment.TryGetValue(track.Environment, out var strip))
             {
-                RenameEnvironment(strip, track.Region);
+                RenameEnvironment(strip, track.Title);
             }
         }
     }

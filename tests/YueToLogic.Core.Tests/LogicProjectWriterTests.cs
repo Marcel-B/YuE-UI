@@ -266,6 +266,91 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task A_track_with_an_instrument_is_named_after_both()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            Instruments = new Dictionary<string, LogicInstrument>
+            {
+                ["bass"] = new() { Name = " Mother32 ", Port = "MIDI4x4 Midi Out 1", Channel = 12 },
+            },
+        };
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273), options);
+
+        // The track header shows which synthesizer plays the part; the other tracks read as before.
+        var names = TrackNames(LogicProjectData.Parse(package.ProjectData).Chunks);
+        Assert.Contains("Bass · Mother32", names);
+        Assert.Contains("Vocal", names);
+        Assert.DoesNotContain("Bass", names);
+    }
+
+    [Fact]
+    public async Task An_instrument_puts_its_channel_on_the_track_ahead_of_the_channel_option()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            Channels = new Dictionary<string, int> { ["Bass"] = 7 },
+            Instruments = new Dictionary<string, LogicInstrument>
+            {
+                ["Bass"] = new() { Name = "Mother32", Port = "MIDI4x4 Midi Out 1", Channel = 12 },
+            },
+        };
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273), options);
+
+        var regions = RegionEvents(package.ProjectData);
+        Assert.All(NoteRecords(regions["Bass"]), record => Assert.Equal("9B", record[..2])); // 0x90 | 11
+        Assert.All(NoteRecords(regions["Drums"]), record => Assert.Equal("99", record[..2])); // drums on 10
+    }
+
+    [Fact]
+    public async Task An_instrument_without_a_usable_channel_keeps_the_template_channel_but_still_names_the_track()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var plain = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273));
+        var options = new LogicProjectOptions
+        {
+            Instruments = new Dictionary<string, LogicInstrument> { ["Bass"] = new() { Name = "Mother32", Channel = 0 } },
+        };
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273), options);
+
+        Assert.Equal(NoteRecords(RegionEvents(plain.ProjectData)["Bass"]), NoteRecords(RegionEvents(package.ProjectData)["Bass"]));
+        Assert.Contains("Bass · Mother32", TrackNames(LogicProjectData.Parse(package.ProjectData).Chunks));
+    }
+
+    [Fact]
+    public async Task Instrument_names_survive_splitting_at_sections()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            SplitRegionsAtSections = true,
+            Instruments = new Dictionary<string, LogicInstrument> { ["Bass"] = new() { Name = "Mother32", Channel = 12 } },
+        };
+
+        var package = await WriteAsync(score, Flac(48000, 2, 24, 1_047_273), options);
+
+        Assert.Contains("Bass · Mother32", TrackNames(LogicProjectData.Parse(package.ProjectData).Chunks));
+    }
+
+    [Fact]
+    public void An_instrument_read_from_json_may_leave_the_port_out()
+    {
+        var instruments = System.Text.Json.JsonSerializer.Deserialize(
+            """{"Bass":{"name":"Mother32","channel":12}}""",
+            Serialization.YueToLogicJsonContext.Default.DictionaryStringLogicInstrument)!;
+
+        var bass = instruments["Bass"];
+        Assert.Equal("Mother32", bass.Name);
+        Assert.Equal(12, bass.Channel);
+        Assert.Equal(string.Empty, bass.Port);
+    }
+
+    [Fact]
     public async Task The_stems_go_on_the_audio_tracks_of_their_own()
     {
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: false);
