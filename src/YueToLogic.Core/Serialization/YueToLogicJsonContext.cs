@@ -6,6 +6,7 @@ using YueToLogic.Core.Diagnostics;
 using YueToLogic.Core.Logic;
 using YueToLogic.Core.Model;
 using YueToLogic.Core.Stems;
+using YueToLogic.Core.Voices;
 
 namespace YueToLogic.Core.Serialization;
 
@@ -29,4 +30,13 @@ namespace YueToLogic.Core.Serialization;
 [JsonSerializable(typeof(SeparationModelResponse))]
 [JsonSerializable(typeof(SeparationModelResponse[]))]
 [JsonSerializable(typeof(StemProblemDetails))]
+[JsonSerializable(typeof(ReferenceVoice))]
+[JsonSerializable(typeof(ReferenceVoice[]))]
+[JsonSerializable(typeof(ReferenceVoiceResponse))]
+[JsonSerializable(typeof(ReferenceVoiceResponse[]))]
+[JsonSerializable(typeof(VoiceJob))]
+[JsonSerializable(typeof(VoiceJob[]))]
+[JsonSerializable(typeof(VoiceJobResponse))]
+[JsonSerializable(typeof(VoiceJobResponse[]))]
+[JsonSerializable(typeof(VoiceProblemDetails))]
 public sealed partial class YueToLogicJsonContext : JsonSerializerContext;
