@@ -5,11 +5,13 @@ import {
   advancedChanged,
   defaultAdvanced,
   defaultFormState,
+  defaultSampling,
   exampleScore,
   lengthChoices,
   maxSongSeconds,
   toGenerateRequest,
   type FormState,
+  type SamplingPhase,
 } from '../form'
 import { formatDuration, t } from '../i18n'
 import FieldHelp from './FieldHelp.vue'
@@ -70,8 +72,21 @@ function reset(): void {
   fieldErrors.value = {}
 }
 
+/** Every advanced value back to the worker's defaults; a score someone pasted or transcribed goes too, so ask first. */
 function resetAdvanced(): void {
+  if (form.value.abc.trim() !== '' && !window.confirm(t('advancedResetConfirm'))) {
+    return
+  }
   form.value = { ...form.value, ...defaultAdvanced() }
+  fieldErrors.value = {}
+}
+
+function samplingChanged(phase: SamplingPhase): boolean {
+  return JSON.stringify(form.value[phase]) !== JSON.stringify(defaultSampling[phase])
+}
+
+function resetSampling(phase: SamplingPhase): void {
+  form.value = { ...form.value, [phase]: { ...defaultSampling[phase] } }
 }
 
 function lengthLabel(seconds: number): string {
@@ -155,7 +170,9 @@ function lengthLabel(seconds: number): string {
       </summary>
       <div class="advanced-head">
         <small class="muted">{{ t('advancedIntro') }}</small>
-        <button type="button" class="link" :disabled="!changed" @click="resetAdvanced">{{ t('advancedReset') }}</button>
+        <button type="button" class="button secondary small" :disabled="!changed" @click="resetAdvanced">
+          {{ changed ? t('advancedReset') : t('advancedAtDefaults') }}
+        </button>
       </div>
       <p v-if="extensions === false" class="notice" role="note">{{ t('extensionsOff') }}</p>
 
@@ -247,6 +264,14 @@ function lengthLabel(seconds: number): string {
           <summary>{{ t('samplingSemantic') }}</summary>
           <small class="muted">{{ t('samplingSemanticIntro') }}</small>
           <SamplingFields v-model="form.semanticSampling" phase="semanticSampling" :errors="fieldErrors" />
+          <button
+            type="button"
+            class="button secondary small group-reset"
+            :disabled="!samplingChanged('semanticSampling')"
+            @click="resetSampling('semanticSampling')"
+          >
+            {{ samplingChanged('semanticSampling') ? t('samplingReset') : t('samplingAtDefaults') }}
+          </button>
         </details>
 
         <details class="sampling wide">
@@ -254,7 +279,22 @@ function lengthLabel(seconds: number): string {
           <small class="muted">{{ t('samplingAbcIntro') }}</small>
           <small v-if="!plansScore" class="inactive">{{ t('samplingAbcInactive') }}</small>
           <SamplingFields v-model="form.abcSampling" phase="abcSampling" :errors="fieldErrors" :disabled="!plansScore" />
+          <button
+            type="button"
+            class="button secondary small group-reset"
+            :disabled="!samplingChanged('abcSampling')"
+            @click="resetSampling('abcSampling')"
+          >
+            {{ samplingChanged('abcSampling') ? t('samplingReset') : t('samplingAtDefaults') }}
+          </button>
         </details>
+      </div>
+
+      <!-- The section is long on a phone: the same reset at its end. -->
+      <div class="advanced-foot">
+        <button type="button" class="button secondary small" :disabled="!changed" @click="resetAdvanced">
+          {{ changed ? t('advancedReset') : t('advancedAtDefaults') }}
+        </button>
       </div>
     </details>
 
@@ -347,6 +387,16 @@ function lengthLabel(seconds: number): string {
   margin-left: 0.4rem;
   background: var(--warning-soft);
   color: var(--warning-text);
+}
+
+.advanced-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.group-reset {
+  margin-top: 0.9rem;
 }
 
 .advanced-head {
