@@ -19,6 +19,8 @@ namespace YueToLogic.Core.Serialization;
 [JsonSerializable(typeof(ConversionOptions))]
 [JsonSerializable(typeof(AbcParseResult))]
 [JsonSerializable(typeof(ScoreDocument))]
+[JsonSerializable(typeof(MidiToAbcOptions))]
+[JsonSerializable(typeof(MidiToAbcResult))]
 [JsonSerializable(typeof(Diagnostic[]))]
 [JsonSerializable(typeof(Dictionary<string, LogicInstrument>))]
 [JsonSerializable(typeof(StemJob))]

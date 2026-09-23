@@ -49,6 +49,35 @@ public static class DiagnosticCodes
     /// <summary>The converted vocals of a voice job could not be put into the project.</summary>
     public const string VoiceUnavailable = "YTL056";
 
+    // MIDI file read back into a score (MIDI → ABC)
+
+    /// <summary>The file is not a Standard MIDI File, or one this reader cannot place on a beat grid.</summary>
+    public const string MidiUnreadable = "YTL070";
+
+    /// <summary>None of the tracks read as Vocal, Ins or Chords has a note.</summary>
+    public const string MidiNoNotes = "YTL071";
+
+    /// <summary>Notes off the sixteenth grid were moved onto it.</summary>
+    public const string MidiQuantized = "YTL072";
+
+    /// <summary>A voice had overlapping notes; YuE2's voices play one note at a time.</summary>
+    public const string MidiPolyphony = "YTL073";
+
+    /// <summary>Chords could not be read: no chord track, or notes that form no chord of the vocabulary.</summary>
+    public const string MidiChords = "YTL074";
+
+    /// <summary>Silent bars at the start, such as a count-in, were left out.</summary>
+    public const string MidiBarsSkipped = "YTL075";
+
+    /// <summary>Which track of the file became which voice.</summary>
+    public const string MidiTrackRoles = "YTL076";
+
+    /// <summary>The tempo was rounded, or tempo changes were dropped.</summary>
+    public const string MidiTempo = "YTL077";
+
+    /// <summary>A meter or key change had to be moved to a bar line, or a meter cannot be written.</summary>
+    public const string MidiSignature = "YTL078";
+
     // Fatal
     public const string NoMusic = "YTL040";
     public const string TickResolution = "YTL041";

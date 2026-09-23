@@ -8,6 +8,10 @@ internal sealed record AbcKey(string Name, int Sharps, bool IsMinor)
     private const string SharpOrder = "FCGDAEB";
     private const string FlatOrder = "BEADGCF";
 
+    // Indexed by the number of sharps plus seven; declared before KnownKeys, which is built from them.
+    private static readonly string[] MajorNames = ["Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#"];
+    private static readonly string[] MinorNames = ["Abm", "Ebm", "Bbm", "Fm", "Cm", "Gm", "Dm", "Am", "Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m"];
+
     private static readonly Dictionary<string, int> KnownKeys = BuildKnownKeys();
 
     public static readonly AbcKey CMajor = new("C", 0, false);
@@ -70,17 +74,22 @@ internal sealed record AbcKey(string Name, int Sharps, bool IsMinor)
         return true;
     }
 
+    /// <summary>The key a MIDI key signature names: sharps (positive) or flats (negative), -7 to 7.</summary>
+    public static AbcKey FromSignature(int sharps, bool isMinor)
+    {
+        var index = Math.Clamp(sharps, -7, 7) + 7;
+        return new AbcKey(isMinor ? MinorNames[index] : MajorNames[index], index - 7, isMinor);
+    }
+
     public override string ToString() => Name;
 
     private static Dictionary<string, int> BuildKnownKeys()
     {
-        string[] major = ["Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#"];
-        string[] minor = ["Abm", "Ebm", "Bbm", "Fm", "Cm", "Gm", "Dm", "Am", "Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m"];
         var keys = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var i = 0; i < major.Length; i++)
+        for (var i = 0; i < MajorNames.Length; i++)
         {
-            keys[major[i]] = i - 7;
-            keys[minor[i]] = i - 7;
+            keys[MajorNames[i]] = i - 7;
+            keys[MinorNames[i]] = i - 7;
         }
 
         return keys;
