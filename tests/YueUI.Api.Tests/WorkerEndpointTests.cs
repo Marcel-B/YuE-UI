@@ -88,6 +88,84 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task Sampling_full_steps_and_long_songs_reach_the_worker_extension()
+    {
+        var response = await _client.PostAsJsonAsync("/api/generate", new
+        {
+            style = "English, piano pop",
+            lyrics = "[verse]\nNeon lights",
+            quality = "full",
+            fullSteps = 48,
+            maxTokens = 15000,
+            abcSampling = new { temperature = 0.6, topK = 20 },
+            semanticSampling = new { topP = 0.9, repetitionPenalty = 1.1, penaltyWindow = 40 },
+        });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var command = await _app.Worker.NextCommand();
+        Assert.Equal(48, (int?)command["full_steps"]);
+        Assert.Equal(15000, (int?)command["max_tokens"]);
+        Assert.Equal("""{"temperature":0.6,"top_k":20}""", command["abc_sampling"]!.ToJsonString());
+        Assert.Equal("""{"top_p":0.9,"repetition_penalty":1.1,"penalty_window":40}""", command["semantic_sampling"]!.ToJsonString());
+    }
+
+    [Fact]
+    public async Task Empty_sampling_overrides_are_left_out()
+    {
+        var response = await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "x", semanticSampling = new { } });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Null((await _app.Worker.NextCommand())["semantic_sampling"]);
+    }
+
+    [Fact]
+    public async Task Sampling_outside_the_models_ranges_is_refused()
+    {
+        var response = await _client.PostAsJsonAsync("/api/generate", new
+        {
+            style = "Pop",
+            lyrics = "x",
+            fullSteps = 65,
+            abcSampling = new { temperature = 6.0, topP = 0.0 },
+            semanticSampling = new { topK = 0, repetitionPenalty = 0.0, penaltyWindow = 101 },
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var errors = (await response.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject();
+        Assert.Equal(
+            ["fullSteps", "abcSampling.temperature", "abcSampling.topP", "semanticSampling.topK", "semanticSampling.repetitionPenalty", "semanticSampling.penaltyWindow"],
+            errors.Select(e => e.Key));
+    }
+
+    [Fact]
+    public async Task The_status_tells_whether_the_worker_runs_with_the_extension()
+    {
+        Assert.Null((await _client.GetFromJsonAsync<StatusSnapshot>("/api/status", TestApp.Json))!.Worker.Extensions);
+
+        await Generate();
+        _app.Worker.Emit(new { @event = "ready", yueui_extensions = true });
+
+        var status = await _app.WaitForStatus(_client, s => s.Worker.Status == WorkerStatus.Ready);
+        Assert.True(status.Worker.Extensions);
+    }
+
+    [Fact]
+    public async Task A_worker_without_the_extension_is_reported_as_such()
+    {
+        await Generate();
+        _app.Worker.Emit(new { @event = "ready" });
+
+        var status = await _app.WaitForStatus(_client, s => s.Worker.Status == WorkerStatus.Ready);
+        Assert.False(status.Worker.Extensions);
+    }
+
+    [Fact]
+    public void The_worker_extension_ships_with_the_app()
+    {
+        Assert.True(File.Exists(PythonWorkerLauncher.ExtensionScript), PythonWorkerLauncher.ExtensionScript);
+    }
+
+    [Fact]
     public async Task A_second_command_reuses_the_running_worker()
     {
         await Generate();

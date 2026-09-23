@@ -42,7 +42,7 @@ const messages = {
     qualityFull: 'Voll',
     qualityHint: 'Ein Entwurf ist in wenigen Minuten fertig und lässt sich später in voller Qualität rendern.',
     qualityMore:
-      'Beide komponieren denselben Song; der Unterschied liegt in der Synthese des Klangs.\n• Entwurf: 8 Solver-Schritte (einstellbar unter „Erweitert“), auf der GPU.\n• Voll: 32 Schritte, standardmäßig auf der Neural Engine, dauert deutlich länger.\n\n„Voll rendern“ in der Bibliothek synthetisiert einen Entwurf mit denselben Tokens und demselben Seed neu. Bewährt: mehrere Entwürfe erzeugen und nur den besten voll rendern.',
+      'Beide komponieren denselben Song; der Unterschied liegt in der Synthese des Klangs.\n• Entwurf: 8 Solver-Schritte, auf der GPU.\n• Voll: 32 Schritte, standardmäßig auf der Neural Engine, dauert deutlich länger.\n\n„Voll rendern“ in der Bibliothek synthetisiert einen Entwurf mit denselben Tokens und demselben Seed neu. Bewährt: mehrere Entwürfe erzeugen und nur den besten voll rendern. Die Schrittzahl beider lässt sich unter „Erweiterte Parameter“ ändern.',
     batch: 'Anzahl',
     batchHint: 'Mehrere Varianten desselben Songs, jede mit eigenem Seed.',
     batchMore:
@@ -63,11 +63,12 @@ const messages = {
     seedHint: 'Startwert des Zufalls. Gleicher Seed und gleiche Eingaben ergeben (fast) denselben Song.',
     seedMore:
       'Nützlich zum Vergleichen: Seed eines gelungenen Songs übernehmen (die Bibliothek zeigt ihn als #831001) und nur den Stil oder eine Textzeile ändern – der Rest bleibt vergleichbar. Leer lassen für einen neuen Zufallswert. Über Geräte und Softwareversionen hinweg ist das Ergebnis nicht garantiert gleich.',
-    draftSteps: 'Schritte im Entwurf',
-    draftStepsHint: 'Solver-Schritte der Klangsynthese eines Entwurfs, 1–32.',
-    draftStepsFullHint: 'Volle Qualität nutzt immer 32 Schritte.',
-    draftStepsMore:
-      'Mehr Schritte ergeben einen saubereren Klang, die Synthese dauert entsprechend länger. Melodie und Text ändern sich nicht, nur die Klangqualität.\n• 4: schnellste Hörprobe\n• 8: Standard\n• 16: besserer Entwurf, etwa doppelt so lange Synthese\n• 32: entspricht „Voll“ mit „Nur GPU“',
+    stepsDraft: 'Schritte (Entwurf)',
+    stepsFull: 'Schritte (Voll)',
+    draftStepsHint: 'Solver-Schritte der Klangsynthese eines Entwurfs, 1–32 (Standard 8).',
+    fullStepsHint: 'Solver-Schritte der Klangsynthese bei voller Qualität, 1–64 (Standard 32).',
+    stepsMore:
+      'Mehr Schritte ergeben einen saubereren Klang, die Synthese dauert entsprechend länger. Melodie und Text ändern sich nicht, nur die Klangqualität.\n\nEntwurf:\n• 4: schnellste Hörprobe\n• 8: Standard\n• 16: besserer Entwurf, etwa doppelt so lange Synthese\n• 32: entspricht „Voll“ mit „Nur GPU“\n\nVoll:\n• 32: Standard des Modells\n• 48: anderthalbfache Synthesezeit; ob man den Unterschied hört, ist nicht belegt\n• 16: spart die Hälfte der Synthesezeit\n\n„Voll rendern“ in der Bibliothek nutzt immer 32.',
     engines: 'Rechenwerke',
     enginesAuto: 'Automatisch',
     enginesGpu: 'Nur GPU',
@@ -76,20 +77,81 @@ const messages = {
     enginesMore:
       '• Automatisch (Standard): Entwürfe auf der GPU, volle Qualität auf der Neural Engine – dort bei kurzen Songs etwa doppelt so schnell.\n• Nur GPU: lässt die rund 2,8 GB der Neural Engine frei, hilfreich bei knappem Speicher, z. B. wenn YuE Studio zugleich läuft.\n• GPU und Neural Engine: auch Entwürfe dürfen auf die Neural Engine.\n\nKann die Neural Engine einen Song nicht übernehmen (etwa einen sehr langen), läuft er auf der GPU.',
     maxLength: 'Maximale Länge',
-    maxLengthHint: 'Obergrenze für die Songlänge; der Song endet sonst von selbst, wenn der Text gesungen ist.',
+    maxLengthHint: 'Obergrenze für die Songlänge; der Song endet sonst von selbst, wenn der Text gesungen ist. Über 6:00 ist Neuland für das Modell.',
     maxLengthMore:
-      'Wie lang ein Song wird, ergibt sich aus Text und Stil. Erreicht er die Grenze, wird er dort abgeschnitten. Eine kurze Grenze spart Zeit, wenn nur der Anfang interessiert, z. B. 1:00 zum Ausprobieren eines Stils. Mehr als 6:00 kann YuE2 nicht (9000 Tokens, 25 pro Sekunde).',
+      'Wie lang ein Song wird, ergibt sich aus Text und Stil. Erreicht er die Grenze, wird er dort abgeschnitten. Eine kurze Grenze spart Zeit, wenn nur der Anfang interessiert, z. B. 1:00 zum Ausprobieren eines Stils.\n\nStandard des Modells sind 6:00 (9000 Tokens, 25 pro Sekunde). Bis 10:00 geht es über die YueUI-Erweiterung des Workers; mehr passt nicht in den Kontext des Modells, den sich Prompt, Partitur und Song teilen (24576 Tokens). Über 6:00 ist ungetestet: Das Modell muss dafür einen längeren Text auch wirklich ausfüllen, und die Neural Engine übernimmt Songs über etwa 8 Minuten nicht mehr, sie laufen dann auf der GPU.',
     abc: 'Eigene Partitur (ABC)',
     abcPlaceholder: 'X:1\nM:4/4\nL:1/16\nQ:1/4=88\nK:C\n…',
     abcHint: 'Ersetzt die Planung durch eine eigene Partitur: Melodie, Akkorde, Tempo und Form stehen dann fest.',
     abcMore:
       'Zum Beispiel die ABC-Datei eines Songs aus der Bibliothek mit geänderten Akkorden oder einem anderen Tempo (Q:), oder eine mit SheetSage2 transkribierte Melodie für ein Cover. Braucht die Planung „Melodie und Akkorde“ (Akkorde werden übernommen) oder „Nur Melodie“ mit einer Partitur ohne Akkordsymbole (die Begleitung ist frei). Die Silben des Textes sollten zu den Noten der Stimme „Vocal“ passen. Bei „Instrumental“ bleibt die Gesangsstimme einer eigenen Partitur erhalten – dort also die Vocal-Takte durch Pausen ersetzen.\n\n„Beispiel einsetzen“ lädt die Partitur zu „City Lights“ (siehe Beispiel beim Songtext).',
     abcExample: 'Beispiel einsetzen',
+    samplingSemantic: 'Sampling: Song',
+    samplingSemanticIntro:
+      'Steuert, wie die Song-Tokens gezogen werden – also Klang, Arrangement und Gesang. Vorbelegt mit den Werten des Modells; laut YuE2-Dokumentation kann jede Änderung die Qualität verändern. Ein Auftrag mit geändertem Sampling wird nicht mit anderen Aufträgen zusammen komponiert.',
+    samplingAbc: 'Sampling: Partitur',
+    samplingAbcIntro:
+      'Steuert, wie die Partitur mit Melodie und Akkorden geschrieben wird. Die Werte des Modells sind hier vorsichtiger als beim Song.',
+    samplingAbcInactive: 'Gerade ohne Wirkung: Ohne Planung oder mit eigener Partitur schreibt YuE2 keine Partitur.',
+    samplingDefault: 'Standard: {value}',
+    temperature: 'Temperatur',
+    temperatureHint: 'Wie mutig gezogen wird: niedriger = vorhersehbarer, höher = überraschender.',
+    temperatureMore:
+      'Teilt die Wahrscheinlichkeiten vor dem Ziehen. Unter 1 werden wahrscheinliche Tokens noch wahrscheinlicher (vorhersehbarer, gleichförmiger), über 1 bekommen seltene mehr Chancen (überraschender, aber fehleranfälliger). 0 nimmt immer das wahrscheinlichste Token. Erlaubt: 0–5.\n\nBeispiele:\n• Song 0.9: konservativer als der Standard 1.0\n• Partitur 0.9: ungewöhnlichere Melodien und Akkorde als mit 0.7',
+    topP: 'top_p',
+    topPHint: 'Nur die wahrscheinlichsten Tokens, bis zusammen dieser Anteil erreicht ist.',
+    topPMore:
+      'Nucleus-Sampling: Pro Schritt kommen nur die wahrscheinlichsten Tokens in Frage, bis ihre Wahrscheinlichkeit zusammen diesen Anteil erreicht. Kleiner = nur die sichersten Kandidaten, 1 = keine Einschränkung. Erlaubt: über 0 bis 1.\n\nBeispiel: 0.8 schneidet mehr unwahrscheinliche Wendungen ab als 0.95.',
+    topK: 'top_k',
+    topKHint: 'Höchstens so viele Kandidaten pro Schritt.',
+    topKMore:
+      'Pro Schritt kommen höchstens die k wahrscheinlichsten Tokens in Frage; top_p schränkt danach weiter ein. Kleiner = sicherer und gleichförmiger, größer = mehr Vielfalt. Erlaubt: 1–1000.\n\nBeispiele: 1 nimmt praktisch immer das wahrscheinlichste Token, 300 lässt beim Song deutlich mehr zu als 100.',
+    repetitionPenalty: 'Wiederholungsstrafe',
+    repetitionPenaltyHint: 'Über 1 dämpft Wiederholungen, 1 = aus.',
+    repetitionPenaltyMore:
+      'Macht Tokens unwahrscheinlicher, je öfter sie im Fenster der letzten Tokens schon vorkamen. Über 1 dämpft Wiederholungen wie hängende Töne oder Schleifen; zu hoch zwingt ständig zu Neuem und kann zerfahren klingen. Unter 1 fördert Wiederholungen. Erlaubt: über 0 bis 5.\n\nBeispiele: Song 1.3 gegen hörbare Loops, 1.1 wenn Motive stärker wiederkehren dürfen.',
+    penaltyWindow: 'Strafenfenster',
+    penaltyWindowHint: 'Wie viele der letzten Tokens die Wiederholungsstrafe betrachtet, 1–100.',
+    penaltyWindowMore:
+      'Größer = Wiederholungen werden über längere Strecken bestraft. Beim Song sind 50 Tokens 2 Sekunden Audio, bei der Partitur umfassen 100 Tokens einige Takte ABC.',
+    extensionsOff:
+      'Der Worker läuft ohne die YueUI-Erweiterung, vermutlich weil ein Update von YuE Studio den Worker geändert hat. Sampling, Schritte bei voller Qualität und Längen über 6:00 haben dann keine Wirkung. Details stehen im Protokoll.',
     abcNeedsPlanning: 'Eine eigene Partitur braucht eine Planung („Melodie und Akkorde“ oder „Nur Melodie“).',
     generate: 'Erzeugen',
     generating: 'Wird gesendet …',
     queued: 'In der Warteschlange. Der Fortschritt steht unten.',
     resetForm: 'Leeren',
+
+    transcription: 'Transkription (SheetSage2)',
+    transcriptionIntro: 'Macht aus einer Aufnahme eine Melodie-Partitur (ABC), die sich als eigene Partitur für einen neuen Song nutzen lässt, etwa für ein Cover.',
+    transcriptionMore:
+      'SheetSage2 erkennt Takt, Tonart, Form und Melodie einer Aufnahme und schreibt sie als ABC in dem Format, das YuE2 versteht (Stimmen „Vocal“ und „Ins“). Akkorde lässt es weg, damit sich die Begleitung dem neuen Stil anpasst. Es läuft auf der CPU und braucht einige Minuten; rechnet gleichzeitig ein Song, wird beides langsamer.\n\nFür ein Cover: „Als Partitur übernehmen“ (stellt die Planung auf „Nur Melodie“), dann einen neuen Stil und einen Text schreiben, dessen Silben zur Melodie passen.\n\nDie Gewichte von SheetSage2 stehen unter CC BY-NC 4.0 (nicht kommerziell).',
+    transcriptionNotInstalled:
+      'SheetSage2 ist noch nicht installiert. Einmal in YuE Studio „Transcribe recording“ öffnen und „Install transcription support“ wählen (etwa 2 GB); danach geht es auch hier.',
+    recording: 'Aufnahme',
+    recordingHint: 'Jedes Format, das macOS lesen kann: MP3, M4A/AAC, WAV, AIFF, FLAC …, bis 300 MB.',
+    transcriptionTask: 'Melodie',
+    taskFull: 'Gesang und Instrumente',
+    taskVocal: 'Nur Gesang',
+    taskHint: 'Welche Melodien in die Partitur kommen.',
+    taskMore:
+      '• Gesang und Instrumente (Standard): die Gesangsmelodie in der Stimme „Vocal“ und die Instrumentalmelodie in „Ins“.\n• Nur Gesang: nur die Gesangsmelodie, wenn für das Cover allein sie zählt.',
+    transcribe: 'Transkribieren',
+    uploading: 'Wird hochgeladen …',
+    transcriptionStarted: 'Läuft. Das dauert einige Minuten; die Seite darf dabei zu sein.',
+    transcriptionStage_starting: 'Startet',
+    transcriptionStage_progress: 'Transkribiert',
+    transcriptionStage_done: 'Fertig',
+    transcriptionStage_failed: 'Fehlgeschlagen',
+    transcriptionStage_cancelled: 'Abgebrochen',
+    transcriptions: 'Fertige Transkriptionen',
+    transcriptionsEmpty: 'Noch keine.',
+    useScore: 'Als Partitur übernehmen',
+    scoreApplied: 'Die Partitur von „{name}“ steht unter „Erweiterte Parameter“, die Planung auf „Nur Melodie“.',
+    showScore: 'ABC ansehen',
+    files: 'Alle Dateien',
+    filesTitle: 'Partitur, MIDI-Spuren und Analyse als ZIP',
+    warnings: 'Hinweise von SheetSage2: {list}',
 
     queue: 'Warteschlange',
     queueEmpty: 'Nichts in Arbeit.',
@@ -170,7 +232,7 @@ const messages = {
     qualityFull: 'Full',
     qualityHint: 'A draft is done in a few minutes and can be rendered at full quality later.',
     qualityMore:
-      'Both compose the same song; the difference is in how the sound is synthesized.\n• Draft: 8 solver steps (adjustable under “Advanced”), on the GPU.\n• Full: 32 steps, on the Neural Engine by default, takes considerably longer.\n\n“Render full” in the library synthesizes a draft again from the same tokens and seed. A good habit: generate several drafts and render only the best one at full quality.',
+      'Both compose the same song; the difference is in how the sound is synthesized.\n• Draft: 8 solver steps, on the GPU.\n• Full: 32 steps, on the Neural Engine by default, takes considerably longer.\n\n“Render full” in the library synthesizes a draft again from the same tokens and seed. A good habit: generate several drafts and render only the best one at full quality. Both step counts can be changed under “Advanced parameters”.',
     batch: 'Songs',
     batchHint: 'Several variations of the same song, each with its own seed.',
     batchMore:
@@ -191,11 +253,12 @@ const messages = {
     seedHint: 'Starting value of the randomness. Same seed and same inputs give (almost) the same song.',
     seedMore:
       'Useful for comparisons: take the seed of a song you like (the library shows it as #831001) and change only the style or one line of the lyrics – the rest stays comparable. Leave empty for a new random value. Results are not guaranteed identical across devices and software versions.',
-    draftSteps: 'Draft steps',
-    draftStepsHint: 'Solver steps of a draft’s sound synthesis, 1–32.',
-    draftStepsFullHint: 'Full quality always uses 32 steps.',
-    draftStepsMore:
-      'More steps give a cleaner sound and take proportionally longer to synthesize. Melody and lyrics stay the same, only the sound quality changes.\n• 4: quickest preview\n• 8: default\n• 16: a better draft, about twice the synthesis time\n• 32: the same as “Full” with “GPU only”',
+    stepsDraft: 'Steps (draft)',
+    stepsFull: 'Steps (full)',
+    draftStepsHint: 'Solver steps of a draft’s sound synthesis, 1–32 (default 8).',
+    fullStepsHint: 'Solver steps of the sound synthesis at full quality, 1–64 (default 32).',
+    stepsMore:
+      'More steps give a cleaner sound and take proportionally longer to synthesize. Melody and lyrics stay the same, only the sound quality changes.\n\nDraft:\n• 4: quickest preview\n• 8: default\n• 16: a better draft, about twice the synthesis time\n• 32: the same as “Full” with “GPU only”\n\nFull:\n• 32: the model’s default\n• 48: one and a half times the synthesis time; whether the difference is audible is not documented\n• 16: saves half the synthesis time\n\n“Render full” in the library always uses 32.',
     engines: 'Engines',
     enginesAuto: 'Automatic',
     enginesGpu: 'GPU only',
@@ -204,20 +267,80 @@ const messages = {
     enginesMore:
       '• Automatic (default): drafts on the GPU, full quality on the Neural Engine – about twice as fast there for short songs.\n• GPU only: leaves the Neural Engine’s roughly 2.8 GB unmapped, which helps when memory is tight, e.g. while YuE Studio is running too.\n• GPU and Neural Engine: drafts may use the Neural Engine as well.\n\nA song the Neural Engine cannot take (a very long one, say) runs on the GPU.',
     maxLength: 'Maximum length',
-    maxLengthHint: 'Upper limit for the song length; otherwise the song ends by itself once the lyrics are sung.',
+    maxLengthHint: 'Upper limit for the song length; otherwise the song ends by itself once the lyrics are sung. Beyond 6:00 is new ground for the model.',
     maxLengthMore:
-      'How long a song gets follows from its lyrics and style. If it reaches the limit, it is cut off there. A short limit saves time when only the beginning matters, e.g. 1:00 to try out a style. YuE2 cannot go beyond 6:00 (9000 tokens, 25 per second).',
+      'How long a song gets follows from its lyrics and style. If it reaches the limit, it is cut off there. A short limit saves time when only the beginning matters, e.g. 1:00 to try out a style.\n\nThe model’s default is 6:00 (9000 tokens, 25 per second). Up to 10:00 works through YueUI’s worker extension; more does not fit the model’s context, which prompt, score and song share (24576 tokens). Beyond 6:00 is untested: the model has to actually fill it with longer lyrics, and the Neural Engine no longer takes songs over about 8 minutes, so they run on the GPU.',
     abc: 'Your own score (ABC)',
     abcPlaceholder: 'X:1\nM:4/4\nL:1/16\nQ:1/4=88\nK:C\n…',
     abcHint: 'Replaces the planning with your own score: melody, chords, tempo and form are then fixed.',
     abcMore:
       'For example the ABC file of a song from the library with changed chords or a different tempo (Q:), or a melody transcribed with SheetSage2 for a cover. Needs the planning “Melody and chords” (the chords are kept) or “Melody only” with a score without chord symbols (the accompaniment is free). The syllables of the lyrics should match the notes of the “Vocal” voice. With “Instrumental” the vocal voice of your own score is kept – replace its bars with rests there.\n\n“Insert example” loads the score of “City Lights” (see the example under lyrics).',
     abcExample: 'Insert example',
+    samplingSemantic: 'Sampling: song',
+    samplingSemanticIntro:
+      'Controls how the song tokens are drawn – the sound, arrangement and singing. Preset to the model’s values; according to the YuE2 documentation any change may change the quality. A job with changed sampling is not composed together with other jobs.',
+    samplingAbc: 'Sampling: score',
+    samplingAbcIntro: 'Controls how the score with melody and chords is written. The model’s values are more cautious here than for the song.',
+    samplingAbcInactive: 'No effect right now: without planning or with your own score, YuE2 writes no score.',
+    samplingDefault: 'Default: {value}',
+    temperature: 'Temperature',
+    temperatureHint: 'How boldly tokens are drawn: lower = more predictable, higher = more surprising.',
+    temperatureMore:
+      'Scales the probabilities before drawing. Below 1 likely tokens get even likelier (more predictable, more uniform), above 1 rare ones get more of a chance (more surprising, but more error-prone). 0 always takes the likeliest token. Allowed: 0–5.\n\nExamples:\n• Song 0.9: more conservative than the default 1.0\n• Score 0.9: more unusual melodies and chords than with 0.7',
+    topP: 'top_p',
+    topPHint: 'Only the likeliest tokens, until together they reach this share.',
+    topPMore:
+      'Nucleus sampling: at each step only the likeliest tokens qualify, until their probabilities add up to this share. Smaller = only the safest candidates, 1 = no restriction. Allowed: above 0 up to 1.\n\nExample: 0.8 cuts off more unlikely turns than 0.95.',
+    topK: 'top_k',
+    topKHint: 'At most this many candidates per step.',
+    topKMore:
+      'At each step at most the k likeliest tokens qualify; top_p narrows them further. Smaller = safer and more uniform, larger = more variety. Allowed: 1–1000.\n\nExamples: 1 practically always takes the likeliest token, 300 allows considerably more for the song than 100.',
+    repetitionPenalty: 'Repetition penalty',
+    repetitionPenaltyHint: 'Above 1 dampens repetition, 1 = off.',
+    repetitionPenaltyMore:
+      'Makes tokens less likely the more often they already occurred within the window of recent tokens. Above 1 dampens repetition such as stuck notes or loops; too high forces constant novelty and can sound disjointed. Below 1 encourages repetition. Allowed: above 0 up to 5.\n\nExamples: song 1.3 against audible loops, 1.1 when motifs may return more often.',
+    penaltyWindow: 'Penalty window',
+    penaltyWindowHint: 'How many recent tokens the repetition penalty looks at, 1–100.',
+    penaltyWindowMore:
+      'Larger = repetition is penalized over longer stretches. For the song 50 tokens are 2 seconds of audio; for the score 100 tokens span a few bars of ABC.',
+    extensionsOff:
+      'The worker runs without the YueUI extension, probably because a YuE Studio update changed the worker. Sampling, steps at full quality and lengths over 6:00 then have no effect. The log has the details.',
     abcNeedsPlanning: 'Your own score needs planning (“Melody and chords” or “Melody only”).',
     generate: 'Generate',
     generating: 'Sending …',
     queued: 'Queued. Progress is shown below.',
     resetForm: 'Clear',
+
+    transcription: 'Transcription (SheetSage2)',
+    transcriptionIntro: 'Turns a recording into a melody score (ABC) that can serve as your own score for a new song, for a cover, say.',
+    transcriptionMore:
+      'SheetSage2 recognizes the meter, key, form and melody of a recording and writes them as ABC in the format YuE2 reads (voices “Vocal” and “Ins”). It leaves out chords so the accompaniment can adapt to the new style. It runs on the CPU and takes a few minutes; if a song is generating at the same time, both get slower.\n\nFor a cover: “Use as score” (sets planning to “Melody only”), then write a new style and lyrics whose syllables fit the melody.\n\nSheetSage2’s weights are licensed CC BY-NC 4.0 (non-commercial).',
+    transcriptionNotInstalled:
+      'SheetSage2 is not installed yet. Open “Transcribe recording” in YuE Studio once and choose “Install transcription support” (about 2 GB); it then works here as well.',
+    recording: 'Recording',
+    recordingHint: 'Any format macOS can read: MP3, M4A/AAC, WAV, AIFF, FLAC …, up to 300 MB.',
+    transcriptionTask: 'Melody',
+    taskFull: 'Vocals and instruments',
+    taskVocal: 'Vocals only',
+    taskHint: 'Which melodies go into the score.',
+    taskMore:
+      '• Vocals and instruments (default): the sung melody in the “Vocal” voice and the instrumental melody in “Ins”.\n• Vocals only: just the sung melody, when that is all that matters for the cover.',
+    transcribe: 'Transcribe',
+    uploading: 'Uploading …',
+    transcriptionStarted: 'Running. This takes a few minutes; the page may be closed meanwhile.',
+    transcriptionStage_starting: 'Starting',
+    transcriptionStage_progress: 'Transcribing',
+    transcriptionStage_done: 'Done',
+    transcriptionStage_failed: 'Failed',
+    transcriptionStage_cancelled: 'Cancelled',
+    transcriptions: 'Finished transcriptions',
+    transcriptionsEmpty: 'None yet.',
+    useScore: 'Use as score',
+    scoreApplied: 'The score of “{name}” is under “Advanced parameters”, planning is set to “Melody only”.',
+    showScore: 'View ABC',
+    files: 'All files',
+    filesTitle: 'Score, MIDI parts and analysis as ZIP',
+    warnings: 'Notes from SheetSage2: {list}',
 
     queue: 'Queue',
     queueEmpty: 'Nothing in progress.',

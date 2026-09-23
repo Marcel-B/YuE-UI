@@ -27,6 +27,7 @@ public sealed class WorkerHost(
 {
     private const int LogCapacity = 300;
     private const int FinishedCapacity = 30;
+    private const int FinishedTranscriptionCapacity = 5;
     private const int SubscriberCapacity = 1000;
 
     /// <summary>The worker reports progress for every step; browsers (phones on mobile data) need far fewer.</summary>
@@ -37,12 +38,14 @@ public sealed class WorkerHost(
     private readonly Lock _gate = new();
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly Dictionary<string, SongState> _songs = [];
+    private readonly Dictionary<string, TranscriptionState> _transcriptions = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
     private readonly LinkedList<LogEntry> _log = [];
     private readonly List<Channel<ServerEvent>> _subscribers = [];
     private IWorkerConnection? _connection;
     private WorkerStatus _status = WorkerStatus.Stopped;
     private string? _lastError;
+    private bool? _extensions;
     private bool _studioRunning;
     private DateTimeOffset _studioCheckedAt = DateTimeOffset.MinValue;
 
@@ -93,6 +96,59 @@ public sealed class WorkerHost(
             path = song.AudioPath;
         }
         await SendAsync(new JsonObject { ["cmd"] = "cancel", ["path"] = path }, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Hands an uploaded recording to SheetSage2 through the worker, which runs one transcription at a time; its
+    /// progress arrives as <c>transcription</c> events.
+    /// </summary>
+    /// <returns>False when a transcription is already running.</returns>
+    public async Task<bool> TranscribeAsync(TranscriptionState transcription, string audioPath, bool offline, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (_transcriptions.Values.Any(t => !t.Finished))
+            {
+                return false;
+            }
+            _transcriptions[transcription.Id] = transcription with { UpdatedAt = time.GetUtcNow() };
+            PruneFinishedTranscriptionsLocked();
+        }
+        Publish("transcription", transcription);
+        try
+        {
+            await SendAsync(new JsonObject
+            {
+                ["cmd"] = "transcribe",
+                ["id"] = transcription.Id,
+                ["audio"] = audioPath,
+                ["task"] = transcription.Task,
+                ["offline"] = offline,
+            }, cancellationToken);
+        }
+        catch
+        {
+            UpdateTranscription(transcription.Id, t => t with { Stage = "failed", Message = "The worker could not be started." });
+            throw;
+        }
+        return true;
+    }
+
+    /// <returns>False when that transcription is not running.</returns>
+    public async Task<bool> CancelTranscriptionAsync(string id, CancellationToken cancellationToken)
+    {
+        IWorkerConnection? connection;
+        lock (_gate)
+        {
+            connection = _connection;
+            if (connection is null || !_transcriptions.TryGetValue(id, out var transcription) || transcription.Finished)
+            {
+                return false;
+            }
+        }
+        // The worker cancels whichever transcription runs; there is only ever one.
+        await connection.SendAsync("""{"cmd": "transcribe_cancel"}""", cancellationToken);
         return true;
     }
 
@@ -185,6 +241,7 @@ public sealed class WorkerHost(
     private void Exited(IWorkerConnection connection)
     {
         var failed = new List<SongState>();
+        List<string> transcriptions;
         lock (_gate)
         {
             if (!ReferenceEquals(_connection, connection))
@@ -199,10 +256,15 @@ public sealed class WorkerHost(
                 _songs[song.Id] = updated;
                 failed.Add(updated);
             }
+            transcriptions = [.. _transcriptions.Values.Where(t => !t.Finished).Select(t => t.Id)];
         }
         foreach (var song in failed)
         {
             Publish("song", song);
+        }
+        foreach (var id in transcriptions)
+        {
+            UpdateTranscription(id, t => t with { Stage = "failed", Message = "The worker stopped." });
         }
         PublishWorker();
     }
@@ -240,6 +302,8 @@ public sealed class WorkerHost(
                 lock (_gate)
                 {
                     _status = WorkerStatus.Ready;
+                    // YuE Studio's worker started without the extension says nothing about it.
+                    _extensions = message["yueui_extensions"] is JsonValue flag && flag.TryGetValue(out bool active) && active;
                 }
                 PublishWorker();
                 break;
@@ -291,6 +355,76 @@ public sealed class WorkerHost(
             case "idle":
                 PublishWorker();
                 break;
+            case "transcribe":
+                Transcribed(message);
+                break;
+        }
+    }
+
+    private void Transcribed(JsonObject message)
+    {
+        var stage = Text(message["stage"]);
+        var updated = UpdateTranscription(Text(message["id"]) ?? "", t => t with
+        {
+            // "progress" without a fraction is a heartbeat: keep the last one.
+            Stage = stage ?? t.Stage,
+            Fraction = stage == "done" ? 1 : Number(message["fraction"]) ?? t.Fraction,
+            Detail = Text(message["detail"]) ?? t.Detail,
+            Abc = Text(message["abc"]) ?? t.Abc,
+            Warnings = message["warnings"] is JsonArray warnings
+                ? [.. warnings.Select(w => Text(w) ?? w?.ToJsonString() ?? "")]
+                : t.Warnings,
+            Result = Text(message["output"]) is { } output ? Path.GetFileName(output) : t.Result,
+            Message = Text(message["message"]) ?? t.Message,
+            Code = Text(message["code"]) ?? t.Code,
+        });
+        if (updated is { Stage: "failed" })
+        {
+            AddLog("error", $"Transcription of {updated.FileName}: {updated.Message}");
+        }
+    }
+
+    /// <summary>Applies a change to a transcription and publishes it; a finished one no longer needs its upload.</summary>
+    private TranscriptionState? UpdateTranscription(string id, Func<TranscriptionState, TranscriptionState> change)
+    {
+        TranscriptionState updated;
+        lock (_gate)
+        {
+            if (!_transcriptions.TryGetValue(id, out var transcription) || transcription.Finished)
+            {
+                return null;
+            }
+            updated = change(transcription) with { UpdatedAt = time.GetUtcNow() };
+            _transcriptions[id] = updated;
+        }
+        if (updated.Finished)
+        {
+            DeleteUpload(updated);
+        }
+        Publish("transcription", updated);
+        return updated;
+    }
+
+    private void DeleteUpload(TranscriptionState transcription)
+    {
+        try
+        {
+            if (Directory.Exists(transcription.UploadDirectory))
+            {
+                Directory.Delete(transcription.UploadDirectory, recursive: true);
+            }
+        }
+        catch (IOException exception)
+        {
+            logger.LogWarning(exception, "Could not delete the upload {Directory}", transcription.UploadDirectory);
+        }
+    }
+
+    private void PruneFinishedTranscriptionsLocked()
+    {
+        foreach (var old in _transcriptions.Values.Where(t => t.Finished).OrderByDescending(t => t.UpdatedAt).Skip(FinishedTranscriptionCapacity).ToList())
+        {
+            _transcriptions.Remove(old.Id);
         }
     }
 
@@ -425,10 +559,11 @@ public sealed class WorkerHost(
     private StatusSnapshot SnapshotLocked(bool studioRunning) => new(
         WorkerInfoLocked(studioRunning),
         [.. _songs.Values.OrderBy(s => s.Run, StringComparer.Ordinal).ThenBy(s => s.Index)],
-        [.. _log]);
+        [.. _log],
+        [.. _transcriptions.Values.OrderBy(t => t.UpdatedAt)]);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
-        new(_status, _songs.Values.Any(s => !s.Finished), studioRunning, _lastError);
+        new(_status, _songs.Values.Any(s => !s.Finished), studioRunning, _lastError, _extensions);
 
     /// <summary>Scanning the process table takes a moment, and worker events come in bursts: look at most every few seconds.</summary>
     private bool StudioRunning()

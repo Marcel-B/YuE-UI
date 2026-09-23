@@ -65,7 +65,59 @@ public sealed record LogEntry(DateTimeOffset Time, string Level, string Message)
 /// can run the machine out of memory, so the interface warns.
 /// </param>
 /// <param name="LastError">The worker's last error event, until it starts again.</param>
-public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunning, string? LastError);
+/// <param name="Extensions">
+/// Whether the last worker that said ready took YueUI's extra generate fields (sampling, full-quality steps, songs
+/// over six minutes); null until a worker has started. False when a YuE Studio update changed what the extension
+/// patches: the worker then runs as shipped and ignores those fields.
+/// </param>
+public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunning, string? LastError, bool? Extensions = null);
 
 /// <summary>Everything a client needs to draw the queue; also the first event of every event stream.</summary>
-public sealed record StatusSnapshot(WorkerInfo Worker, IReadOnlyList<SongState> Songs, IReadOnlyList<LogEntry> Log);
+public sealed record StatusSnapshot(
+    WorkerInfo Worker,
+    IReadOnlyList<SongState> Songs,
+    IReadOnlyList<LogEntry> Log,
+    IReadOnlyList<TranscriptionState>? Transcriptions = null);
+
+/// <summary>
+/// A transcription in flight: a recording going through SheetSage2 in the worker, keyed by <see cref="Id"/> (this
+/// server's; the worker echoes it). <see cref="Stage"/> is the worker's: starting, progress, done, failed or cancelled.
+/// </summary>
+public sealed record TranscriptionState
+{
+    public required string Id { get; init; }
+
+    /// <summary>The recording's file name as uploaded.</summary>
+    public required string FileName { get; init; }
+
+    /// <summary>"melody-full" or "melody-vocal".</summary>
+    public required string Task { get; init; }
+
+    public string Stage { get; init; } = "starting";
+
+    /// <summary>0–1 when SheetSage2 reports it; null while it only says that it is still busy.</summary>
+    public double? Fraction { get; init; }
+
+    public string Detail { get; init; } = "";
+
+    /// <summary>The melody score, once done.</summary>
+    public string? Abc { get; init; }
+
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>The folder in the transcription library, once done.</summary>
+    public string? Result { get; init; }
+
+    /// <summary>Why it failed, and the worker's code for it (busy, no_env, afconvert, abc_error, crash).</summary>
+    public string? Message { get; init; }
+
+    public string? Code { get; init; }
+
+    public DateTimeOffset UpdatedAt { get; init; }
+
+    public bool Finished => Stage is "done" or "failed" or "cancelled";
+
+    /// <summary>The uploaded copy the worker reads; deleted once the transcription has finished.</summary>
+    [JsonIgnore]
+    public string UploadDirectory { get; init; } = "";
+}

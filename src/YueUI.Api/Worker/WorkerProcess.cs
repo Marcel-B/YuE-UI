@@ -24,9 +24,15 @@ public interface IWorkerLauncher
 
 public sealed class WorkerUnavailableException(string message) : Exception(message);
 
-/// <summary>Runs YuE Studio's own <c>yue2_worker.py</c> with the Python environment the app installed.</summary>
+/// <summary>
+/// Runs YuE Studio's own <c>yue2_worker.py</c> with the Python environment the app installed, through
+/// <c>Worker/yueui_worker.py</c>: it loads the worker as a module and adds the generate fields the app never sends
+/// (sampling, full-quality steps, longer songs). Without that file next to the app the worker runs as shipped.
+/// </summary>
 public sealed class PythonWorkerLauncher(YuePaths paths, ILogger<PythonWorkerLauncher> logger) : IWorkerLauncher
 {
+    public static string ExtensionScript => Path.Combine(AppContext.BaseDirectory, "Worker", "yueui_worker.py");
+
     public IWorkerConnection Launch()
     {
         if (!File.Exists(paths.Python) || !File.Exists(paths.WorkerScript))
@@ -47,6 +53,10 @@ public sealed class PythonWorkerLauncher(YuePaths paths, ILogger<PythonWorkerLau
             UseShellExecute = false,
         };
         start.ArgumentList.Add("-u");
+        if (File.Exists(ExtensionScript))
+        {
+            start.ArgumentList.Add(ExtensionScript);
+        }
         start.ArgumentList.Add(paths.WorkerScript);
         foreach (var (name, value) in paths.WorkerEnvironment)
         {

@@ -13,7 +13,10 @@ import {
 } from '../form'
 import { formatDuration, t } from '../i18n'
 import FieldHelp from './FieldHelp.vue'
+import SamplingFields from './SamplingFields.vue'
 
+/** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
+defineProps<{ extensions: boolean | null }>()
 const form = defineModel<FormState>({ required: true })
 
 const sending = ref(false)
@@ -23,6 +26,19 @@ const fieldErrors = ref<Record<string, string[]>>({})
 const changed = computed(() => advancedChanged(form.value))
 // The API refuses this too; saying so before sending saves a round trip from the phone.
 const scoreWithoutPlanning = computed(() => form.value.abc.trim() !== '' && form.value.cot === 'off' && !form.value.instrumental)
+// The worker writes a score unless planning is off (an instrumental turns it back on) or one is supplied.
+const plansScore = computed(() => (form.value.cot !== 'off' || form.value.instrumental) && form.value.abc.trim() === '')
+// One field for the steps of the chosen quality; each keeps its own value.
+const steps = computed({
+  get: () => (form.value.quality === 'draft' ? form.value.draftSteps : form.value.fullSteps),
+  set: (value: number) => {
+    if (form.value.quality === 'draft') {
+      form.value.draftSteps = value
+    } else {
+      form.value.fullSteps = value
+    }
+  },
+})
 
 async function submit(): Promise<void> {
   sending.value = true
@@ -141,6 +157,7 @@ function lengthLabel(seconds: number): string {
         <small class="muted">{{ t('advancedIntro') }}</small>
         <button type="button" class="link" :disabled="!changed" @click="resetAdvanced">{{ t('advancedReset') }}</button>
       </div>
+      <p v-if="extensions === false" class="notice" role="note">{{ t('extensionsOff') }}</p>
 
       <div class="grid">
         <div class="field">
@@ -170,22 +187,19 @@ function lengthLabel(seconds: number): string {
         </div>
 
         <div class="field">
-          <label for="gen-steps">{{ t('draftSteps') }}</label>
+          <label for="gen-steps">{{ form.quality === 'draft' ? t('stepsDraft') : t('stepsFull') }}</label>
           <input
             id="gen-steps"
-            v-model.number="form.draftSteps"
+            v-model.number="steps"
             type="number"
             min="1"
-            max="32"
-            :disabled="form.quality !== 'draft'"
+            :max="form.quality === 'draft' ? 32 : 64"
             aria-describedby="gen-steps-help"
           />
-          <FieldHelp
-            id="gen-steps-help"
-            :hint="form.quality === 'draft' ? t('draftStepsHint') : t('draftStepsFullHint')"
-            :more="t('draftStepsMore')"
-          />
-          <small v-if="fieldErrors.draftSteps" class="danger">{{ fieldErrors.draftSteps.join(' ') }}</small>
+          <FieldHelp id="gen-steps-help" :hint="form.quality === 'draft' ? t('draftStepsHint') : t('fullStepsHint')" :more="t('stepsMore')" />
+          <small v-if="fieldErrors.draftSteps || fieldErrors.fullSteps" class="danger">
+            {{ (fieldErrors.draftSteps ?? fieldErrors.fullSteps)!.join(' ') }}
+          </small>
         </div>
 
         <div class="field">
@@ -228,6 +242,19 @@ function lengthLabel(seconds: number): string {
           <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
           <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
         </div>
+
+        <details class="sampling wide">
+          <summary>{{ t('samplingSemantic') }}</summary>
+          <small class="muted">{{ t('samplingSemanticIntro') }}</small>
+          <SamplingFields v-model="form.semanticSampling" phase="semanticSampling" :errors="fieldErrors" />
+        </details>
+
+        <details class="sampling wide">
+          <summary>{{ t('samplingAbc') }}</summary>
+          <small class="muted">{{ t('samplingAbcIntro') }}</small>
+          <small v-if="!plansScore" class="inactive">{{ t('samplingAbcInactive') }}</small>
+          <SamplingFields v-model="form.abcSampling" phase="abcSampling" :errors="fieldErrors" :disabled="!plansScore" />
+        </details>
       </div>
     </details>
 
@@ -344,6 +371,37 @@ function lengthLabel(seconds: number): string {
 
 .wide {
   grid-column: 1 / -1;
+}
+
+.notice {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-small);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  font-size: 0.85rem;
+}
+
+.sampling {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+}
+
+.sampling summary {
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.sampling > small {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.inactive {
+  color: var(--warning-text);
 }
 
 .label-row {

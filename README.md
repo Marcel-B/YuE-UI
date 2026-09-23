@@ -4,6 +4,8 @@ Eine Web-Oberfläche für [YuE Studio](https://github.com/multimodal-art-project
 
 YuE UI bringt kein eigenes Modell mit. Es startet den Worker von YuE Studio (`src/tools/yue2_worker.py`) mit der Python-Umgebung, die die App installiert hat, und spricht ihn über sein JSON-Zeilen-Protokoll auf stdin/stdout an. Die Songs landen deshalb im selben Ordner wie die der App (`~/Music/YuE Studio`), und beide sehen dieselbe Bibliothek.
 
+Davor sitzt eine kleine Erweiterung aus diesem Repository (`src/YueUI.Api/Worker/yueui_worker.py`). Sie lädt den Worker als Python-Modul und ergänzt das `generate`-Kommando um Parameter, die YuE Studio selbst nicht anbietet: Sampling für Partitur und Song (temperature, top_p, top_k, repetition_penalty, penalty_window), die Schrittzahl bei voller Qualität und Songs bis 10 Minuten statt 6. Sie greift dafür an einigen Stellen in den Worker ein und prüft beim Start, ob die noch so aussehen wie erwartet. Hat ein Update von YuE Studio den Worker verändert, läuft er unverändert weiter. Die Oberfläche weist dann darauf hin, dass diese Parameter keine Wirkung haben, der Grund steht im Protokoll. `cfg_scale` fehlt bewusst: Der Worker komponiert Songs in Batches, und die Batch-Decoder von YuE2 können keine CFG.
+
 ```
 Browser ──(Tailscale, HTTPS)──▶ tailscale serve ──▶ YueUI.Api 127.0.0.1:5090 ──stdin/stdout──▶ yue2_worker.py
           ◀── Server-Sent Events: Warteschlange, Fortschritt, Protokoll
@@ -43,6 +45,12 @@ Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ 
 
 Beide haben einen eigenen Worker und damit ein eigenes Modell im Speicher. Rechnen beide gleichzeitig, kann der Speicher knapp werden. Die Oberfläche zeigt deshalb einen Hinweis, solange die App geöffnet ist. **Worker beenden** in der Warteschlange gibt den Speicher von YuE UI sofort frei. Ansonsten entlädt der Worker das Modell nach zehn Minuten Leerlauf von selbst.
 
+## Transkription mit SheetSage2
+
+Unter **Transkription** lässt sich eine Aufnahme hochladen (jedes Format, das macOS lesen kann, bis 300 MB). SheetSage2 macht daraus eine Melodie-Partitur im ABC-Format ohne Akkorde. **Als Partitur übernehmen** setzt sie als eigene Partitur ins Formular und stellt die Planung auf „Nur Melodie“, die Grundlage für ein Cover mit neuem Stil und Text. Jede Transkription landet als Ordner in `~/Music/YuE Studio/transcriptions` (Partitur, MIDI-Spuren, Analyse); die Liste zeigt auch die, die in YuE Studio entstanden sind.
+
+SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI installiert beides nicht selbst, sondern nutzt die Installation von YuE Studio: dort einmal **Transcribe recording** öffnen und **Install transcription support** wählen. Transkribiert wird auf der CPU, das dauert einige Minuten, immer eine Aufnahme zur Zeit.
+
 ## Konfiguration
 
 `appsettings.json` bzw. Umgebungsvariablen:
@@ -52,18 +60,24 @@ Beide haben einen eigenen Worker und damit ein eigenes Modell im Speicher. Rechn
 | `Urls` | `http://127.0.0.1:5090` | Adresse des Servers |
 | `Yue:InstallRoot` (`Yue__InstallRoot`) | `~/Library/Application Support/YuE Studio` | Installation von YuE Studio (`env/`, `src/`, `models/`) |
 | `Yue:OutputDir` (`Yue__OutputDir`) | `~/Music/YuE Studio` | Song-Bibliothek |
+| `Yue:SheetSagePython` (`Yue__SheetSagePython`) | `<InstallRoot>/.venv-sheetsage2/bin/python` | Python der SheetSage2-Umgebung |
 
 ## API
 
 | Methode | Pfad | |
 |---|---|---|
 | `GET` | `/api/status` | Worker-Zustand, Songs in Arbeit, Protokoll |
-| `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `ping`) |
-| `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–9000, abc? }` (`abc` braucht `cot` "full" oder "melody") |
+| `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `transcription`, `ping`) |
+| `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–15000, abc?, fullSteps?: 1–64, abcSampling?, semanticSampling? }`; `abc` braucht `cot` "full" oder "melody", Sampling ist `{ temperature?, topP?, topK?, repetitionPenalty?, penaltyWindow? }`, über 9000 Tokens, `fullSteps` und Sampling nur mit der Worker-Erweiterung |
 | `POST` | `/api/songs/{run}/{song}/render` | Song aus seinen Tokens neu synthetisieren, z. B. einen Entwurf in voller Qualität |
 | `POST` | `/api/songs/{run}/{song}/cancel` | Song abbrechen |
 | `POST` | `/api/stop` | alle Songs abbrechen |
 | `POST` | `/api/worker/shutdown` | Worker-Prozess beenden (Speicher freigeben) |
+| `GET` | `/api/transcriptions` | `{ installed, items }`: ob SheetSage2 installiert ist, und die fertigen Transkriptionen |
+| `POST` | `/api/transcriptions` | Aufnahme transkribieren: Formular mit `file` und `task` (`melody-full` oder `melody-vocal`); der Fortschritt kommt als `transcription`-Event |
+| `POST` | `/api/transcriptions/{id}/cancel` | laufende Transkription abbrechen |
+| `GET` | `/api/transcriptions/{id}/score` | `score.abc` der Transkription (`?download=true` als Download) |
+| `GET` | `/api/transcriptions/{id}/zip` | alle Dateien der Transkription als ZIP |
 | `GET` | `/api/library` | alle Läufe mit ihren Songs |
 | `GET` | `/api/songs/{run}/{song}/audio` | FLAC (Range-fähig; `?download=true` als Download) |
 | `GET` | `/api/songs/{run}/{song}/score` | `score.abc` |
