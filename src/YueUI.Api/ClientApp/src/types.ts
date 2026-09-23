@@ -64,6 +64,10 @@ export interface GenerateRequest {
   /** Null leaves the choice to the worker (Neural Engine for full quality). */
   engines: Engines | null
   draftSteps: number | null
+  /** Upper limit of song tokens (25 per second of audio, 200–9000); null for the worker's 9000. */
+  maxTokens: number | null
+  /** A score in ABC notation instead of the model's own plan; needs `cot` "full" or "melody". */
+  abc: string | null
 }
 
 export interface SongInfo {

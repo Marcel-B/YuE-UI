@@ -9,6 +9,9 @@ namespace YueUI.Api;
 /// <param name="Seed">Null for a random one.</param>
 /// <param name="Engines">"gpu" or "gpu+ane"; null leaves the worker's choice (Neural Engine for full quality).</param>
 /// <param name="DraftSteps">Synthesis steps of a draft, 1–32 (the worker defaults to 8).</param>
+/// <param name="MaxTokens">Upper limit of song tokens (25 per second of audio); null for the worker's 9000 (six minutes).
+/// A song that reaches it is cut off there.</param>
+/// <param name="Abc">A score in ABC notation that replaces the model's own plan; needs Cot "full" or "melody".</param>
 public sealed record GenerateRequest(
     string Style,
     string Lyrics,
@@ -19,9 +22,17 @@ public sealed record GenerateRequest(
     long? Seed = null,
     bool Instrumental = false,
     string? Engines = null,
-    int? DraftSteps = null)
+    int? DraftSteps = null,
+    int? MaxTokens = null,
+    string? Abc = null)
 {
     public const int MaxBatch = 8;
+    public const int TokensPerSecond = 25;
+    // The worker's semantic sampling insists on at least 200 tokens (min_tokens) and caps at 9000.
+    public const int MinTokens = 200;
+    public const int MaxTokensLimit = 9000;
+
+    private bool HasAbc => !string.IsNullOrWhiteSpace(Abc);
 
     public Dictionary<string, string[]> Validate()
     {
@@ -30,10 +41,11 @@ public sealed record GenerateRequest(
         {
             errors["style"] = ["A style is required."];
         }
-        // Instrumental songs still need the lyrics' section structure ([verse], [chorus], …).
-        if (string.IsNullOrWhiteSpace(Lyrics))
+        // An instrumental keeps only the lyrics' section tags, and without any the worker uses
+        // [Intro] [Verse] [Chorus] [Outro].
+        if (string.IsNullOrWhiteSpace(Lyrics) && !Instrumental)
         {
-            errors["lyrics"] = ["Lyrics (or for an instrumental at least the section tags) are required."];
+            errors["lyrics"] = ["Lyrics are required (except for an instrumental)."];
         }
         if (Batch is < 1 or > MaxBatch)
         {
@@ -59,6 +71,15 @@ public sealed record GenerateRequest(
         {
             errors["draftSteps"] = ["Between 1 and 32."];
         }
+        if (MaxTokens is < MinTokens or > MaxTokensLimit)
+        {
+            errors["maxTokens"] = [$"Between {MinTokens} and {MaxTokensLimit}."];
+        }
+        // The model only reads a score in a planning mode; an instrumental switches "off" to "full" itself.
+        if (HasAbc && Cot == "off" && !Instrumental)
+        {
+            errors["abc"] = ["A score needs planning 'full' or 'melody'."];
+        }
         return errors;
     }
 
@@ -68,7 +89,7 @@ public sealed record GenerateRequest(
         {
             ["cmd"] = "generate",
             ["style"] = Style.Trim(),
-            ["lyrics"] = Lyrics.Trim(),
+            ["lyrics"] = Lyrics?.Trim() ?? "",
             ["title"] = Title?.Trim() ?? "",
             ["batch"] = Batch,
             ["quality"] = Quality,
@@ -90,6 +111,14 @@ public sealed record GenerateRequest(
         if (DraftSteps is { } steps)
         {
             command["draft_steps"] = steps;
+        }
+        if (MaxTokens is { } maxTokens)
+        {
+            command["max_tokens"] = maxTokens;
+        }
+        if (HasAbc)
+        {
+            command["abc"] = Abc!.Trim();
         }
         return command;
     }

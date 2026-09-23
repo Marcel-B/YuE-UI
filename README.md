@@ -59,7 +59,7 @@ Beide haben einen eigenen Worker und damit ein eigenes Modell im Speicher. Rechn
 |---|---|---|
 | `GET` | `/api/status` | Worker-Zustand, Songs in Arbeit, Protokoll |
 | `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `ping`) |
-| `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps? }` |
+| `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–9000, abc? }` (`abc` braucht `cot` "full" oder "melody") |
 | `POST` | `/api/songs/{run}/{song}/render` | Song aus seinen Tokens neu synthetisieren, z. B. einen Entwurf in voller Qualität |
 | `POST` | `/api/songs/{run}/{song}/cancel` | Song abbrechen |
 | `POST` | `/api/stop` | alle Songs abbrechen |

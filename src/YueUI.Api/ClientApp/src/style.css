@@ -103,7 +103,8 @@ h2 {
   gap: 0.3rem;
 }
 
-.field > span {
+.field > span,
+.field > label:not(.check) {
   font-size: 0.9rem;
   font-weight: 600;
 }

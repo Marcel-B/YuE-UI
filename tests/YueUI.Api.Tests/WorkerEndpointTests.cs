@@ -41,6 +41,53 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_score_and_a_length_limit_reach_the_worker()
+    {
+        var response = await _client.PostAsJsonAsync("/api/generate", new
+        {
+            style = "English, piano pop",
+            lyrics = "[verse]\nNeon lights",
+            cot = "melody",
+            maxTokens = 3000,
+            abc = "\nX:1\nK:C\nE2G2A2G2|\n",
+        });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var command = await _app.Worker.NextCommand();
+        Assert.Equal("melody", (string?)command["cot"]);
+        Assert.Equal(3000, (int?)command["max_tokens"]);
+        Assert.Equal("X:1\nK:C\nE2G2A2G2|", (string?)command["abc"]);
+    }
+
+    [Fact]
+    public async Task Defaults_leave_length_and_score_to_the_worker()
+    {
+        var command = await Generate();
+
+        Assert.Null(command["max_tokens"]);
+        Assert.Null(command["abc"]);
+    }
+
+    [Fact]
+    public async Task An_instrumental_needs_no_lyrics()
+    {
+        var response = await _client.PostAsJsonAsync("/api/generate", new { style = "Ambient", lyrics = "", instrumental = true });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("", (string?)(await _app.Worker.NextCommand())["lyrics"]);
+    }
+
+    [Fact]
+    public async Task A_score_without_planning_and_an_impossible_length_are_refused()
+    {
+        var response = await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "x", cot = "off", abc = "X:1", maxTokens = 100 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var errors = (await response.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject();
+        Assert.Equal(["maxTokens", "abc"], errors.Select(e => e.Key));
+    }
+
+    [Fact]
     public async Task A_second_command_reuses_the_running_worker()
     {
         await Generate();
@@ -215,11 +262,11 @@ public sealed class WorkerEndpointTests : IDisposable
         _app.Dispose();
     }
 
-    private async Task Generate()
+    private async Task<JsonObject> Generate()
     {
         var response = await _client.PostAsJsonAsync("/api/generate", new { style = "Dark synthwave", lyrics = "[verse]\nNeon", title = "Neon Night" });
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-        await _app.Worker.NextCommand();
+        return await _app.Worker.NextCommand();
     }
 
     /// <summary>A generate command and the worker's answer to it: ready, then one queued song.</summary>

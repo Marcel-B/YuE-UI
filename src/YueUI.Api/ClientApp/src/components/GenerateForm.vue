@@ -1,14 +1,28 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ApiError, generate } from '../api'
-import { defaultFormState, toGenerateRequest, type FormState } from '../form'
-import { t } from '../i18n'
+import {
+  advancedChanged,
+  defaultAdvanced,
+  defaultFormState,
+  exampleScore,
+  lengthChoices,
+  maxSongSeconds,
+  toGenerateRequest,
+  type FormState,
+} from '../form'
+import { formatDuration, t } from '../i18n'
+import FieldHelp from './FieldHelp.vue'
 
 const form = defineModel<FormState>({ required: true })
 
 const sending = ref(false)
 const message = ref<{ text: string; error: boolean } | null>(null)
 const fieldErrors = ref<Record<string, string[]>>({})
+
+const changed = computed(() => advancedChanged(form.value))
+// The API refuses this too; saying so before sending saves a round trip from the phone.
+const scoreWithoutPlanning = computed(() => form.value.abc.trim() !== '' && form.value.cot === 'off' && !form.value.instrumental)
 
 async function submit(): Promise<void> {
   sending.value = true
@@ -39,6 +53,15 @@ function reset(): void {
   message.value = null
   fieldErrors.value = {}
 }
+
+function resetAdvanced(): void {
+  form.value = { ...form.value, ...defaultAdvanced() }
+}
+
+function lengthLabel(seconds: number): string {
+  const duration = formatDuration(seconds)
+  return seconds === maxSongSeconds ? t('defaultValue', { value: duration }) : duration
+}
 </script>
 
 <template>
@@ -48,81 +71,168 @@ function reset(): void {
       <button type="button" class="link" @click="reset">{{ t('resetForm') }}</button>
     </div>
 
-    <label class="field">
-      <span>{{ t('title') }}</span>
-      <input v-model="form.title" type="text" maxlength="120" :placeholder="t('titlePlaceholder')" />
-    </label>
+    <div class="field">
+      <label for="gen-title">{{ t('title') }}</label>
+      <input id="gen-title" v-model="form.title" type="text" maxlength="120" :placeholder="t('titlePlaceholder')" aria-describedby="gen-title-help" />
+      <FieldHelp id="gen-title-help" :hint="t('titleHint')" />
+    </div>
 
-    <label class="field">
-      <span>{{ t('style') }}</span>
-      <textarea v-model="form.style" rows="3" required :placeholder="t('stylePlaceholder')" />
+    <div class="field">
+      <label for="gen-style">{{ t('style') }}</label>
+      <textarea id="gen-style" v-model="form.style" rows="3" required :placeholder="t('stylePlaceholder')" aria-describedby="gen-style-help" />
+      <FieldHelp id="gen-style-help" :hint="t('styleHint')" :more="t('styleMore')" />
       <small v-if="fieldErrors.style" class="danger">{{ fieldErrors.style.join(' ') }}</small>
-    </label>
+    </div>
 
-    <label class="field">
-      <span>{{ t('lyrics') }}</span>
-      <textarea v-model="form.lyrics" class="lyrics" rows="12" required spellcheck="false" :placeholder="t('lyricsPlaceholder')" />
-      <small class="muted">{{ t('lyricsHint') }}</small>
+    <div class="field">
+      <label for="gen-lyrics">{{ form.instrumental ? t('lyricsOptional') : t('lyrics') }}</label>
+      <textarea
+        id="gen-lyrics"
+        v-model="form.lyrics"
+        class="mono"
+        rows="12"
+        :required="!form.instrumental"
+        spellcheck="false"
+        :placeholder="t('lyricsPlaceholder')"
+        aria-describedby="gen-lyrics-help"
+      />
+      <FieldHelp id="gen-lyrics-help" :hint="t('lyricsHint')" :more="t('lyricsMore')" />
       <small v-if="fieldErrors.lyrics" class="danger">{{ fieldErrors.lyrics.join(' ') }}</small>
-    </label>
+    </div>
 
-    <label class="check">
-      <input v-model="form.instrumental" type="checkbox" />
-      <span>{{ t('instrumental') }}</span>
-    </label>
+    <div class="field">
+      <label class="check">
+        <input v-model="form.instrumental" type="checkbox" aria-describedby="gen-instrumental-help" />
+        <span>{{ t('instrumental') }}</span>
+      </label>
+      <FieldHelp id="gen-instrumental-help" :hint="t('instrumentalHint')" :more="t('instrumentalMore')" />
+    </div>
 
-    <div class="row">
-      <fieldset class="segmented">
-        <legend>{{ t('quality') }}</legend>
-        <label :class="{ active: form.quality === 'draft' }">
-          <input v-model="form.quality" type="radio" value="draft" class="sr-only" />{{ t('qualityDraft') }}
-        </label>
-        <label :class="{ active: form.quality === 'full' }">
-          <input v-model="form.quality" type="radio" value="full" class="sr-only" />{{ t('qualityFull') }}
-        </label>
-      </fieldset>
+    <div class="grid">
+      <div class="field">
+        <fieldset class="segmented" aria-describedby="gen-quality-help">
+          <legend>{{ t('quality') }}</legend>
+          <label :class="{ active: form.quality === 'draft' }">
+            <input v-model="form.quality" type="radio" value="draft" class="sr-only" />{{ t('qualityDraft') }}
+          </label>
+          <label :class="{ active: form.quality === 'full' }">
+            <input v-model="form.quality" type="radio" value="full" class="sr-only" />{{ t('qualityFull') }}
+          </label>
+        </fieldset>
+        <FieldHelp id="gen-quality-help" :hint="t('qualityHint')" :more="t('qualityMore')" />
+      </div>
 
-      <label class="field compact">
-        <span>{{ t('batch') }}</span>
-        <select v-model.number="form.batch">
+      <div class="field">
+        <label for="gen-batch">{{ t('batch') }}</label>
+        <select id="gen-batch" v-model.number="form.batch" class="compact" aria-describedby="gen-batch-help">
           <option v-for="n in 4" :key="n" :value="n">{{ n }}</option>
         </select>
-      </label>
+        <FieldHelp id="gen-batch-help" :hint="t('batchHint')" :more="t('batchMore')" />
+        <small v-if="fieldErrors.batch" class="danger">{{ fieldErrors.batch.join(' ') }}</small>
+      </div>
     </div>
-    <small class="muted">{{ t('qualityHint') }}</small>
 
     <details class="advanced">
-      <summary>{{ t('advanced') }}</summary>
+      <summary>
+        {{ t('advanced') }}
+        <span v-if="changed" class="badge changed">{{ t('advancedChanged') }}</span>
+      </summary>
+      <div class="advanced-head">
+        <small class="muted">{{ t('advancedIntro') }}</small>
+        <button type="button" class="link" :disabled="!changed" @click="resetAdvanced">{{ t('advancedReset') }}</button>
+      </div>
+
       <div class="grid">
-        <label class="field">
-          <span>{{ t('cot') }}</span>
-          <select v-model="form.cot">
-            <option value="full">{{ t('cotFull') }}</option>
+        <div class="field">
+          <label for="gen-cot">{{ t('cot') }}</label>
+          <select id="gen-cot" v-model="form.cot" aria-describedby="gen-cot-help">
+            <option value="full">{{ t('defaultValue', { value: t('cotFull') }) }}</option>
             <option value="melody">{{ t('cotMelody') }}</option>
             <option value="off">{{ t('cotOff') }}</option>
           </select>
-        </label>
-        <label class="field">
-          <span>{{ t('seed') }}</span>
-          <input v-model="form.seed" type="text" inputmode="numeric" pattern="[0-9]*" :placeholder="t('seedPlaceholder')" />
-        </label>
-        <label class="field">
-          <span>{{ t('draftSteps') }}</span>
-          <input v-model.number="form.draftSteps" type="number" min="1" max="32" :disabled="form.quality !== 'draft'" />
-        </label>
-        <label class="field">
-          <span>{{ t('engines') }}</span>
-          <select v-model="form.engines">
-            <option value="">{{ t('enginesAuto') }}</option>
+          <FieldHelp id="gen-cot-help" :hint="t('cotHint')" :more="t('cotMore')" />
+          <small v-if="fieldErrors.cot" class="danger">{{ fieldErrors.cot.join(' ') }}</small>
+        </div>
+
+        <div class="field">
+          <label for="gen-seed">{{ t('seed') }}</label>
+          <input
+            id="gen-seed"
+            v-model="form.seed"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            :placeholder="t('seedPlaceholder')"
+            aria-describedby="gen-seed-help"
+          />
+          <FieldHelp id="gen-seed-help" :hint="t('seedHint')" :more="t('seedMore')" />
+          <small v-if="fieldErrors.seed" class="danger">{{ fieldErrors.seed.join(' ') }}</small>
+        </div>
+
+        <div class="field">
+          <label for="gen-steps">{{ t('draftSteps') }}</label>
+          <input
+            id="gen-steps"
+            v-model.number="form.draftSteps"
+            type="number"
+            min="1"
+            max="32"
+            :disabled="form.quality !== 'draft'"
+            aria-describedby="gen-steps-help"
+          />
+          <FieldHelp
+            id="gen-steps-help"
+            :hint="form.quality === 'draft' ? t('draftStepsHint') : t('draftStepsFullHint')"
+            :more="t('draftStepsMore')"
+          />
+          <small v-if="fieldErrors.draftSteps" class="danger">{{ fieldErrors.draftSteps.join(' ') }}</small>
+        </div>
+
+        <div class="field">
+          <label for="gen-engines">{{ t('engines') }}</label>
+          <select id="gen-engines" v-model="form.engines" aria-describedby="gen-engines-help">
+            <option value="">{{ t('defaultValue', { value: t('enginesAuto') }) }}</option>
             <option value="gpu">{{ t('enginesGpu') }}</option>
             <option value="gpu+ane">{{ t('enginesAne') }}</option>
           </select>
-        </label>
+          <FieldHelp id="gen-engines-help" :hint="t('enginesHint')" :more="t('enginesMore')" />
+          <small v-if="fieldErrors.engines" class="danger">{{ fieldErrors.engines.join(' ') }}</small>
+        </div>
+
+        <div class="field">
+          <label for="gen-length">{{ t('maxLength') }}</label>
+          <select id="gen-length" v-model.number="form.maxSeconds" aria-describedby="gen-length-help">
+            <option v-for="seconds in lengthChoices" :key="seconds" :value="seconds">{{ lengthLabel(seconds) }}</option>
+          </select>
+          <FieldHelp id="gen-length-help" :hint="t('maxLengthHint')" :more="t('maxLengthMore')" />
+          <small v-if="fieldErrors.maxTokens" class="danger">{{ fieldErrors.maxTokens.join(' ') }}</small>
+        </div>
+
+        <div class="field wide">
+          <div class="label-row">
+            <label for="gen-abc">{{ t('abc') }}</label>
+            <button v-if="form.abc.trim() === ''" type="button" class="link" @click="form.abc = exampleScore">{{ t('abcExample') }}</button>
+          </div>
+          <textarea
+            id="gen-abc"
+            v-model="form.abc"
+            class="mono"
+            rows="8"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            :placeholder="t('abcPlaceholder')"
+            aria-describedby="gen-abc-help"
+          />
+          <FieldHelp id="gen-abc-help" :hint="t('abcHint')" :more="t('abcMore')" />
+          <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
+          <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
+        </div>
       </div>
     </details>
 
     <div class="actions">
-      <button type="submit" class="button primary" :disabled="sending">{{ sending ? t('generating') : t('generate') }}</button>
+      <button type="submit" class="button primary" :disabled="sending || scoreWithoutPlanning">{{ sending ? t('generating') : t('generate') }}</button>
       <span v-if="message" :class="message.error ? 'danger' : 'muted'" role="status">{{ message.text }}</span>
     </div>
   </form>
@@ -145,16 +255,9 @@ function reset(): void {
   margin: 0;
 }
 
-.lyrics {
+.mono {
   font-family: var(--font-mono);
   font-size: 0.9rem;
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 1rem;
 }
 
 .compact {
@@ -203,16 +306,56 @@ function reset(): void {
   outline-offset: 2px;
 }
 
+.advanced {
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
 .advanced summary {
   cursor: pointer;
   font-weight: 600;
 }
 
+.changed {
+  margin-left: 0.4rem;
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.advanced-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-top: 0.6rem;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: 0.9rem;
+  align-items: start;
+  gap: 1.1rem 1rem;
+}
+
+.advanced .grid {
   margin-top: 0.9rem;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.label-row label {
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .actions {
