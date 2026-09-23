@@ -31,6 +31,15 @@ public interface IVoiceConversionService
     /// <summary>Removes a reference voice; the service refuses while a job still waits for it.</summary>
     Task DeleteVoiceAsync(string voiceId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The recording of a reference voice as the service keeps it - mono, 44.1 kHz, at most 25 seconds - which
+    /// is exactly what the model gets, so it is what to listen to before a job computes on it for minutes. The
+    /// uploaded original is not kept. An older ChangeMyVoice without this route answers
+    /// <see cref="HttpStatusCode.NotFound"/> without the code <see cref="VoiceConversionCode.VoiceNotFound"/>.
+    /// The caller owns the stream.
+    /// </summary>
+    Task<Stream> DownloadVoiceAsync(string voiceId, CancellationToken cancellationToken = default);
+
     /// <summary>Hands the vocal track over; the conversion then runs on by itself.</summary>
     /// <param name="voiceId">The reference voice whose timbre the recording takes on.</param>
     Task<VoiceJob> StartJobAsync(
@@ -183,6 +192,7 @@ public static class VoiceConversionCode
     public const string ReferenceTooShort = "REFERENCE_TOO_SHORT";
     public const string DuplicateVoiceLabel = "DUPLICATE_VOICE_LABEL";
     public const string VoiceInUse = "VOICE_IN_USE";
+    public const string VoiceNotFound = "VOICE_NOT_FOUND";
     public const string ResultNotReady = "RESULT_NOT_READY";
     public const string ResultGone = "RESULT_GONE";
     public const string QueueFull = "QUEUE_FULL";
@@ -241,6 +251,9 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
         using var response = await SendAsync(() => client.DeleteAsync($"{Voices}/{Uri.EscapeDataString(voiceId)}", cancellationToken), cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
     }
+
+    public Task<Stream> DownloadVoiceAsync(string voiceId, CancellationToken cancellationToken = default) =>
+        DownloadAsync($"{Voices}/{Uri.EscapeDataString(voiceId)}/audio", cancellationToken);
 
     public async Task<VoiceJob> StartJobAsync(
         Stream vocals,
@@ -310,10 +323,14 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
             : new VoiceJobPage(Array.ConvertAll(page.Items ?? [], ToJob), page.Total, page.Limit, page.Offset);
     }
 
-    public async Task<Stream> DownloadResultAsync(string jobId, CancellationToken cancellationToken = default)
+    public Task<Stream> DownloadResultAsync(string jobId, CancellationToken cancellationToken = default) =>
+        DownloadAsync($"{Jobs}/{Uri.EscapeDataString(jobId)}/result", cancellationToken);
+
+    /// <summary>A WAV the caller reads as it arrives; the response lives as long as the stream.</summary>
+    private async Task<Stream> DownloadAsync(string path, CancellationToken cancellationToken)
     {
         var response = await SendAsync(
-            () => client.GetAsync($"{Jobs}/{Uri.EscapeDataString(jobId)}/result", HttpCompletionOption.ResponseHeadersRead, cancellationToken),
+            () => client.GetAsync(path, HttpCompletionOption.ResponseHeadersRead, cancellationToken),
             cancellationToken).ConfigureAwait(false);
         try
         {

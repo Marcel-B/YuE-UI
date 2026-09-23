@@ -174,6 +174,17 @@ public class VoiceConversionServiceTests
     }
 
     [Fact]
+    public async Task The_recording_of_a_voice_is_handed_on_as_a_stream()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, "RIFFmaster");
+
+        await using var recording = await Service(handler).DownloadVoiceAsync("v 1");
+
+        Assert.Equal("RIFFmaster", await new StreamReader(recording).ReadToEndAsync());
+        Assert.Equal("/api/v1/voices/v%201/audio", handler.Request!.RequestUri!.PathAndQuery);
+    }
+
+    [Fact]
     public async Task Confirming_the_import_deletes_the_job_and_a_voice_is_deleted_by_its_id()
     {
         var job = new StubHandler(HttpStatusCode.NoContent, string.Empty);
