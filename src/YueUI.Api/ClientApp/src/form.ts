@@ -1,4 +1,4 @@
-import type { Cot, Engines, GenerateRequest, Quality } from './types'
+import type { Cot, Engines, GenerateRequest, Quality, SamplingOverrides } from './types'
 
 /** The web form as the browser keeps it; `seed` stays text so an empty field means "random". */
 export interface FormState {
@@ -15,16 +15,48 @@ export interface FormState {
   /** Longest song in seconds; the API wants tokens. */
   maxSeconds: number
   abc: string
+  fullSteps: number
+  /** How the score is sampled. */
+  abcSampling: Sampling
+  /** How the song tokens are sampled. */
+  semanticSampling: Sampling
+}
+
+/** One of the model's sampling settings, every value filled in. */
+export interface Sampling {
+  temperature: number
+  topP: number
+  topK: number
+  repetitionPenalty: number
+  penaltyWindow: number
+}
+
+export type SamplingPhase = 'abcSampling' | 'semanticSampling'
+
+/** YuE2's GenerationConfig (src/yue2/protocol.py): the checkpoint's own values. */
+export const defaultSampling: Record<SamplingPhase, Sampling> = {
+  abcSampling: { temperature: 0.7, topP: 0.9, topK: 30, repetitionPenalty: 1.005, penaltyWindow: 100 },
+  semanticSampling: { temperature: 1.0, topP: 0.95, topK: 100, repetitionPenalty: 1.2, penaltyWindow: 50 },
 }
 
 export const tokensPerSecond = 25
-/** The worker's limit of 9000 tokens. */
+/** The model's default of 9000 tokens; longer songs need the worker extension. */
 export const maxSongSeconds = 360
-export const lengthChoices = [30, 60, 90, 120, 150, 180, 240, 300, maxSongSeconds]
+export const lengthChoices = [30, 60, 90, 120, 150, 180, 240, 300, maxSongSeconds, 420, 480, 540, 600]
+export const defaultFullSteps = 32
 
 const storageKey = 'yue-ui.form'
 
-type AdvancedKey = 'cot' | 'seed' | 'draftSteps' | 'engines' | 'maxSeconds' | 'abc'
+type AdvancedKey =
+  | 'cot'
+  | 'seed'
+  | 'draftSteps'
+  | 'fullSteps'
+  | 'engines'
+  | 'maxSeconds'
+  | 'abc'
+  | 'abcSampling'
+  | 'semanticSampling'
 
 /** The advanced section, set to what the worker would do without them. */
 export function defaultAdvanced(): Pick<FormState, AdvancedKey> {
@@ -35,6 +67,9 @@ export function defaultAdvanced(): Pick<FormState, AdvancedKey> {
     engines: '',
     maxSeconds: maxSongSeconds,
     abc: '',
+    fullSteps: defaultFullSteps,
+    abcSampling: { ...defaultSampling.abcSampling },
+    semanticSampling: { ...defaultSampling.semanticSampling },
   }
 }
 
@@ -53,9 +88,25 @@ export function defaultFormState(): FormState {
 /** The advanced section is collapsed and kept across visits, so a forgotten seed or score must stay visible. */
 export function advancedChanged(form: FormState): boolean {
   const defaults = defaultAdvanced()
-  return (Object.keys(defaults) as AdvancedKey[]).some((key) =>
-    typeof defaults[key] === 'string' ? String(form[key]).trim() !== defaults[key] : form[key] !== defaults[key],
-  )
+  return (Object.keys(defaults) as AdvancedKey[]).some((key) => {
+    const value = form[key]
+    const initial = defaults[key]
+    if (typeof initial === 'string') {
+      return String(value).trim() !== initial
+    }
+    return typeof initial === 'object' ? JSON.stringify(value) !== JSON.stringify(initial) : value !== initial
+  })
+}
+
+/** Only what differs from the model's values, so unchanged songs still share token batches with others. */
+export function samplingOverrides(phase: SamplingPhase, sampling: Sampling): SamplingOverrides | null {
+  const overrides: SamplingOverrides = {}
+  for (const key of Object.keys(sampling) as (keyof Sampling)[]) {
+    if (Number.isFinite(sampling[key]) && sampling[key] !== defaultSampling[phase][key]) {
+      overrides[key] = sampling[key]
+    }
+  }
+  return Object.keys(overrides).length > 0 ? overrides : null
 }
 
 /** The last form, so a phone that reloads the page (or a second visit) keeps a half-written song. */
@@ -63,7 +114,15 @@ export function loadFormState(): FormState {
   try {
     const stored = localStorage.getItem(storageKey)
     if (stored) {
-      return { ...defaultFormState(), ...(JSON.parse(stored) as Partial<FormState>) }
+      const defaults = defaultFormState()
+      const form = JSON.parse(stored) as Partial<FormState>
+      // Nested, so a form kept before a value was added still gets it.
+      return {
+        ...defaults,
+        ...form,
+        abcSampling: { ...defaults.abcSampling, ...form.abcSampling },
+        semanticSampling: { ...defaults.semanticSampling, ...form.semanticSampling },
+      }
     }
   } catch {
     // Unreadable or blocked storage: start fresh.
@@ -94,6 +153,9 @@ export function toGenerateRequest(form: FormState): GenerateRequest {
     draftSteps: form.quality === 'draft' ? form.draftSteps : null,
     maxTokens: form.maxSeconds < maxSongSeconds ? form.maxSeconds * tokensPerSecond : null,
     abc: form.abc.trim() === '' ? null : form.abc.trim(),
+    fullSteps: form.quality === 'full' && form.fullSteps !== defaultFullSteps ? form.fullSteps : null,
+    abcSampling: samplingOverrides('abcSampling', form.abcSampling),
+    semanticSampling: samplingOverrides('semanticSampling', form.semanticSampling),
   }
 }
 

@@ -15,7 +15,7 @@ watch(form, (value) => saveFormState(value), { deep: true })
 
 // ---- Live state of the worker, from the event stream ----------------------------------------------
 
-const worker = ref<WorkerInfo>({ status: 'stopped', busy: false, studioRunning: false, lastError: null })
+const worker = ref<WorkerInfo>({ status: 'stopped', busy: false, studioRunning: false, lastError: null, extensions: null })
 const songs = ref<SongState[]>([])
 const log = ref<LogEntry[]>([])
 /** Starts optimistic: the warning is for a stream that broke, not for one that is still opening. */
@@ -133,7 +133,7 @@ function useTemplate(run: RunInfo): void {
 
   <main class="layout">
     <div ref="formSection" class="form-column">
-      <GenerateForm v-model="form" />
+      <GenerateForm v-model="form" :extensions="worker.extensions" />
     </div>
     <div class="queue-column">
       <QueueList :songs="queue" :worker="worker" :log="log" @hide-finished="hideFinished" @error="show($event, true)" />

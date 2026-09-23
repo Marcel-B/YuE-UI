@@ -12,6 +12,11 @@ export interface WorkerInfo {
   /** The YuE Studio app is open, with a worker (and a model) of its own. */
   studioRunning: boolean
   lastError: string | null
+  /**
+   * The last worker that started took YueUI's extra fields (sampling, full-quality steps, songs over six minutes);
+   * null until one has started, false when a YuE Studio update left them without effect.
+   */
+  extensions: boolean | null
 }
 
 export interface SongState {
@@ -68,6 +73,19 @@ export interface GenerateRequest {
   maxTokens: number | null
   /** A score in ABC notation instead of the model's own plan; needs `cot` "full" or "melody". */
   abc: string | null
+  /** Synthesis steps at full quality, 1–64; null for the model's 32. */
+  fullSteps: number | null
+  abcSampling: SamplingOverrides | null
+  semanticSampling: SamplingOverrides | null
+}
+
+/** Changes to one of the model's sampling settings; a missing value keeps the model's. */
+export interface SamplingOverrides {
+  temperature?: number
+  topP?: number
+  topK?: number
+  repetitionPenalty?: number
+  penaltyWindow?: number
 }
 
 export interface SongInfo {

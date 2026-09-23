@@ -65,7 +65,12 @@ public sealed record LogEntry(DateTimeOffset Time, string Level, string Message)
 /// can run the machine out of memory, so the interface warns.
 /// </param>
 /// <param name="LastError">The worker's last error event, until it starts again.</param>
-public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunning, string? LastError);
+/// <param name="Extensions">
+/// Whether the last worker that said ready took YueUI's extra generate fields (sampling, full-quality steps, songs
+/// over six minutes); null until a worker has started. False when a YuE Studio update changed what the extension
+/// patches: the worker then runs as shipped and ignores those fields.
+/// </param>
+public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunning, string? LastError, bool? Extensions = null);
 
 /// <summary>Everything a client needs to draw the queue; also the first event of every event stream.</summary>
 public sealed record StatusSnapshot(WorkerInfo Worker, IReadOnlyList<SongState> Songs, IReadOnlyList<LogEntry> Log);

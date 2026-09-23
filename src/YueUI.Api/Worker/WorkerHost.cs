@@ -43,6 +43,7 @@ public sealed class WorkerHost(
     private IWorkerConnection? _connection;
     private WorkerStatus _status = WorkerStatus.Stopped;
     private string? _lastError;
+    private bool? _extensions;
     private bool _studioRunning;
     private DateTimeOffset _studioCheckedAt = DateTimeOffset.MinValue;
 
@@ -240,6 +241,8 @@ public sealed class WorkerHost(
                 lock (_gate)
                 {
                     _status = WorkerStatus.Ready;
+                    // YuE Studio's worker started without the extension says nothing about it.
+                    _extensions = message["yueui_extensions"] is JsonValue flag && flag.TryGetValue(out bool active) && active;
                 }
                 PublishWorker();
                 break;
@@ -428,7 +431,7 @@ public sealed class WorkerHost(
         [.. _log]);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
-        new(_status, _songs.Values.Any(s => !s.Finished), studioRunning, _lastError);
+        new(_status, _songs.Values.Any(s => !s.Finished), studioRunning, _lastError, _extensions);
 
     /// <summary>Scanning the process table takes a moment, and worker events come in bursts: look at most every few seconds.</summary>
     private bool StudioRunning()
