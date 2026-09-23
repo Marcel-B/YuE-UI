@@ -112,7 +112,7 @@ public sealed class WorkerHost(
             {
                 return false;
             }
-            _transcriptions[transcription.Id] = transcription with { UpdatedAt = time.GetUtcNow() };
+            _transcriptions[transcription.Id] = transcription;
             PruneFinishedTranscriptionsLocked();
         }
         Publish("transcription", transcription);

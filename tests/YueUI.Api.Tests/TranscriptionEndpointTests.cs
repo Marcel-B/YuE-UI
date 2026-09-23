@@ -56,6 +56,7 @@ public sealed class TranscriptionEndpointTests : IDisposable
         var audio = (string)command["audio"]!;
         Assert.Equal("My Song.mp3", Path.GetFileName(audio));
         Assert.Equal("ID3 audio", await File.ReadAllTextAsync(audio));
+        Assert.NotEqual(default, state.UpdatedAt);
     }
 
     [Fact]
