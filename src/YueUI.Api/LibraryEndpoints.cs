@@ -39,7 +39,7 @@ public static partial class LibraryEndpoints
     /// songs is well over 100 MB, too much to hold in memory, and ZipArchive writes synchronously, which Kestrel's
     /// response stream refuses. FLAC is compressed already, so it is only stored.
     /// </summary>
-    private static IResult Zip(string fileName, IEnumerable<(string Path, string Name)> entries)
+    internal static IResult Zip(string fileName, IEnumerable<(string Path, string Name)> entries)
     {
         var existing = entries.Where(e => File.Exists(e.Path)).ToList();
         if (existing.Count == 0)

@@ -1,4 +1,14 @@
-import type { GenerateRequest, LogEntry, RunInfo, SongState, StatusSnapshot, WorkerInfo } from './types'
+import type {
+  GenerateRequest,
+  LogEntry,
+  RunInfo,
+  SongState,
+  StatusSnapshot,
+  TranscriptionList,
+  TranscriptionState,
+  TranscriptionTask,
+  WorkerInfo,
+} from './types'
 
 const apiBase = import.meta.env.VITE_API_BASE ?? ''
 
@@ -59,6 +69,35 @@ export function runZipUrl(runId: string): string {
   return `${apiBase}/api/runs/${runId}/zip`
 }
 
+/** Uploads a recording for SheetSage2; its progress then arrives as `transcription` events. */
+export async function transcribe(file: File, task: TranscriptionTask): Promise<TranscriptionState> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('task', task)
+  return (await send('/api/transcriptions', { method: 'POST', body: form })).json() as Promise<TranscriptionState>
+}
+
+export async function cancelTranscription(id: string): Promise<void> {
+  await send(`/api/transcriptions/${id}/cancel`, { method: 'POST' })
+}
+
+export async function listTranscriptions(): Promise<TranscriptionList> {
+  return (await send('/api/transcriptions')).json() as Promise<TranscriptionList>
+}
+
+export async function transcriptionScore(id: string): Promise<string> {
+  return (await send(`/api/transcriptions/${encodeURIComponent(id)}/score`)).text()
+}
+
+export function transcriptionScoreUrl(id: string): string {
+  return `${apiBase}/api/transcriptions/${encodeURIComponent(id)}/score?download=true`
+}
+
+/** Score, MIDI parts and annotations of a transcription. */
+export function transcriptionZipUrl(id: string): string {
+  return `${apiBase}/api/transcriptions/${encodeURIComponent(id)}/zip`
+}
+
 export interface EventHandlers {
   snapshot(snapshot: StatusSnapshot): void
   song(song: SongState): void
@@ -66,6 +105,7 @@ export interface EventHandlers {
   log(entry: LogEntry): void
   /** A song was written to disk: the library has changed. */
   library(): void
+  transcription(transcription: TranscriptionState): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */
   connection(open: boolean): void
 }
@@ -84,6 +124,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on<WorkerInfo>('worker', handlers.worker)
   on<LogEntry>('log', handlers.log)
   on('library', () => handlers.library())
+  on<TranscriptionState>('transcription', handlers.transcription)
   source.onerror = () => handlers.connection(false)
   return () => source.close()
 }

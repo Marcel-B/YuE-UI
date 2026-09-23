@@ -48,6 +48,45 @@ export interface StatusSnapshot {
   worker: WorkerInfo
   songs: SongState[]
   log: LogEntry[]
+  transcriptions: TranscriptionState[]
+}
+
+/** melody-full: the Vocal and Ins melodies; melody-vocal: only the sung one. */
+export type TranscriptionTask = 'melody-full' | 'melody-vocal'
+
+/** A recording going through SheetSage2 (Worker/WorkerModels.cs). */
+export interface TranscriptionState {
+  id: string
+  fileName: string
+  task: TranscriptionTask
+  stage: 'starting' | 'progress' | 'done' | 'failed' | 'cancelled'
+  /** 0–1, null while SheetSage2 only says it is still busy. */
+  fraction: number | null
+  detail: string
+  abc: string | null
+  warnings: string[]
+  /** The folder in the transcription list, once done. */
+  result: string | null
+  message: string | null
+  /** busy, no_env, afconvert, abc_error or crash */
+  code: string | null
+  updatedAt: string
+  finished: boolean
+}
+
+/** A finished transcription on disk (Library/TranscriptionLibrary.cs). */
+export interface TranscriptionInfo {
+  id: string
+  sourceName: string
+  task: TranscriptionTask | null
+  createdAt: string | null
+  warnings: string[]
+}
+
+export interface TranscriptionList {
+  /** SheetSage2's environment exists (YuE Studio installs it). */
+  installed: boolean
+  items: TranscriptionInfo[]
 }
 
 export type Quality = 'draft' | 'full'

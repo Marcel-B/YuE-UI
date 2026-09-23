@@ -58,6 +58,33 @@ public sealed class TestApp : WebApplicationFactory<Program>
         return directory;
     }
 
+    /// <summary>Where YuE Studio's installer puts SheetSage2's environment; an empty file is enough for the server.</summary>
+    public void InstallSheetSage()
+    {
+        var python = Path.Combine(Root, "install", ".venv-sheetsage2", "bin", "python");
+        Directory.CreateDirectory(Path.GetDirectoryName(python)!);
+        File.WriteAllText(python, "");
+    }
+
+    /// <summary>A transcription folder as the worker leaves it; without a score it stands for a failed one.</summary>
+    public string AddTranscription(string name, string source = "My Song.mp3", string? score = "X:1\nV:Vocal\nE2G2|\n")
+    {
+        var directory = Path.Combine(OutputDir, "transcriptions", name);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "input.json"), $$"""{"source_name": "{{source}}", "task": "melody-vocal"}""");
+        if (score is not null)
+        {
+            File.WriteAllText(Path.Combine(directory, "score.abc"), score);
+            File.WriteAllText(Path.Combine(directory, "transcription.mid"), "MThd");
+            File.WriteAllText(Path.Combine(directory, "transcription_manifest.json"), """{"status": "complete", "warnings": ["key uncertain"]}""");
+        }
+        else
+        {
+            File.WriteAllText(Path.Combine(directory, "failure.json"), """{"status": "failed"}""");
+        }
+        return directory;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureTestServices(services =>

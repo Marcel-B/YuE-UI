@@ -12,6 +12,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // YuE Studio's installation and song folder; see YuePaths for the defaults.
 builder.Services.AddSingleton(YuePaths.FromConfiguration(builder.Configuration));
 builder.Services.AddSingleton<SongLibrary>();
+builder.Services.AddSingleton<TranscriptionLibrary>();
 builder.Services.AddSingleton<IWorkerLauncher, PythonWorkerLauncher>();
 builder.Services.AddSingleton<IStudioDetector, StudioDetector>();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -40,6 +41,7 @@ var api = app.MapGroup("/api");
 api.MapMethods("/health", ClientAppEndpoints.GetAndHead, () => Results.Text("ok"));
 api.MapWorkerEndpoints();
 api.MapLibraryEndpoints();
+api.MapTranscriptionEndpoints();
 
 app.MapClientApp();
 

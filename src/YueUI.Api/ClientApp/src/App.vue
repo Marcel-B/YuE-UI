@@ -4,9 +4,10 @@ import { listLibrary, subscribe } from './api'
 import GenerateForm from './components/GenerateForm.vue'
 import LibraryList from './components/LibraryList.vue'
 import QueueList from './components/QueueList.vue'
+import TranscribePanel from './components/TranscribePanel.vue'
 import { loadFormState, saveFormState } from './form'
 import { locale, setLocale, t, workerLabel } from './i18n'
-import type { LogEntry, RunInfo, SongState, WorkerInfo } from './types'
+import type { LogEntry, RunInfo, SongState, TranscriptionState, WorkerInfo } from './types'
 
 const logCapacity = 300
 
@@ -18,6 +19,7 @@ watch(form, (value) => saveFormState(value), { deep: true })
 const worker = ref<WorkerInfo>({ status: 'stopped', busy: false, studioRunning: false, lastError: null, extensions: null })
 const songs = ref<SongState[]>([])
 const log = ref<LogEntry[]>([])
+const transcriptions = ref<TranscriptionState[]>([])
 /** Starts optimistic: the warning is for a stream that broke, not for one that is still opening. */
 const connected = ref(true)
 /** Finished songs the user put away; the server keeps them, so they would come back with the next snapshot. */
@@ -49,6 +51,7 @@ const unsubscribe = subscribe({
     worker.value = snapshot.worker
     songs.value = snapshot.songs
     log.value = snapshot.log
+    transcriptions.value = snapshot.transcriptions
     // The stream (re)opened: whatever was written meanwhile is in the library now.
     void loadLibrary()
   },
@@ -63,6 +66,14 @@ const unsubscribe = subscribe({
     }
   },
   library: () => scheduleLibraryReload(),
+  transcription(transcription) {
+    const index = transcriptions.value.findIndex((tr) => tr.id === transcription.id)
+    if (index >= 0) {
+      transcriptions.value[index] = transcription
+    } else {
+      transcriptions.value.push(transcription)
+    }
+  },
   connection(open) {
     connected.value = open
   },
@@ -110,6 +121,13 @@ function useTemplate(run: RunInfo): void {
   formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   show(t('templateLoaded', { title: run.title || t('untitled') }))
 }
+
+/** A transcribed melody as the score of the next song: SheetSage2 writes it without chords, for planning "melody". */
+function useScore(abc: string, name: string): void {
+  form.value = { ...form.value, abc, cot: 'melody' }
+  formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  show(t('scoreApplied', { name }))
+}
 </script>
 
 <template>
@@ -137,6 +155,7 @@ function useTemplate(run: RunInfo): void {
     </div>
     <div class="queue-column">
       <QueueList :songs="queue" :worker="worker" :log="log" @hide-finished="hideFinished" @error="show($event, true)" />
+      <TranscribePanel :transcriptions="transcriptions" @use-score="useScore" @error="show($event, true)" />
     </div>
     <div class="library-row">
       <LibraryList
