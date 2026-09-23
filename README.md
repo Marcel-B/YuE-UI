@@ -60,7 +60,7 @@ SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI ins
 | `Urls` | `http://127.0.0.1:5090` | Adresse des Servers |
 | `Yue:InstallRoot` (`Yue__InstallRoot`) | `~/Library/Application Support/YuE Studio` | Installation von YuE Studio (`env/`, `src/`, `models/`) |
 | `Yue:OutputDir` (`Yue__OutputDir`) | `~/Music/YuE Studio` | Song-Bibliothek |
-| `Yue:SheetSagePython` (`Yue__SheetSagePython`) | `<InstallRoot>/.venv-sheetsage2/bin/python` | Python der SheetSage2-Umgebung |
+| `Yue:SheetSagePython` (`Yue__SheetSagePython`) | `<InstallRoot>/sheetsage-env/bin/python` | Python der SheetSage2-Umgebung |
 
 ## API
 
