@@ -94,7 +94,7 @@ public class VoiceConversionServiceTests
     {
         var done = await Service(new StubHandler(
             HttpStatusCode.OK,
-            $$"""{"jobId":"{{JobId}}","status":"COMPLETED","resultSizeBytes":8372364,"resultSha256":"a1b2c3","finishedAtUtc":"2026-09-22T09:00:00+00:00"}""")).GetJobAsync(JobId);
+            $$"""{"jobId":"{{JobId}}","status":"COMPLETED","resultSizeBytes":8372364,"resultSha256":"a1b2c3","resultUrl":"https://voice.example/api/v1/jobs/x/result","finishedAtUtc":"2026-09-22T09:00:00+00:00"}""")).GetJobAsync(JobId);
         var failed = await Service(new StubHandler(
             HttpStatusCode.OK,
             $$$"""{"jobId":"{{{JobId}}}","status":"FAILED","error":{"code":"MODEL_ERROR","message":"the Mac said no"}}""")).GetJobAsync(JobId);
@@ -104,6 +104,9 @@ public class VoiceConversionServiceTests
         Assert.Equal(8372364, done.ResultSizeBytes);
         // The checksum comes along so that an import can tell a complete transfer from one that broke off.
         Assert.Equal("a1b2c3", done.ResultSha256);
+        // The service names where to fetch the result only while it is there; that is what HasResult reads.
+        Assert.True(done.HasResult);
+        Assert.False(failed.HasResult);
         Assert.Equal(new DateTimeOffset(2026, 9, 22, 9, 0, 0, TimeSpan.Zero), done.FinishedUtc);
         Assert.True(failed.IsFailed);
         Assert.Equal(("MODEL_ERROR", "the Mac said no"), (failed.ErrorCode, failed.ErrorMessage));
@@ -117,7 +120,7 @@ public class VoiceConversionServiceTests
             $$"""
             {"items":
               [{"jobId":"{{JobId}}","status":"RUNNING","voiceLabel":"Marcel","createdAtUtc":"2026-09-22T08:00:00+00:00","startedAtUtc":"2026-09-22T08:01:00+00:00"},
-               {"jobId":"job-0815","status":"CANCELLED","createdAtUtc":"2026-09-22T07:00:00+00:00"}],
+               {"jobId":"job-0815","status":"COMPLETED","createdAtUtc":"2026-09-22T07:00:00+00:00","resultSizeBytes":4711}],
              "total":137,"limit":25,"offset":50}
             """);
 
@@ -129,7 +132,9 @@ public class VoiceConversionServiceTests
         Assert.Equal(2, page.Jobs.Count);
         Assert.Equal((JobId, VoiceJobStatus.Running, "Marcel"), (page.Jobs[0].Id, page.Jobs[0].Status, page.Jobs[0].VoiceLabel));
         Assert.Equal(new DateTimeOffset(2026, 9, 22, 8, 1, 0, TimeSpan.Zero), page.Jobs[0].StartedUtc);
-        Assert.Equal(VoiceJobStatus.Cancelled, page.Jobs[1].Status);
+        // Cleared away: the record stays, with its size, but without an address to fetch anything from.
+        Assert.False(page.Jobs[1].HasResult);
+        Assert.Equal(4711, page.Jobs[1].ResultSizeBytes);
     }
 
     [Fact]

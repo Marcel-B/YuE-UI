@@ -91,6 +91,11 @@ public sealed record ReferenceVoice(
 /// <param name="ResultSha256">
 /// The checksum of the result, with which a transfer that broke off can be told from a complete one.
 /// </param>
+/// <param name="HasResult">
+/// Whether the converted recording can still be fetched. The service keeps a record of every job it ever had,
+/// so a job whose files it has cleared away - on request or after its retention - stays in the list with
+/// everything but this; without it, a removal cannot be told from one that did nothing.
+/// </param>
 public sealed record VoiceJob(
     string Id,
     string Status,
@@ -102,7 +107,8 @@ public sealed record VoiceJob(
     string? ErrorCode = null,
     string? ErrorMessage = null,
     long? ResultSizeBytes = null,
-    string? ResultSha256 = null)
+    string? ResultSha256 = null,
+    bool HasResult = false)
 {
     // Read here rather than sent: a host that serializes the job passes on what the service said, no more.
     [JsonIgnore]
@@ -382,7 +388,9 @@ public sealed class VoiceConversionService(HttpClient client) : IVoiceConversion
             job.Error?.Code,
             job.Error?.Message,
             job.ResultSizeBytes,
-            job.ResultSha256);
+            job.ResultSha256,
+            // The service names where the result can be fetched only while it is there.
+            !string.IsNullOrWhiteSpace(job.ResultUrl));
 
     private static ReferenceVoice ToVoice(ReferenceVoiceResponse voice) =>
         new(
