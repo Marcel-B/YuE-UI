@@ -85,10 +85,26 @@ export function defaultFormState(): FormState {
   }
 }
 
-/** The advanced section is collapsed and kept across visits, so a forgotten seed or score must stay visible. */
+/** A score and the planning chosen for it (a transcription wants "melody") belong together and outlast a reset. */
+function hasScore(form: FormState): boolean {
+  return form.abc.trim() !== ''
+}
+
+/** The advanced parameters back at their defaults; the score is not a parameter and stays, with its planning. */
+export function resetAdvanced(form: FormState): FormState {
+  return { ...form, ...defaultAdvanced(), abc: form.abc, cot: hasScore(form) ? form.cot : 'full' }
+}
+
+/**
+ * Whether an advanced parameter differs from its default. The section is collapsed and kept across visits, so a
+ * forgotten seed must stay visible; a score (with its planning) is shown on its own.
+ */
 export function advancedChanged(form: FormState): boolean {
   const defaults = defaultAdvanced()
   return (Object.keys(defaults) as AdvancedKey[]).some((key) => {
+    if (key === 'abc' || (key === 'cot' && hasScore(form))) {
+      return false
+    }
     const value = form[key]
     const initial = defaults[key]
     if (typeof initial === 'string') {

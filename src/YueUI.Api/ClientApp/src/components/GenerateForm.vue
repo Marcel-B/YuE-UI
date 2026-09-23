@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { ApiError, generate } from '../api'
 import {
   advancedChanged,
-  defaultAdvanced,
+  resetAdvanced,
   defaultFormState,
   defaultSampling,
   exampleScore,
@@ -72,12 +72,9 @@ function reset(): void {
   fieldErrors.value = {}
 }
 
-/** Every advanced value back to the worker's defaults; a score someone pasted or transcribed goes too, so ask first. */
-function resetAdvanced(): void {
-  if (form.value.abc.trim() !== '' && !window.confirm(t('advancedResetConfirm'))) {
-    return
-  }
-  form.value = { ...form.value, ...defaultAdvanced() }
+/** Parameters only: a score someone pasted or transcribed has its own button. */
+function resetParameters(): void {
+  form.value = resetAdvanced(form.value)
   fieldErrors.value = {}
 }
 
@@ -167,10 +164,11 @@ function lengthLabel(seconds: number): string {
       <summary>
         {{ t('advanced') }}
         <span v-if="changed" class="badge changed">{{ t('advancedChanged') }}</span>
+        <span v-if="form.abc.trim() !== ''" class="badge changed">{{ t('advancedWithScore') }}</span>
       </summary>
       <div class="advanced-head">
         <small class="muted">{{ t('advancedIntro') }}</small>
-        <button type="button" class="button secondary small" :disabled="!changed" @click="resetAdvanced">
+        <button type="button" class="button secondary small" :disabled="!changed" @click="resetParameters">
           {{ changed ? t('advancedReset') : t('advancedAtDefaults') }}
         </button>
       </div>
@@ -243,6 +241,7 @@ function lengthLabel(seconds: number): string {
           <div class="label-row">
             <label for="gen-abc">{{ t('abc') }}</label>
             <button v-if="form.abc.trim() === ''" type="button" class="link" @click="form.abc = exampleScore">{{ t('abcExample') }}</button>
+            <button v-else type="button" class="link" @click="form.abc = ''">{{ t('abcClear') }}</button>
           </div>
           <textarea
             id="gen-abc"
@@ -292,7 +291,7 @@ function lengthLabel(seconds: number): string {
 
       <!-- The section is long on a phone: the same reset at its end. -->
       <div class="advanced-foot">
-        <button type="button" class="button secondary small" :disabled="!changed" @click="resetAdvanced">
+        <button type="button" class="button secondary small" :disabled="!changed" @click="resetParameters">
           {{ changed ? t('advancedReset') : t('advancedAtDefaults') }}
         </button>
       </div>

@@ -49,10 +49,10 @@ const messages = {
       'Song 1 bekommt den Seed, Song 2 den Seed + 1 usw. – gleicher Stil und Text, verschiedene Interpretationen. Bis zu vier Songs (zwei auf Macs mit weniger als 24 GB) werden gemeinsam komponiert und kosten dabei kaum mehr Zeit als einer; die Synthese läuft danach Song für Song.',
     advanced: 'Erweiterte Parameter',
     advancedChanged: 'angepasst',
-    advancedIntro: 'Mit den Standardwerten vorbelegt; für einen normalen Song muss hier nichts geändert werden.',
+    advancedIntro: 'Mit den Standardwerten vorbelegt; für einen normalen Song muss hier nichts geändert werden. Das Zurücksetzen lässt eine eigene Partitur samt ihrer Planung stehen.',
     advancedReset: 'Auf Standardwerte zurücksetzen',
     advancedAtDefaults: 'Alles auf Standardwerten',
-    advancedResetConfirm: 'Alle erweiterten Parameter zurücksetzen? Die eigene Partitur wird dabei geleert.',
+    advancedWithScore: 'mit Partitur',
     samplingReset: 'Diese Gruppe zurücksetzen',
     samplingAtDefaults: 'Auf Standardwerten',
     cot: 'Planung',
@@ -90,6 +90,7 @@ const messages = {
     abcMore:
       'Zum Beispiel die ABC-Datei eines Songs aus der Bibliothek mit geänderten Akkorden oder einem anderen Tempo (Q:), oder eine mit SheetSage2 transkribierte Melodie für ein Cover. Braucht die Planung „Melodie und Akkorde“ (Akkorde werden übernommen) oder „Nur Melodie“ mit einer Partitur ohne Akkordsymbole (die Begleitung ist frei). Die Silben des Textes sollten zu den Noten der Stimme „Vocal“ passen. Bei „Instrumental“ bleibt die Gesangsstimme einer eigenen Partitur erhalten – dort also die Vocal-Takte durch Pausen ersetzen.\n\n„Beispiel einsetzen“ lädt die Partitur zu „City Lights“ (siehe Beispiel beim Songtext).',
     abcExample: 'Beispiel einsetzen',
+    abcClear: 'Partitur entfernen',
     samplingSemantic: 'Sampling: Song',
     samplingSemanticIntro:
       'Steuert, wie die Song-Tokens gezogen werden – also Klang, Arrangement und Gesang. Vorbelegt mit den Werten des Modells; laut YuE2-Dokumentation kann jede Änderung die Qualität verändern. Ein Auftrag mit geändertem Sampling wird nicht mit anderen Aufträgen zusammen komponiert.',
@@ -243,10 +244,10 @@ const messages = {
       'Song 1 gets the seed, song 2 the seed + 1 and so on – same style and lyrics, different interpretations. Up to four songs (two on Macs with less than 24 GB) are composed together at hardly more cost than one; synthesis then runs song by song.',
     advanced: 'Advanced parameters',
     advancedChanged: 'changed',
-    advancedIntro: 'Preset to the defaults; a normal song needs no changes here.',
+    advancedIntro: 'Preset to the defaults; a normal song needs no changes here. Resetting leaves your own score and its planning in place.',
     advancedReset: 'Reset to defaults',
     advancedAtDefaults: 'All at defaults',
-    advancedResetConfirm: 'Reset all advanced parameters? Your own score will be cleared as well.',
+    advancedWithScore: 'with score',
     samplingReset: 'Reset this group',
     samplingAtDefaults: 'At defaults',
     cot: 'Planning',
@@ -284,6 +285,7 @@ const messages = {
     abcMore:
       'For example the ABC file of a song from the library with changed chords or a different tempo (Q:), or a melody transcribed with SheetSage2 for a cover. Needs the planning “Melody and chords” (the chords are kept) or “Melody only” with a score without chord symbols (the accompaniment is free). The syllables of the lyrics should match the notes of the “Vocal” voice. With “Instrumental” the vocal voice of your own score is kept – replace its bars with rests there.\n\n“Insert example” loads the score of “City Lights” (see the example under lyrics).',
     abcExample: 'Insert example',
+    abcClear: 'Remove score',
     samplingSemantic: 'Sampling: song',
     samplingSemanticIntro:
       'Controls how the song tokens are drawn – the sound, arrangement and singing. Preset to the model’s values; according to the YuE2 documentation any change may change the quality. A job with changed sampling is not composed together with other jobs.',
