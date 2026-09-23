@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the run that is still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CONFIGURATION: Release
+
+jobs:
+  build-and-test:
+    name: Backend build and test
+    # The tests replace YuE Studio's worker with a scripted fake, so they need neither macOS nor the model.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      # A Release build skips the npm install of the Debug build; the publish job covers the frontend.
+      - name: Build
+        run: dotnet build --configuration "$CONFIGURATION" --no-restore -warnaserror
+
+      - name: Test
+        run: >
+          dotnet test --configuration "$CONFIGURATION" --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+  publish:
+    name: Web frontend and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/YueUI.Api/ClientApp/package-lock.json
+
+      # The publish target runs npm ci and npm run build (vue-tsc type check + Vite bundle)
+      # and ships the frontend as wwwroot/ui, exactly as deploy/install.sh does.
+      - name: Publish API with web frontend
+        run: dotnet publish src/YueUI.Api --configuration "$CONFIGURATION" --output out/publish
+
+      - name: Check published web frontend
+        run: |
+          test -f out/publish/wwwroot/ui/index.html
+          ls out/publish/wwwroot/ui/assets/*.js
