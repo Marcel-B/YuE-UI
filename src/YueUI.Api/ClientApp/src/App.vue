@@ -156,7 +156,7 @@ function useScore(abc: string, name: string): void {
     <p v-if="notice" :class="['banner', notice.error ? 'danger' : 'info']" role="status">{{ notice.text }}</p>
   </div>
 
-  <main class="grid gap-4 grid-cols-2">
+  <main class="grid gap-4 grid-cols-1 md:grid-cols-2">
     <Card>
       <template #title>
         <h2>
