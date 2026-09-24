@@ -26,6 +26,7 @@ public sealed class LyricsEndpointTests : IDisposable
         var completion = Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!;
         Assert.Equal("google/gemma-4-e4b:1", (string?)completion["model"]);
         Assert.Equal(60, (int?)completion["ttl"]);
+        Assert.Equal(8192 - 1024, (int?)completion["max_tokens"]);
         var messages = completion["messages"]!.AsArray();
         Assert.Contains("[Verse]", (string?)messages[0]!["content"], StringComparison.Ordinal);
         Assert.Contains("English", (string?)messages[0]!["content"], StringComparison.Ordinal);

@@ -18,8 +18,9 @@ public sealed class LyricsOptions
     public string Model { get; set; } = "google/gemma-4-e4b";
 
     /// <summary>
-    /// Tokens of context the model is loaded with. Prompt and lyrics need about 1500; LM Studio's own default can
-    /// be the model's maximum (262144 for Gemma 4), whose cache alone would not fit into memory.
+    /// Tokens of context the model is loaded with, and so what prompt, reasoning and lyrics share. Prompt and lyrics
+    /// need about 1500, a thinking model's reasoning several thousand more. LM Studio's own default can be the
+    /// model's maximum (262144 for Gemma 4), whose cache alone would not fit into memory.
     /// </summary>
     public int ContextLength { get; set; } = 8192;
 
