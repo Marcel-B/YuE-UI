@@ -41,6 +41,10 @@ Ein eigener HTTPS-Port (8443), weil `tailscale serve` auf 443 schon einen andere
 
 Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ wie eine App ablegen.
 
+## Speicherplatz
+
+Jeder Song belegt mit FLAC, Tokens und Zwischendateien einiges an Platz. Die Bibliothek zeigt deshalb, was jeder Lauf belegt und wie viel auf dem Datenträger noch frei ist. Über den Papierkorb lassen sich einzelne Songs, ganze Läufe und Transkriptionen löschen; mit dem letzten Song eines Laufs verschwindet auch sein Ordner. Gelöscht wird nach einer Rückfrage endgültig und nicht in den Papierkorb von macOS, denn dort würde der Platz erst beim Leeren frei. Songs, an denen der Worker von YuE UI noch arbeitet, lassen sich erst nach dem Abbrechen löschen; was YuE Studio gerade erzeugt, erkennt YuE UI nicht.
+
 ## YuE Studio und YuE UI gleichzeitig
 
 Beide haben einen eigenen Worker und damit ein eigenes Modell im Speicher. Rechnen beide gleichzeitig, kann der Speicher knapp werden. Die Oberfläche zeigt deshalb einen Hinweis, solange die App geöffnet ist. **Worker beenden** in der Warteschlange gibt den Speicher von YuE UI sofort frei. Ansonsten entlädt der Worker das Modell nach zehn Minuten Leerlauf von selbst.
@@ -78,11 +82,15 @@ SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI ins
 | `POST` | `/api/transcriptions/{id}/cancel` | laufende Transkription abbrechen |
 | `GET` | `/api/transcriptions/{id}/score` | `score.abc` der Transkription (`?download=true` als Download) |
 | `GET` | `/api/transcriptions/{id}/zip` | alle Dateien der Transkription als ZIP |
+| `DELETE` | `/api/transcriptions/{id}` | fertige Transkription löschen |
 | `GET` | `/api/library` | alle Läufe mit ihren Songs |
 | `GET` | `/api/songs/{run}/{song}/audio` | FLAC (Range-fähig; `?download=true` als Download) |
 | `GET` | `/api/songs/{run}/{song}/score` | `score.abc` |
 | `GET` | `/api/songs/{run}/{song}/zip` | FLAC und ABC des Songs als ZIP |
 | `GET` | `/api/runs/{run}/zip` | FLAC und ABC aller Songs des Laufs als ZIP |
+| `DELETE` | `/api/songs/{run}/{song}` | Song löschen, mit dem letzten auch den Lauf; `409`, solange der Worker daran arbeitet |
+| `DELETE` | `/api/runs/{run}` | Lauf mit allen Songs löschen; `409`, solange der Worker an einem davon arbeitet |
+| `GET` | `/api/storage` | `{ freeBytes, totalBytes }` des Datenträgers der Bibliothek |
 
 OpenAPI unter `/api/openapi`.
 

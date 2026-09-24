@@ -1,10 +1,17 @@
 using System.IO.Compression;
 using System.Text.RegularExpressions;
 using YueUI.Api.Library;
+using YueUI.Api.Worker;
 
 namespace YueUI.Api;
 
-/// <summary>The finished songs on disk: the list, each song's audio and score, and both zipped per song or per run.</summary>
+/// <param name="FreeBytes">What the current user can still write.</param>
+public sealed record StorageInfo(long FreeBytes, long TotalBytes);
+
+/// <summary>
+/// The finished songs on disk: the list, each song's audio and score, both zipped per song or per run, deleting
+/// songs and runs, and how much space is left.
+/// </summary>
 public static partial class LibraryEndpoints
 {
     public static RouteGroupBuilder MapLibraryEndpoints(this RouteGroupBuilder api)
@@ -23,7 +30,43 @@ public static partial class LibraryEndpoints
             library.SongDirectories(run) is { Count: > 0 } directories
                 ? Zip($"{FileName(library.TitleOf(run, directories[0]), run)}.zip", directories.SelectMany(d => SongEntries(library, run, d)))
                 : Results.NotFound());
+        api.MapDelete("/songs/{run}/{song}", (string run, string song, SongLibrary library, WorkerHost host) =>
+            Delete(host, host.IsWorkingOn(run, song), () => library.DeleteSong(run, song)));
+        api.MapDelete("/runs/{run}", (string run, SongLibrary library, WorkerHost host) =>
+            Delete(host, host.IsWorkingOn(run), () => library.DeleteRun(run)));
+        api.MapGet("/storage", (YuePaths paths) => Storage(paths.OutputDir));
         return api;
+    }
+
+    /// <summary>
+    /// Deleting what the worker still works on would pull the folder from under it; it would fail the song, or
+    /// write it again half. Only this server's worker is known here, not the one in YuE Studio.
+    /// </summary>
+    private static IResult Delete(WorkerHost host, bool working, Func<bool> delete)
+    {
+        if (working)
+        {
+            return Results.Problem(title: "The worker is still working on it; cancel it first.", statusCode: StatusCodes.Status409Conflict);
+        }
+        if (!delete())
+        {
+            return Results.NotFound();
+        }
+        host.LibraryChanged();
+        return Results.NoContent();
+    }
+
+    /// <summary>Free and total space of the volume the songs are written to.</summary>
+    private static StorageInfo Storage(string outputDir)
+    {
+        // On macOS and Linux DriveInfo takes any path on the volume, but it has to exist.
+        var existing = new DirectoryInfo(outputDir);
+        while (!existing.Exists && existing.Parent is { } parent)
+        {
+            existing = parent;
+        }
+        var drive = new DriveInfo(existing.FullName);
+        return new StorageInfo(drive.AvailableFreeSpace, drive.TotalSize);
     }
 
     /// <summary>What a song is worth keeping: its audio and its score, named like the single downloads.</summary>

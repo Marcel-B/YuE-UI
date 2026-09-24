@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { audioUrl, render, runZipUrl, scoreUrl, songZipUrl } from '../api'
-import { formatDateTime, formatDuration, t } from '../i18n'
+import { useConfirm } from 'primevue/useconfirm'
+import { audioUrl, deleteRun, deleteSong, render, runZipUrl, scoreUrl, songZipUrl } from '../api'
+import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
 import type { RunInfo, SongInfo } from '../types'
 
 const props = defineProps<{
@@ -14,8 +15,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   template: [run: RunInfo]
+  /** Something was deleted; carries the run's title for the notice. */
+  deleted: [title: string]
   error: [message: string]
 }>()
+
+const confirm = useConfirm()
 
 const pageSize = 8
 const shown = ref(pageSize)
@@ -28,6 +33,48 @@ async function renderFull(song: SongInfo): Promise<void> {
     emit('error', caught instanceof Error ? caught.message : String(caught))
   }
 }
+
+/** Also a song of the run the worker has not written a folder for yet. */
+function runBusy(run: RunInfo): boolean {
+  return [...props.busyIds].some((id) => id.startsWith(`${run.id}/`))
+}
+
+/** Deleting cannot be undone (the files do not go to the Trash, that would not free the space), so it asks first. */
+function askDelete(message: string, title: string, remove: () => Promise<void>): void {
+  confirm.require({
+    header: t('confirmDelete'),
+    message,
+    icon: 'pi pi-trash',
+    rejectProps: { label: t('keep'), severity: 'secondary', outlined: true },
+    acceptProps: { label: t('delete'), severity: 'danger' },
+    accept: async () => {
+      try {
+        await remove()
+        emit('deleted', title)
+      } catch (caught) {
+        emit('error', caught instanceof Error ? caught.message : String(caught))
+      }
+    },
+  })
+}
+
+function askDeleteRun(run: RunInfo): void {
+  const title = run.title || t('untitled')
+  askDelete(t('confirmDeleteRun', { count: run.songs.length, title, size: formatBytes(run.bytes) }), title, () =>
+    deleteRun(run.id),
+  )
+}
+
+function askDeleteSong(run: RunInfo, song: SongInfo): void {
+  const title = run.title || t('untitled')
+  const params = { song: t('songN', { n: song.index }), title, size: formatBytes(song.bytes) }
+  askDelete(
+    run.songs.length > 1 ? t('confirmDeleteSong', params) : t('confirmDeleteLastSong', params),
+    `${title} – ${params.song}`,
+    () => deleteSong(song.id),
+  )
+}
+
 const severityByQuality: Record<string, string> = {
   draft: 'warning',
   full: 'success',
@@ -44,15 +91,28 @@ const severityByQuality: Record<string, string> = {
           <Fieldset :legend="run.title || t('untitled')">
             <div class="flex justify-between items-center">
               <div>
-                <span v-if="run.createdAt" class="muted text-sm">{{ formatDateTime(run.createdAt) }}</span>
+                <span v-if="run.createdAt" class="muted text-sm">{{ formatDateTime(run.createdAt) }} · </span>
+                <span class="muted text-sm">{{ formatBytes(run.bytes) }}</span>
               </div>
-              <Button
-                icon="pi pi-upload"
-                v-tooltip="t('useAsTemplate')"
-                text
-                class="secondary"
-                @click="emit('template', run)"
-              />
+              <div class="flex">
+                <Button
+                  icon="pi pi-upload"
+                  v-tooltip="t('useAsTemplate')"
+                  :aria-label="t('useAsTemplate')"
+                  text
+                  @click="emit('template', run)"
+                />
+                <Button
+                  v-if="run.songs.length > 1"
+                  icon="pi pi-trash"
+                  v-tooltip="runBusy(run) ? t('deleteBusy') : t('deleteRun')"
+                  :aria-label="t('deleteRun')"
+                  text
+                  severity="danger"
+                  :disabled="runBusy(run)"
+                  @click="askDeleteRun(run)"
+                />
+              </div>
             </div>
             <p class="style muted">{{ run.style }}</p>
             <div class="flex top-0">
@@ -75,27 +135,26 @@ const severityByQuality: Record<string, string> = {
             <ul class="songs">
               <li v-for="song in run.songs" :key="song.id" class="song">
                 <div class="flex gap-3 items-center">
-                  <div><strong>{{ t('songN', { n: song.index }) }}</strong></div>
+                  <div>
+                    <strong>{{ t('songN', { n: song.index }) }}</strong>
+                  </div>
                   <div v-if="song.seconds" class="muted">{{ formatDuration(song.seconds) }}</div>
                   <Tag v-if="song.quality" :severity="severityByQuality[song.quality]">
                     {{ song.quality === 'draft' ? t('qualityDraft') : t('qualityFull') }}
                   </Tag>
                   <div v-if="song.seed !== null" class="muted seed">#{{ song.seed }}</div>
-       
                 </div>
                 <div class="flex justify-between">
-
-                    <Button
-                      v-if="song.canRender && song.quality !== 'full'"
-                      :label="busyIds.has(song.id) ? t('rendering') : t('renderFull')"
-                      :loading="busyIds.has(song.id) ? true : false"
-                      text
-                      size="small"
-                      :disabled="busyIds.has(song.id)"
-                      @click="renderFull(song)"
-                    />
-                    <div class="flex justify-end">
-
+                  <Button
+                    v-if="song.canRender && song.quality !== 'full'"
+                    :label="busyIds.has(song.id) ? t('rendering') : t('renderFull')"
+                    :loading="busyIds.has(song.id) ? true : false"
+                    text
+                    size="small"
+                    :disabled="busyIds.has(song.id)"
+                    @click="renderFull(song)"
+                  />
+                  <div class="flex justify-end">
                     <Button as="a" text v-if="song.hasAudio" size="small" :href="audioUrl(song.id, true)">{{
                       t('download')
                     }}</Button>
@@ -113,8 +172,19 @@ const severityByQuality: Record<string, string> = {
                       :href="songZipUrl(song.id)"
                       :title="t('zipTitle')"
                     />
-                </div>
+                    <Button
+                      icon="pi pi-trash"
+                      text
+                      size="small"
+                      rounded
+                      severity="danger"
+                      v-tooltip="busyIds.has(song.id) ? t('deleteBusy') : t('deleteSong')"
+                      :aria-label="t('deleteSong')"
+                      :disabled="busyIds.has(song.id)"
+                      @click="askDeleteSong(run, song)"
+                    />
                   </div>
+                </div>
                 <!-- preload="none": a page of five-minute FLACs would otherwise start loading on a phone. -->
                 <audio v-if="song.hasAudio" controls preload="none" :src="audioUrl(song.id)" />
                 <span v-else class="muted">{{ t('noAudio') }}</span>

@@ -99,7 +99,6 @@ function lengthLabel(seconds: number): string {
 
 <template>
   <form @submit.prevent="submit">
-
     <FloatLabel variant="on">
       <InputText
         id="gen-title"
@@ -127,8 +126,7 @@ function lengthLabel(seconds: number): string {
       <small v-if="fieldErrors.style" class="danger">{{ fieldErrors.style.join(' ') }}</small>
     </FloatLabel>
 
-        <FloatLabel variant="on" class="mt-6">
-
+    <FloatLabel variant="on" class="mt-6">
       <Textarea
         id="gen-lyrics"
         v-model="form.lyrics"

@@ -159,6 +159,8 @@ const messages = {
     showScore: 'ABC ansehen',
     files: 'Alle Dateien',
     filesTitle: 'Partitur, MIDI-Spuren und Analyse als ZIP',
+    deleteTranscription: 'Transkription löschen',
+    confirmDeleteTranscription: 'Die Transkription von „{name}“ mit Partitur und MIDI-Dateien endgültig löschen?',
     warnings: 'Hinweise von SheetSage2: {list}',
 
     queue: 'Warteschlange',
@@ -198,6 +200,18 @@ const messages = {
     noAudio: 'Kein Audio',
     showLyrics: 'Text',
     untitled: 'Ohne Titel',
+    storage: '{used} belegt, {free} frei',
+    deleteSong: 'Song löschen',
+    deleteRun: 'Alle Songs löschen',
+    deleteBusy: 'Der Worker arbeitet noch daran.',
+    confirmDeleteSong: '{song} von „{title}“ ({size}) endgültig löschen? Audio, Partitur und Tokens sind danach weg.',
+    confirmDeleteLastSong:
+      '{song} von „{title}“ ({size}) endgültig löschen? Es ist der letzte Song, der Eintrag verschwindet damit aus der Bibliothek.',
+    confirmDeleteRun: 'Alle {count} Songs von „{title}“ ({size}) endgültig löschen?',
+    confirmDelete: 'Löschen bestätigen',
+    delete: 'Löschen',
+    keep: 'Behalten',
+    deleted: '„{title}“ ist gelöscht.',
 
     errorNetwork: 'Der Server ist nicht erreichbar.',
     errorGeneric: 'Das hat nicht geklappt: {message}',
@@ -357,6 +371,8 @@ const messages = {
     showScore: 'View ABC',
     files: 'All files',
     filesTitle: 'Score, MIDI parts and analysis as ZIP',
+    deleteTranscription: 'Delete transcription',
+    confirmDeleteTranscription: 'Delete the transcription of “{name}” with its score and MIDI files for good?',
     warnings: 'Notes from SheetSage2: {list}',
 
     queue: 'Queue',
@@ -396,6 +412,18 @@ const messages = {
     noAudio: 'No audio',
     showLyrics: 'Lyrics',
     untitled: 'Untitled',
+    storage: '{used} used, {free} free',
+    deleteSong: 'Delete song',
+    deleteRun: 'Delete all songs',
+    deleteBusy: 'The worker is still on it.',
+    confirmDeleteSong: 'Delete {song} of “{title}” ({size}) for good? Its audio, score and tokens will be gone.',
+    confirmDeleteLastSong:
+      'Delete {song} of “{title}” ({size}) for good? It is the last song, so the entry disappears from the library.',
+    confirmDeleteRun: 'Delete all {count} songs of “{title}” ({size}) for good?',
+    confirmDelete: 'Confirm deletion',
+    delete: 'Delete',
+    keep: 'Keep',
+    deleted: '“{title}” has been deleted.',
 
     errorNetwork: 'The server cannot be reached.',
     errorGeneric: 'That did not work: {message}',
@@ -456,6 +484,17 @@ export function formatDateTime(iso: string): string {
 export function formatTime(iso: string): string {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString(locale.value, { timeStyle: 'medium' })
+}
+
+/** 48_300_000 → "48 MB", 2_150_000_000 → "2.2 GB" (decimal units, as Finder counts). */
+export function formatBytes(bytes: number): string {
+  const [value, unit] =
+    bytes >= 1e9 ? [bytes / 1e9, 'gigabyte'] : bytes >= 1e6 ? [bytes / 1e6, 'megabyte'] : [bytes / 1e3, 'kilobyte']
+  return new Intl.NumberFormat(locale.value, {
+    style: 'unit',
+    unit,
+    maximumFractionDigits: value < 10 ? 1 : 0,
+  }).format(value)
 }
 
 /** 309.4 → "5:09" */

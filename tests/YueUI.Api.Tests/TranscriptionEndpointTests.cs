@@ -184,6 +184,39 @@ public sealed class TranscriptionEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/transcriptions/{id}/score")).StatusCode);
     }
 
+    [Fact]
+    public async Task A_finished_transcription_can_be_deleted()
+    {
+        var directory = _app.AddTranscription("My-Song-20260923-201500");
+        var other = _app.AddTranscription("Other-20260923-201600");
+
+        var response = await _client.DeleteAsync("/api/transcriptions/My-Song-20260923-201500");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.False(Directory.Exists(directory));
+        Assert.True(Directory.Exists(other));
+        var list = (await _client.GetFromJsonAsync<TranscriptionList>("/api/transcriptions", TestApp.Json))!;
+        Assert.Equal(["Other-20260923-201600"], list.Items.Select(t => t.Id));
+        Assert.True(list.Items[0].Bytes > 0);
+    }
+
+    [Theory]
+    [InlineData("Unknown-20260923-201500")]
+    [InlineData("..")]
+    [InlineData("..%2Fsongs")]
+    // Without a score: failed, or still being written.
+    [InlineData("Failed-20260923-201700")]
+    public async Task Only_finished_transcriptions_can_be_deleted(string id)
+    {
+        var directory = _app.AddTranscription("My-Song-20260923-201500");
+        var failed = _app.AddTranscription("Failed-20260923-201700", score: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync($"/api/transcriptions/{id}")).StatusCode);
+        Assert.True(Directory.Exists(directory));
+        Assert.True(Directory.Exists(failed));
+        Assert.True(Directory.Exists(_app.OutputDir));
+    }
+
     public void Dispose()
     {
         _client.Dispose();

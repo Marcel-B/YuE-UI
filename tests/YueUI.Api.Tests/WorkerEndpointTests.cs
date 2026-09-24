@@ -291,6 +291,39 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_song_the_worker_is_on_cannot_be_deleted_until_it_is_finished()
+    {
+        _app.AddSong(Run, "song1");
+        _app.AddSong(Run, "song2");
+        await StartSong();
+
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.DeleteAsync($"/api/songs/{Run}/song1")).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.DeleteAsync($"/api/runs/{Run}")).StatusCode);
+        // Another song of the run is not in the way.
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/songs/{Run}/song2")).StatusCode);
+
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath(Run, "song1"), stage = "cancelled", detail = "" });
+        await _app.WaitForStatus(_client, s => s.Songs.All(song => song.Finished));
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/runs/{Run}")).StatusCode);
+        Assert.False(Directory.Exists(Path.Combine(_app.OutputDir, Run)));
+    }
+
+    [Fact]
+    public async Task Deleting_tells_every_open_library_to_reload()
+    {
+        _app.AddSong(Run, "song1");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/events");
+        using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+        Assert.Equal("snapshot", (await NextEvent(reader)).Type);
+
+        await _client.DeleteAsync($"/api/runs/{Run}");
+
+        Assert.Equal("library", (await NextEvent(reader)).Type);
+    }
+
+    [Fact]
     public async Task Status_reports_a_running_studio_app()
     {
         _app.Studio.Running = true;

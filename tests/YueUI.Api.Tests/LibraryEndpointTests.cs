@@ -145,6 +145,88 @@ public sealed class LibraryEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task The_library_says_what_songs_and_runs_take_on_disk()
+    {
+        // 100 bytes of audio, 4 of score, and the two JSON files.
+        var song1 = _app.AddSong("20260921-165850-Neon-Night", "song1");
+        _app.AddSong("20260921-165850-Neon-Night", "song2");
+        File.WriteAllBytes(Path.Combine(song1, "semantic.npy"), new byte[1000]);
+        File.WriteAllText(Path.Combine(_app.OutputDir, "20260921-165850-Neon-Night", "job.json"), "{}");
+
+        var run = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+
+        var files = Directory.EnumerateFiles(_app.OutputDir, "*", SearchOption.AllDirectories).Select(f => new FileInfo(f));
+        Assert.Equal(files.Where(f => f.DirectoryName == song1).Sum(f => f.Length), run.Songs[0].Bytes);
+        Assert.Equal(run.Songs[1].Bytes + 1000, run.Songs[0].Bytes);
+        Assert.Equal(files.Sum(f => f.Length), run.Bytes);
+    }
+
+    [Fact]
+    public async Task Deleting_a_song_removes_its_folder_and_the_last_one_takes_the_run_along()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        var song1 = _app.AddSong(run, "song1");
+        var song2 = _app.AddSong(run, "song2");
+
+        var first = await _client.DeleteAsync($"/api/songs/{run}/song1");
+
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+        Assert.False(Directory.Exists(song1));
+        Assert.True(Directory.Exists(song2));
+
+        var last = await _client.DeleteAsync($"/api/songs/{run}/song2");
+
+        Assert.Equal(HttpStatusCode.NoContent, last.StatusCode);
+        Assert.False(Directory.Exists(Path.Combine(_app.OutputDir, run)));
+        Assert.Empty((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+    }
+
+    [Fact]
+    public async Task Deleting_a_run_removes_it_with_all_its_songs()
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1");
+        _app.AddSong("20260921-165850-Neon-Night", "song2");
+        var other = _app.AddSong("20260920-080000-Old-Song", "song1");
+
+        var response = await _client.DeleteAsync("/api/runs/20260921-165850-Neon-Night");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.False(Directory.Exists(Path.Combine(_app.OutputDir, "20260921-165850-Neon-Night")));
+        Assert.True(Directory.Exists(other));
+    }
+
+    [Theory]
+    [InlineData("/api/runs/20260921-165850-Other")]
+    [InlineData("/api/runs/transcriptions")]
+    [InlineData("/api/runs/..")]
+    [InlineData("/api/runs/..%2Fsongs")]
+    [InlineData("/api/songs/20260921-165850-Neon-Night/song9")]
+    [InlineData("/api/songs/20260921-165850-Neon-Night/..%2Fsong1")]
+    [InlineData("/api/songs/..%2F..%2Fetc/song1")]
+    public async Task Only_songs_and_runs_of_the_library_can_be_deleted(string path)
+    {
+        var song = _app.AddSong("20260921-165850-Neon-Night", "song1");
+        Directory.CreateDirectory(Path.Combine(_app.OutputDir, "transcriptions"));
+
+        var response = await _client.DeleteAsync(path);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.True(Directory.Exists(song));
+        Assert.True(Directory.Exists(Path.Combine(_app.OutputDir, "transcriptions")));
+    }
+
+    [Fact]
+    public async Task Storage_reports_the_space_of_the_library_volume()
+    {
+        // Also before the worker has written the folder.
+        Directory.Delete(_app.OutputDir, recursive: true);
+
+        var storage = (await _client.GetFromJsonAsync<StorageInfo>("/api/storage", TestApp.Json))!;
+
+        Assert.InRange(storage.FreeBytes, 1, storage.TotalBytes);
+    }
+
+    [Fact]
     public async Task Without_YuE_Studio_generating_explains_what_is_missing()
     {
         using var app = new TestApp(fakeWorker: false);
