@@ -27,6 +27,29 @@ const messages = {
     styleHint: 'Sprache, Genre, Stimme, Instrumente, Tempo und Stimmung – als Stichworte, durch Kommas getrennt.',
     styleMore:
       'Der Stil prägt Klang, Arrangement und Gesang. Konkrete Stichworte wirken stärker als allgemeine: „rounded bass and light drums“ statt „gute Band“. Die YuE2-Beispiele beginnen mit der Sprache des Gesangs.\n\nBeispiele:\n• English, warm piano pop, expressive female voice, acoustic piano, rounded bass and light drums, lyrical memorable melody, unhurried phrasing, 88 BPM\n• English, jazz-funk, warm lead vocal, Rhodes, bass and drums\n• German, dark synthwave, male baritone, analog synths, gated reverb drums, melancholic, 110 BPM',
+    styleBlocks: 'Bausteine',
+    styleBlocksIntro: 'Antippen setzt einen Baustein in den Stil, nochmal Antippen nimmt ihn heraus.',
+    styleBlocksMore:
+      'Eigene Begriffe im Stil bleiben stehen. Nach YuEs Prompt-Leitfaden wirken Genre, Instrument, Stimmung, Stimme und Klangfarbe am stabilsten, am besten alle fünf. Die Auswahl stammt aus YuEs Liste der 200 häufigsten Tags (top_200_tags.json); YuE2 versteht aber auch freie Beschreibungen wie „rounded bass and light drums“. Sprache kommt nach vorn, Tempo ans Ende, der Rest in der Reihenfolge der Reiter dazwischen.',
+    styleBlocksInstrumental: 'Bei „Instrumental“ ohne Wirkung.',
+    styleBlocks_language: 'Sprache',
+    styleBlocks_languageHint:
+      'Die Sprache des Gesangs, eine pro Song; sie steht vorn wie in den YuE2-Beispielen. Englisch ist am besten trainiert, Mandarin und Kantonesisch unterscheidet YuE ausdrücklich.',
+    styleBlocks_genre: 'Genre',
+    styleBlocks_genreHint: 'Mehrere lassen sich mischen, zwei bis drei bleiben meist stimmig.',
+    styleBlocks_voice: 'Stimme',
+    styleBlocks_voiceHint:
+      'Wer singt, eine Wahl pro Song. „male and female duet“ und „choir“ sind freie Beschreibungen, keine Tags aus YuEs Liste: Wer welche Zeile singt, lässt sich nicht festlegen.',
+    styleBlocks_timbre: 'Klangfarbe',
+    styleBlocks_timbreHint:
+      'Wie die Stimme klingt, auch die Stimmlage (soprano, alto, tenor, baritone). Ein bis zwei genügen.',
+    styleBlocks_instruments: 'Instrumente',
+    styleBlocks_instrumentsHint: 'Was die Begleitung spielt; drei bis vier prägen das Arrangement deutlich.',
+    styleBlocks_mood: 'Stimmung',
+    styleBlocks_moodHint: 'Die Stimmung färbt Melodie, Harmonie und Gesang.',
+    styleBlocks_tempo: 'Tempo',
+    styleBlocks_tempoHint:
+      'Eines pro Song, es steht hinten wie in den YuE2-Beispielen und ersetzt ein von Hand geschriebenes. Ballade etwa 60–80, Pop 100–120, Dance 120–130 BPM.',
     lyrics: 'Songtext',
     lyricsOptional: 'Songtext (optional)',
     lyricsPlaceholder: '[Verse]\n…\n\n[Chorus]\n…',
@@ -252,6 +275,29 @@ const messages = {
     styleHint: 'Language, genre, voice, instruments, tempo and mood – as keywords, separated by commas.',
     styleMore:
       'The style shapes the sound, the arrangement and the singing. Concrete keywords work better than vague ones: “rounded bass and light drums” rather than “good band”. The YuE2 examples start with the language of the vocals.\n\nExamples:\n• English, warm piano pop, expressive female voice, acoustic piano, rounded bass and light drums, lyrical memorable melody, unhurried phrasing, 88 BPM\n• English, jazz-funk, warm lead vocal, Rhodes, bass and drums\n• German, dark synthwave, male baritone, analog synths, gated reverb drums, melancholic, 110 BPM',
+    styleBlocks: 'Building blocks',
+    styleBlocksIntro: 'Tap to put a building block into the style, tap again to take it out.',
+    styleBlocksMore:
+      'Your own words in the style stay. According to YuE’s prompt guide, genre, instrument, mood, voice and timbre give the most stable results, ideally all five. The choice comes from YuE’s list of its 200 most common tags (top_200_tags.json); YuE2 also understands free descriptions such as “rounded bass and light drums”. Language goes first, tempo last, the rest in between in the order of the tabs.',
+    styleBlocksInstrumental: 'No effect with “Instrumental”.',
+    styleBlocks_language: 'Language',
+    styleBlocks_languageHint:
+      'The language of the vocals, one per song; it goes first as in the YuE2 examples. English is trained best, and YuE tells Mandarin and Cantonese apart explicitly.',
+    styleBlocks_genre: 'Genre',
+    styleBlocks_genreHint: 'Several can be mixed, two or three usually stay coherent.',
+    styleBlocks_voice: 'Voice',
+    styleBlocks_voiceHint:
+      'Who sings, one choice per song. “male and female duet” and “choir” are free descriptions, not tags from YuE’s list: which line goes to whom cannot be set.',
+    styleBlocks_timbre: 'Timbre',
+    styleBlocks_timbreHint:
+      'How the voice sounds, including its range (soprano, alto, tenor, baritone). One or two are enough.',
+    styleBlocks_instruments: 'Instruments',
+    styleBlocks_instrumentsHint: 'What the accompaniment plays; three or four shape the arrangement clearly.',
+    styleBlocks_mood: 'Mood',
+    styleBlocks_moodHint: 'The mood colours melody, harmony and singing.',
+    styleBlocks_tempo: 'Tempo',
+    styleBlocks_tempoHint:
+      'One per song; it goes last as in the YuE2 examples and replaces one typed by hand. Ballad about 60–80, pop 100–120, dance 120–130 BPM.',
     lyrics: 'Lyrics',
     lyricsOptional: 'Lyrics (optional)',
     lyricsPlaceholder: '[Verse]\n…\n\n[Chorus]\n…',

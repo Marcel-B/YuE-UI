@@ -22,6 +22,12 @@ import FloatLabel from 'primevue/floatlabel'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from 'primevue/confirmdialog'
 import ConfirmationService from 'primevue/confirmationservice'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
+import Badge from 'primevue/badge'
 
 const app = createApp(App)
 app.use(PrimeVue, {
@@ -49,6 +55,12 @@ app
   .component('FloatLabel', FloatLabel)
   .component('Tag', Tag)
   .component('ConfirmDialog', ConfirmDialog)
+  .component('Tabs', Tabs)
+  .component('TabList', TabList)
+  .component('Tab', Tab)
+  .component('TabPanels', TabPanels)
+  .component('TabPanel', TabPanel)
+  .component('Badge', Badge)
 
 app.directive('tooltip', Tooltip)
 
