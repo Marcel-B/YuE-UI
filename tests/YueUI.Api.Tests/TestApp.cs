@@ -96,6 +96,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddSingleton(new YuePaths(Path.Combine(Root, "install"), OutputDir));
             services.AddSingleton<IStudioDetector>(Studio);
             services.AddSingleton<ILmStudioStarter>(LmStudio);
+            // The model FakeLmStudio lists, whichever one appsettings.json picks for the Mac.
+            services.Configure<LyricsOptions>(options => options.Model = "google/gemma-4-e4b");
             // A new handler each time: the factory disposes the ones it rotates out.
             services.AddHttpClient(LyricsWriter.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLmStudio.Handler(LmStudio));
             if (_fakeWorker)
@@ -112,6 +114,20 @@ public sealed class TestApp : WebApplicationFactory<Program>
         if (disposing && Directory.Exists(Root))
         {
             Directory.Delete(Root, recursive: true);
+        }
+    }
+
+    /// <summary>Some effects follow the state that announces them, e.g. deleting an upload; wait for them.</summary>
+    public static async Task WaitUntil(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("The condition never held.");
+            }
+            await Task.Delay(20);
         }
     }
 
