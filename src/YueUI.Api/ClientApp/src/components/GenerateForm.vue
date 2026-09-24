@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useConfirm } from 'primevue/useconfirm'
-import { ApiError, draftLyrics, generate } from '../api'
+import {computed, ref, watch} from 'vue'
+import {useConfirm} from 'primevue/useconfirm'
+import {ApiError, draftLyrics, generate} from '../api'
+import {Panel} from "primevue";
 import {
   advancedChanged,
   resetAdvanced,
@@ -14,11 +15,14 @@ import {
   type FormState,
   type SamplingPhase,
 } from '../form'
-import { formatDuration, t } from '../i18n'
-import type { LyricsState } from '../types'
+import {formatDuration, t} from '../i18n'
+import type {LyricsState} from '../types'
 import FieldHelp from './FieldHelp.vue'
 import SamplingFields from './SamplingFields.vue'
 import StyleBlocks from './StyleBlocks.vue'
+import {Checkbox} from "primevue";
+import SelectButton from "primevue/selectbutton";
+import {InputNumber} from "primevue";
 
 const props = defineProps<{
   /** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
@@ -28,7 +32,7 @@ const props = defineProps<{
   /** The last lyrics draft from the event stream, from any browser. */
   lyricsDraft: LyricsState | null
 }>()
-const form = defineModel<FormState>({ required: true })
+const form = defineModel<FormState>({required: true})
 
 const sending = ref(false)
 const blocksOpen = ref(false)
@@ -38,7 +42,7 @@ const fieldErrors = ref<Record<string, string[]>>({})
 const changed = computed(() => advancedChanged(form.value))
 // The API refuses this too; saying so before sending saves a round trip from the phone.
 const scoreWithoutPlanning = computed(
-  () => form.value.abc.trim() !== '' && form.value.cot === 'off' && !form.value.instrumental,
+    () => form.value.abc.trim() !== '' && form.value.cot === 'off' && !form.value.instrumental,
 )
 // The worker writes a score unless planning is off (an instrumental turns it back on) or one is supplied.
 const plansScore = computed(() => (form.value.cot !== 'off' || form.value.instrumental) && form.value.abc.trim() === '')
@@ -60,12 +64,12 @@ async function submit(): Promise<void> {
   fieldErrors.value = {}
   try {
     await generate(toGenerateRequest(form.value))
-    message.value = { text: t('queued'), error: false }
+    message.value = {text: t('queued'), error: false}
   } catch (caught) {
     if (caught instanceof ApiError) {
       fieldErrors.value = caught.errors
     }
-    message.value = { text: errorText(caught), error: true }
+    message.value = {text: errorText(caught), error: true}
   } finally {
     sending.value = false
   }
@@ -85,12 +89,13 @@ function take(draft: LyricsState | null): void {
   form.value.lyricsDraftId = ''
   if (draft.stage === 'done' && draft.lyrics) {
     form.value.lyrics = draft.lyrics
-    draftMessage.value = { text: t('lyricsDrafted'), error: false }
+    draftMessage.value = {text: t('lyricsDrafted'), error: false}
   } else {
-    draftMessage.value = { text: t('errorGeneric', { message: draft.message ?? '' }), error: true }
+    draftMessage.value = {text: t('errorGeneric', {message: draft.message ?? ''}), error: true}
   }
 }
-watch(() => props.lyricsDraft, take, { immediate: true })
+
+watch(() => props.lyricsDraft, take, {immediate: true})
 
 /** A draft replaces the lyrics field; lyrics someone wrote by hand should not vanish without a question. */
 function askDraft(): void {
@@ -102,8 +107,8 @@ function askDraft(): void {
     header: t('replaceLyrics'),
     message: t('confirmReplaceLyrics'),
     icon: 'pi pi-pencil',
-    rejectProps: { label: t('keep'), severity: 'secondary', outlined: true },
-    acceptProps: { label: t('replace') },
+    rejectProps: {label: t('keep'), severity: 'secondary', outlined: true},
+    acceptProps: {label: t('replace')},
     accept: () => void draft(),
   })
 }
@@ -117,7 +122,7 @@ async function draft(): Promise<void> {
     // A quick failure (LM Studio missing) can arrive as an event before this answer.
     take(props.lyricsDraft)
   } catch (caught) {
-    draftMessage.value = { text: errorText(caught), error: true }
+    draftMessage.value = {text: errorText(caught), error: true}
   } finally {
     starting.value = false
   }
@@ -127,7 +132,7 @@ function errorText(caught: unknown): string {
   if (caught instanceof ApiError && caught.status === 0) {
     return t('errorNetwork')
   }
-  return t('errorGeneric', { message: caught instanceof Error ? caught.message : String(caught) })
+  return t('errorGeneric', {message: caught instanceof Error ? caught.message : String(caught)})
 }
 
 function reset(): void {
@@ -137,7 +142,7 @@ function reset(): void {
 }
 
 // App's trash button resets the form; message and field errors live here, so it calls this instead of the model.
-defineExpose({ reset })
+defineExpose({reset})
 
 /** Parameters only: a score someone pasted or transcribed has its own button. */
 function resetParameters(): void {
@@ -150,453 +155,352 @@ function samplingChanged(phase: SamplingPhase): boolean {
 }
 
 function resetSampling(phase: SamplingPhase): void {
-  form.value = { ...form.value, [phase]: { ...defaultSampling[phase] } }
+  form.value = {...form.value, [phase]: {...defaultSampling[phase]}}
 }
 
 function lengthLabel(seconds: number): string {
   const duration = formatDuration(seconds)
-  return seconds === maxSongSeconds ? t('defaultValue', { value: duration }) : duration
+  return seconds === maxSongSeconds ? t('defaultValue', {value: duration}) : duration
 }
+
+const cotItems = [
+  {value: "full", label: t('defaultValue', {value: t('cotFull')})},
+  {value: "melody", label: t('cotMelody')}, {
+    value: "off", label: t('cotOff')
+  }
+]
+const qualityOptions = [
+  {value: "draft", label: t('qualityDraft')},
+  {
+    value: "full", label: t('qualityFull')
+  }
+]
+const batchOptions = [
+  {value: 1, label: "1"},
+  {
+    value: 2, label: "2"
+  },
+  {value: 3, label: "3"},
+]
+
+const engineOptions = [
+  {
+    value: "", label: t('defaultValue', {value: t('enginesAuto')})
+  },
+  {
+    value: "gpu", label: t('enginesGpu')
+  }, {
+    value: "gpu+ane", label: t('enginesAne'),
+  }
+]
+const lengthOptions = lengthChoices.map(x => ({value: x, label: lengthLabel(x)}));
+
 </script>
 
 <template>
   <form @submit.prevent="submit">
     <FloatLabel variant="on">
       <InputText
-        id="gen-title"
-        v-model="form.title"
-        type="text"
-        maxlength="120"
-        :placeholder="t('titlePlaceholder')"
-        aria-describedby="gen-title-help"
+          id="gen-title"
+          v-model="form.title"
+          type="text"
+          maxlength="120"
+          :placeholder="t('titlePlaceholder')"
+          aria-describedby="gen-title-help"
       />
       <label for="gen-title">{{ t('title') }}</label>
-      <FieldHelp id="gen-title-help" :hint="t('titleHint')" />
+      <FieldHelp id="gen-title-help" :hint="t('titleHint')"/>
     </FloatLabel>
 
     <FloatLabel variant="on" class="mt-6">
       <Textarea
-        id="gen-style"
-        v-model="form.style"
-        rows="3"
-        required
-        :placeholder="t('stylePlaceholder')"
-        aria-describedby="gen-style-help"
+          id="gen-style"
+          v-model="form.style"
+          rows="3"
+          required
+          :placeholder="t('stylePlaceholder')"
+          aria-describedby="gen-style-help"
       />
-      <FieldHelp id="gen-style-help" :hint="t('styleHint')" :more="t('styleMore')" />
       <label for="gen-style">{{ t('style') }}</label>
-      <small v-if="fieldErrors.style" class="danger">{{ fieldErrors.style.join(' ') }}</small>
+
     </FloatLabel>
+    <FieldHelp id="gen-style-help" :hint="t('styleHint')" :more="t('styleMore')"/>
+    <small v-if="fieldErrors.style" class="danger">{{ fieldErrors.style.join(' ') }}</small>
     <Button
-      type="button"
-      class="mt-1"
-      size="small"
-      text
-      :icon="blocksOpen ? 'pi pi-chevron-up' : 'pi pi-th-large'"
-      :label="t('styleBlocks')"
-      :aria-expanded="blocksOpen"
-      aria-controls="gen-style-blocks"
-      @click="blocksOpen = !blocksOpen"
+        type="button"
+        class="mt-1"
+        size="small"
+        text
+        :icon="blocksOpen ? 'pi pi-chevron-up' : 'pi pi-th-large'"
+        :label="t('styleBlocks')"
+        :aria-expanded="blocksOpen"
+        aria-controls="gen-style-blocks"
+        @click="blocksOpen = !blocksOpen"
     />
-    <StyleBlocks v-if="blocksOpen" id="gen-style-blocks" v-model="form.style" :instrumental="form.instrumental" />
+    <StyleBlocks v-if="blocksOpen" id="gen-style-blocks" v-model="form.style" :instrumental="form.instrumental"/>
 
     <div class="mt-6 flex items-start gap-2">
       <FloatLabel variant="on" class="min-w-0 flex-1">
         <InputText
-          id="gen-lyrics-idea"
-          v-model="form.lyricsIdea"
-          type="text"
-          maxlength="1000"
-          :placeholder="t('lyricsIdeaPlaceholder')"
-          aria-describedby="gen-lyrics-idea-help"
+            id="gen-lyrics-idea"
+            v-model="form.lyricsIdea"
+            type="text"
+            maxlength="1000"
+            :placeholder="t('lyricsIdeaPlaceholder')"
+            aria-describedby="gen-lyrics-idea-help"
         />
         <label for="gen-lyrics-idea">{{ t('lyricsIdea') }}</label>
       </FloatLabel>
       <Button
-        type="button"
-        icon="pi pi-sparkles"
-        :label="drafting ? t('draftingLyrics') : t('draftLyrics')"
-        :loading="drafting"
-        :disabled="drafting || busy || form.lyricsIdea.trim() === ''"
-        v-tooltip.bottom="busy ? t('draftBusy') : undefined"
-        @click="askDraft"
+          type="button"
+          icon="pi pi-sparkles"
+          text
+          size="large"
+          :loading="drafting"
+          :disabled="drafting || busy || form.lyricsIdea.trim() === ''"
+          v-tooltip.bottom="busy ? t('draftBusy') : undefined"
+          @click="askDraft"
       />
     </div>
-    <FieldHelp id="gen-lyrics-idea-help" :hint="t('lyricsIdeaHint')" :more="t('lyricsIdeaMore')" />
+    <FieldHelp id="gen-lyrics-idea-help" :hint="t('lyricsIdeaHint')" :more="t('lyricsIdeaMore')"/>
     <small v-if="draftMessage" :class="['block', draftMessage.error ? 'danger' : 'muted']" role="status">{{
-      draftMessage.text
-    }}</small>
+        draftMessage.text
+      }}</small>
 
     <FloatLabel variant="on" class="mt-6">
       <Textarea
-        id="gen-lyrics"
-        v-model="form.lyrics"
-        class="mono"
-        rows="12"
-        :required="!form.instrumental"
-        spellcheck="false"
-        :placeholder="t('lyricsPlaceholder')"
-        aria-describedby="gen-lyrics-help"
+          id="gen-lyrics"
+          v-model="form.lyrics"
+          class="mono"
+          rows="12"
+          :required="!form.instrumental"
+          spellcheck="false"
+          :placeholder="t('lyricsPlaceholder')"
+          aria-describedby="gen-lyrics-help"
       />
       <label for="gen-lyrics">{{ form.instrumental ? t('lyricsOptional') : t('lyrics') }}</label>
-      <FieldHelp id="gen-lyrics-help" :hint="t('lyricsHint')" :more="t('lyricsMore')" />
+      <FieldHelp id="gen-lyrics-help" :hint="t('lyricsHint')" :more="t('lyricsMore')"/>
       <small v-if="fieldErrors.lyrics" class="danger">{{ fieldErrors.lyrics.join(' ') }}</small>
     </FloatLabel>
 
-    <div class="field mt-6">
-      <label class="check">
-        <input v-model="form.instrumental" type="checkbox" aria-describedby="gen-instrumental-help" />
-        <span>{{ t('instrumental') }}</span>
-      </label>
-      <FieldHelp id="gen-instrumental-help" :hint="t('instrumentalHint')" :more="t('instrumentalMore')" />
+    <div class="flex items-center gap-2 mt-6">
+      <Checkbox id="instrumental" binary v-model="form.instrumental" aria-describedby="gen-instrumental-help"/>
+      <label for="instrumental">{{ t('instrumental') }}</label>
     </div>
-
-    <div class="grid">
-      <div class="field">
-        <fieldset class="segmented" aria-describedby="gen-quality-help">
-          <legend>{{ t('quality') }}</legend>
-          <label :class="{ active: form.quality === 'draft' }">
-            <input v-model="form.quality" type="radio" value="draft" class="sr-only" />{{ t('qualityDraft') }}
-          </label>
-          <label :class="{ active: form.quality === 'full' }">
-            <input v-model="form.quality" type="radio" value="full" class="sr-only" />{{ t('qualityFull') }}
-          </label>
-        </fieldset>
-        <FieldHelp id="gen-quality-help" :hint="t('qualityHint')" :more="t('qualityMore')" />
+    <FieldHelp id="gen-instrumental-help" :hint="t('instrumentalHint')" :more="t('instrumentalMore')"/>
+    <Divider/>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <div>
+          <label class="text-sm muted mb-0">{{ t('quality') }}</label><br>
+          <SelectButton v-model="form.quality" option-value="value" option-label="label" :options="qualityOptions"/>
+        </div>
+        <FieldHelp id="gen-quality-help" :hint="t('qualityHint')" :more="t('qualityMore')"/>
       </div>
 
-      <div class="field">
-        <label for="gen-batch">{{ t('batch') }}</label>
-        <select id="gen-batch" v-model.number="form.batch" class="compact" aria-describedby="gen-batch-help">
-          <option v-for="n in 4" :key="n" :value="n">{{ n }}</option>
-        </select>
-        <FieldHelp id="gen-batch-help" :hint="t('batchHint')" :more="t('batchMore')" />
+
+      <div>
+        <FloatLabel variant="on" class="min-w-0 flex-1 mt-5">
+          <Select id="gen-batch" v-model.number="form.batch" option-label="label" option-value="value"
+                  :options="batchOptions" aria-describedby="gen-batch-help"/>
+          <label for="gen-batch">{{ t('batch') }}</label>
+        </FloatLabel>
+        <FieldHelp id="gen-batch-help" :hint="t('batchHint')" :more="t('batchMore')"/>
         <small v-if="fieldErrors.batch" class="danger">{{ fieldErrors.batch.join(' ') }}</small>
       </div>
     </div>
 
-    <details class="advanced">
-      <summary>
-        {{ t('advanced') }}
-        <span v-if="changed" class="badge changed">{{ t('advancedChanged') }}</span>
-        <span v-if="form.abc.trim() !== ''" class="badge changed">{{ t('advancedWithScore') }}</span>
-      </summary>
-      <div class="advanced-head">
+    <Divider/>
+    <Panel toggleable class="mb-6 mt-4">
+      <template #header>
+        <div class="flex gap-4">
+          {{ t('advanced') }}
+
+        </div>
+      </template>
+      <template #icons>
+        <Tag v-if="changed" severity="warn">{{ t('advancedChanged') }}</Tag>
+        <Tag v-if="form.abc.trim() !== ''" severity="warn">{{ t('advancedWithScore') }}</Tag>
+      </template>
+      <div>
         <small class="muted">{{ t('advancedIntro') }}</small>
-        <button type="button" class="button secondary small" :disabled="!changed" @click="resetParameters">
-          {{ changed ? t('advancedReset') : t('advancedAtDefaults') }}
-        </button>
+        <div class="flex justify-end">
+          <Button icon="pi pi-refresh" :label="changed ? t('advancedReset') : t('advancedAtDefaults')" size="small"
+                  severity="warn" :disabled="!changed" @click="resetParameters"/>
+        </div>
       </div>
       <p v-if="extensions === false" class="notice" role="note">{{ t('extensionsOff') }}</p>
 
-      <div class="grid">
-        <div class="field">
-          <label for="gen-cot">{{ t('cot') }}</label>
-          <select id="gen-cot" v-model="form.cot" aria-describedby="gen-cot-help">
-            <option value="full">{{ t('defaultValue', { value: t('cotFull') }) }}</option>
-            <option value="melody">{{ t('cotMelody') }}</option>
-            <option value="off">{{ t('cotOff') }}</option>
-          </select>
-          <FieldHelp id="gen-cot-help" :hint="t('cotHint')" :more="t('cotMore')" />
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <FloatLabel variant="on" class="mt-6 w-full">
+            <Select id="gen-cot" input-class="w-full" class="w-full" v-model="form.cot" :options="cotItems"
+                    option-label="label" option-value="value" aria-describedby="gen-cot-help"/>
+            <label for="gen-cot">{{ t('cot') }}</label>
+          </FloatLabel>
           <small v-if="fieldErrors.cot" class="danger">{{ fieldErrors.cot.join(' ') }}</small>
+          <FieldHelp id="gen-cot-help" :hint="t('cotHint')" :more="t('cotMore')"/>
         </div>
 
-        <div class="field">
-          <label for="gen-seed">{{ t('seed') }}</label>
-          <input
-            id="gen-seed"
-            v-model="form.seed"
-            type="text"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            :placeholder="t('seedPlaceholder')"
-            aria-describedby="gen-seed-help"
-          />
-          <FieldHelp id="gen-seed-help" :hint="t('seedHint')" :more="t('seedMore')" />
+        <div>
+          <FloatLabel variant="on" class="mt-6 w-full">
+            <InputText
+                id="gen-seed"
+                v-model="form.seed"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                :placeholder="t('seedPlaceholder')"
+                aria-describedby="gen-seed-help"
+            />
+            <label for="gen-seed">{{ t('seed') }}</label>
+          </FloatLabel>
+
+          <FieldHelp id="gen-seed-help" :hint="t('seedHint')" :more="t('seedMore')"/>
           <small v-if="fieldErrors.seed" class="danger">{{ fieldErrors.seed.join(' ') }}</small>
         </div>
 
-        <div class="field">
-          <label for="gen-steps">{{ form.quality === 'draft' ? t('stepsDraft') : t('stepsFull') }}</label>
-          <input
-            id="gen-steps"
-            v-model.number="steps"
-            type="number"
-            min="1"
-            :max="form.quality === 'draft' ? 32 : 64"
-            aria-describedby="gen-steps-help"
-          />
+        <div>
+
+          <FloatLabel variant="on" class="mt-6">
+            <InputNumber
+                id="gen-steps"
+                v-model.number="steps"
+                type="number"
+                :min="1"
+                :max="form.quality === 'draft' ? 32 : 64"
+                aria-describedby="gen-steps-help"
+            />
+            <label for="gen-steps">{{ form.quality === 'draft' ? t('stepsDraft') : t('stepsFull') }}</label>
+          </FloatLabel>
           <FieldHelp
-            id="gen-steps-help"
-            :hint="form.quality === 'draft' ? t('draftStepsHint') : t('fullStepsHint')"
-            :more="t('stepsMore')"
+              id="gen-steps-help"
+              :hint="form.quality === 'draft' ? t('draftStepsHint') : t('fullStepsHint')"
+              :more="t('stepsMore')"
           />
           <small v-if="fieldErrors.draftSteps || fieldErrors.fullSteps" class="danger">
             {{ (fieldErrors.draftSteps ?? fieldErrors.fullSteps)!.join(' ') }}
           </small>
         </div>
-
-        <div class="field">
-          <label for="gen-engines">{{ t('engines') }}</label>
-          <select id="gen-engines" v-model="form.engines" aria-describedby="gen-engines-help">
-            <option value="">{{ t('defaultValue', { value: t('enginesAuto') }) }}</option>
-            <option value="gpu">{{ t('enginesGpu') }}</option>
-            <option value="gpu+ane">{{ t('enginesAne') }}</option>
-          </select>
-          <FieldHelp id="gen-engines-help" :hint="t('enginesHint')" :more="t('enginesMore')" />
+        <div>
+          <FloatLabel variant="on" class="mt-6 w-full">
+            <Select id="gen-engines" v-model="form.engines" class="w-full" :options="engineOptions" option-value="value"
+                    option-label="label" aria-describedby="gen-engines-help"/>
+            <label for="gen-engines">{{ t('engines') }}</label>
+          </FloatLabel>
+          <FieldHelp id="gen-engines-help" :hint="t('enginesHint')" :more="t('enginesMore')"/>
           <small v-if="fieldErrors.engines" class="danger">{{ fieldErrors.engines.join(' ') }}</small>
         </div>
 
-        <div class="field">
-          <label for="gen-length">{{ t('maxLength') }}</label>
-          <select id="gen-length" v-model.number="form.maxSeconds" aria-describedby="gen-length-help">
-            <option v-for="seconds in lengthChoices" :key="seconds" :value="seconds">{{ lengthLabel(seconds) }}</option>
-          </select>
-          <FieldHelp id="gen-length-help" :hint="t('maxLengthHint')" :more="t('maxLengthMore')" />
+        <div>
+          <FloatLabel variant="on" class="mt-6 w-full">
+            <Select option-label="label" option-value="value"
+                    class="w-full"
+                    id="gen-length"
+                    :options="lengthOptions"
+                    v-model.number="form.maxSeconds" aria-describedby="gen-length-help"/>
+
+            <label for="gen-length">{{ t('maxLength') }}</label>
+          </FloatLabel>
+          <FieldHelp id="gen-length-help" :hint="t('maxLengthHint')" :more="t('maxLengthMore')"/>
           <small v-if="fieldErrors.maxTokens" class="danger">{{ fieldErrors.maxTokens.join(' ') }}</small>
         </div>
 
-        <div class="field wide">
-          <div class="label-row">
-            <label for="gen-abc">{{ t('abc') }}</label>
-            <button v-if="form.abc.trim() === ''" type="button" class="link" @click="form.abc = exampleScore">
-              {{ t('abcExample') }}
-            </button>
-            <button v-else type="button" class="link" @click="form.abc = ''">{{ t('abcClear') }}</button>
-          </div>
+        <div class="col-span-2">
+          <div class="flex gap-2">
+            <div class="flex-1">
+              <FloatLabel variant="on" class="mt-6">
           <Textarea
-            id="gen-abc"
-            v-model="form.abc"
-            class="mono"
-            :rows="8"
-            spellcheck="false"
-            autocapitalize="off"
-            autocomplete="off"
-            :placeholder="t('abcPlaceholder')"
-            aria-describedby="gen-abc-help"
+              id="gen-abc"
+              v-model="form.abc"
+              class="mono"
+              :rows="8"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              :placeholder="t('abcPlaceholder')"
+              aria-describedby="gen-abc-help"
           />
-          <FieldHelp id="gen-abc-help" :hint="t('abcHint')" :more="t('abcMore')" />
-          <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
-          <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
+                <label for="gen-abc">{{ t('abc') }}</label>
+              </FloatLabel>
+              <FieldHelp id="gen-abc-help" :hint="t('abcHint')" :more="t('abcMore')"/>
+              <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
+              <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
+            </div>
+            <div class="mt-4">
+
+              <Button v-if="form.abc.trim() === ''" v-tooltip="t('abcExample')" icon="pi pi-upload" severity="info"
+                      text rounded @click="form.abc = exampleScore"/>
+              <Button v-else icon="pi pi-trash" @click="form.abc = ''" text rounded v-tooltip="t('abcClear')"/>
+            </div>
+          </div>
+
         </div>
 
-        <details class="sampling wide">
-          <summary>{{ t('samplingSemantic') }}</summary>
+        <Panel class="col-span-2" toggleable>
+          <template #header>
+            {{ t('samplingSemantic') }}
+          </template>
           <small class="muted">{{ t('samplingSemanticIntro') }}</small>
-          <SamplingFields v-model="form.semanticSampling" phase="semanticSampling" :errors="fieldErrors" />
-          <button
-            type="button"
-            class="button secondary small group-reset"
-            :disabled="!samplingChanged('semanticSampling')"
-            @click="resetSampling('semanticSampling')"
-          >
-            {{ samplingChanged('semanticSampling') ? t('samplingReset') : t('samplingAtDefaults') }}
-          </button>
-        </details>
+          <SamplingFields class="mt-6" v-model="form.semanticSampling" phase="semanticSampling"
+                          :errors="fieldErrors"/>
 
-        <details class="sampling wide">
-          <summary>{{ t('samplingAbc') }}</summary>
+          <div class="flex justify-end">
+
+            <Button
+                icon="pi pi-refresh"
+                severity="warn"
+                size="small"
+                :label="samplingChanged('semanticSampling') ? t('samplingReset') : t('samplingAtDefaults') "
+                :disabled="!samplingChanged('semanticSampling')"
+                @click="resetSampling('semanticSampling')"
+            />
+          </div>
+        </Panel>
+
+        <Panel class="col-span-2" toggleable>
+          <template #header>
+            {{ t('samplingAbc') }}
+          </template>
           <small class="muted">{{ t('samplingAbcIntro') }}</small>
           <small v-if="!plansScore" class="inactive">{{ t('samplingAbcInactive') }}</small>
           <SamplingFields
-            v-model="form.abcSampling"
-            phase="abcSampling"
-            :errors="fieldErrors"
-            :disabled="!plansScore"
+              class="mt-6"
+              v-model="form.abcSampling"
+              phase="abcSampling"
+              :errors="fieldErrors"
+              :disabled="!plansScore"
           />
-          <button
-            type="button"
-            class="button secondary small group-reset"
-            :disabled="!samplingChanged('abcSampling')"
-            @click="resetSampling('abcSampling')"
-          >
-            {{ samplingChanged('abcSampling') ? t('samplingReset') : t('samplingAtDefaults') }}
-          </button>
-        </details>
+          <div class="flex justify-end">
+
+            <Button
+                severity="warn"
+                size="small"
+                icon="pi pi-refresh"
+                :disabled="!samplingChanged('abcSampling')"
+                :label="samplingChanged('abcSampling')  ? t('samplingReset')  : t('samplingAtDefaults') "
+                @click="resetSampling('abcSampling')"
+            />
+          </div>
+        </Panel>
       </div>
 
-      <!-- The section is long on a phone: the same reset at its end. -->
-      <div class="advanced-foot">
-        <button type="button" class="button secondary small" :disabled="!changed" @click="resetParameters">
-          {{ changed ? t('advancedReset') : t('advancedAtDefaults') }}
-        </button>
-      </div>
-    </details>
+      <template #footer>
+        <div class="flex justify-end">
+          <Button severity="warn" icon="pi pi-refresh" :label="changed ? t('advancedReset') : t('advancedAtDefaults')"
+                  size="small" :disabled="!changed" @click="resetParameters"/>
+        </div>
+      </template>
+    </Panel>
 
-    <div class="actions">
-      <button type="submit" class="button primary" :disabled="sending || drafting || scoreWithoutPlanning">
-        {{ sending ? t('generating') : t('generate') }}
-      </button>
+    <div>
+      <Button type="submit" class="w-full" :label="sending ? t('generating') : t('generate') " severity="primary"
+              :loading="sending || drafting || scoreWithoutPlanning"
+              :disabled="sending || drafting || scoreWithoutPlanning"/>
       <span v-if="message" :class="message.error ? 'danger' : 'muted'" role="status">{{ message.text }}</span>
     </div>
   </form>
 </template>
 
 <style scoped>
-.generate {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-}
-
-.heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.heading h2 {
-  margin: 0;
-}
-
-.mono {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-}
-
-.compact {
-  width: 6rem;
-}
-
-.segmented {
-  display: inline-flex;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.segmented legend {
-  margin-bottom: 0.3rem;
-  padding: 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.segmented label {
-  padding: 0.45rem 1rem;
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  cursor: pointer;
-}
-
-.segmented label:first-of-type {
-  border-radius: var(--radius-small) 0 0 var(--radius-small);
-}
-
-.segmented label:last-of-type {
-  margin-left: -1px;
-  border-radius: 0 var(--radius-small) var(--radius-small) 0;
-}
-
-.segmented label.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.segmented label:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.advanced {
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--border);
-}
-
-.advanced summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.changed {
-  margin-left: 0.4rem;
-  background: var(--warning-soft);
-  color: var(--warning-text);
-}
-
-.advanced-foot {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 1rem;
-}
-
-.group-reset {
-  margin-top: 0.9rem;
-}
-
-.advanced-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
-  margin-top: 0.6rem;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  align-items: start;
-  gap: 1.1rem 1rem;
-}
-
-.advanced .grid {
-  margin-top: 0.9rem;
-}
-
-.wide {
-  grid-column: 1 / -1;
-}
-
-.notice {
-  margin: 0.75rem 0 0;
-  padding: 0.6rem 0.75rem;
-  border-radius: var(--radius-small);
-  background: var(--warning-soft);
-  color: var(--warning-text);
-  font-size: 0.85rem;
-}
-
-.sampling {
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-small);
-}
-
-.sampling summary {
-  cursor: pointer;
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.sampling > small {
-  display: block;
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-}
-
-.inactive {
-  color: var(--warning-text);
-}
-
-.label-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.label-row label {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-}
 </style>
