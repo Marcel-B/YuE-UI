@@ -38,7 +38,7 @@ const messages = {
     lyricsIdeaHint:
       'Stichwörter oder ein Satz – ein Sprachmodell auf dem Mac schreibt daraus einen englischen Songtext.',
     lyricsIdeaMore:
-      'Der Entwurf entsteht in LM Studio auf dem Mac, mit dem Modell aus „Lyrics“ in appsettings.json (Standard: Gemma 4 26B A4B); LM Studio startet bei Bedarf von selbst. Der Stil fließt mit ein, damit Stimmung und Tempo passen. Das Modell braucht rund 15 GB Speicher: Während YuE2 rechnet, geht es deshalb nicht, ein ruhender Worker wird vorher beendet, und das Modell wird gleich danach wieder entladen. Durch das Laden dauert ein Entwurf etwas. Der Text landet im Songtext-Feld und lässt sich dort weiter bearbeiten.',
+      'Der Entwurf entsteht in LM Studio auf dem Mac, mit dem Modell aus „Lyrics“ in appsettings.json (Standard: Gemma 4 E4B); LM Studio startet bei Bedarf von selbst. Der Stil fließt mit ein, damit Stimmung und Tempo passen. Sprachmodell und YuE2 passen nicht gleichzeitig in den Speicher: Während YuE2 rechnet, geht es deshalb nicht, ein ruhender Worker wird vorher beendet, und das Modell wird gleich danach wieder entladen. Durch das Laden dauert ein Entwurf etwas. Der Text landet im Songtext-Feld und lässt sich dort weiter bearbeiten.',
     draftLyrics: 'Text entwerfen',
     draftingLyrics: 'Schreibt …',
     draftBusy: 'Während YuE2 rechnet, ist kein Platz für das Sprachmodell.',
@@ -262,7 +262,7 @@ const messages = {
     lyricsIdeaPlaceholder: 'e.g. night train, leaving home, hope',
     lyricsIdeaHint: 'Keywords or a sentence – a language model on the Mac writes English lyrics from them.',
     lyricsIdeaMore:
-      'The draft is written in LM Studio on the Mac, with the model set under “Lyrics” in appsettings.json (default: Gemma 4 26B A4B); LM Studio starts by itself when needed. The style is passed along so that mood and pace fit. The model needs about 15 GB of memory: so it cannot run while YuE2 is generating, an idle worker is stopped first, and the model is unloaded right after. Loading it makes a draft take a moment. The lyrics land in the lyrics field, where they can be edited.',
+      'The draft is written in LM Studio on the Mac, with the model set under “Lyrics” in appsettings.json (default: Gemma 4 E4B); LM Studio starts by itself when needed. The style is passed along so that mood and pace fit. The language model and YuE2 do not fit into memory together: so it cannot run while YuE2 is generating, an idle worker is stopped first, and the model is unloaded right after. Loading it makes a draft take a moment. The lyrics land in the lyrics field, where they can be edited.',
     draftLyrics: 'Draft lyrics',
     draftingLyrics: 'Writing …',
     draftBusy: 'While YuE2 is generating there is no room for the language model.',

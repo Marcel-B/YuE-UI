@@ -13,15 +13,18 @@ public sealed class LyricsEndpointTests : IDisposable
     public LyricsEndpointTests() => _client = _app.CreateClient();
 
     [Fact]
-    public async Task Keywords_and_style_go_to_the_model_with_YuE2s_rules_and_the_model_is_unloaded_after()
+    public async Task The_model_is_loaded_with_a_small_context_asked_with_YuE2s_rules_and_unloaded_after()
     {
         var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "night train, leaving home", style = "English, melancholic folk, 80 BPM" });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("[Verse]\nLine one\n\n[Chorus]\nLine two", (await response.Content.ReadFromJsonAsync<LyricsDraft>())!.Lyrics);
 
+        var load = Assert.Single(_app.LmStudio.Requests, r => r.Path == "/api/v1/models/load").Body!;
+        Assert.Equal("google/gemma-4-e4b", (string?)load["model"]);
+        Assert.Equal(8192, (int?)load["context_length"]);
         var completion = Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!;
-        Assert.Equal("google/gemma-4-26b-a4b-qat", (string?)completion["model"]);
+        Assert.Equal("google/gemma-4-e4b:1", (string?)completion["model"]);
         Assert.Equal(60, (int?)completion["ttl"]);
         var messages = completion["messages"]!.AsArray();
         Assert.Contains("[Verse]", (string?)messages[0]!["content"], StringComparison.Ordinal);
@@ -31,7 +34,45 @@ public sealed class LyricsEndpointTests : IDisposable
         Assert.Contains("melancholic folk", user, StringComparison.Ordinal);
 
         Assert.Equal("/api/v1/models/unload", _app.LmStudio.Requests[^1].Path);
-        Assert.Equal("google/gemma-4-26b-a4b-qat", (string?)_app.LmStudio.Requests[^1].Body!["instance_id"]);
+        Assert.Equal("google/gemma-4-e4b:1", (string?)_app.LmStudio.Requests[^1].Body!["instance_id"]);
+    }
+
+    [Fact]
+    public async Task A_model_already_loaded_in_LM_Studio_is_used_and_left_loaded()
+    {
+        _app.LmStudio.LoadedInstance = "google/gemma-4-e4b:2";
+
+        await Draft();
+
+        Assert.DoesNotContain(_app.LmStudio.Requests, r => r.Path is "/api/v1/models/load" or "/api/v1/models/unload");
+        Assert.Equal("google/gemma-4-e4b:2", (string?)Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!["model"]);
+    }
+
+    [Fact]
+    public async Task A_load_LM_Studio_refuses_for_lack_of_memory_is_explained_without_asking_the_model()
+    {
+        _app.LmStudio.LoadRefusal = "Model loading was stopped due to insufficient system resources.";
+
+        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("insufficient system resources", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.DoesNotContain(_app.LmStudio.Requests, r => r.Path is "/v1/chat/completions" or "/api/v1/models/unload");
+    }
+
+    [Fact]
+    public async Task A_model_that_only_thought_until_its_tokens_ran_out_says_so()
+    {
+        _app.LmStudio.RawAnswer = new
+        {
+            choices = new[] { new { finish_reason = "length", message = new { role = "assistant", content = "", reasoning_content = "Let me think about trains…" } } },
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("thinking", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal("/api/v1/models/unload", _app.LmStudio.Requests[^1].Path);
     }
 
     [Fact]

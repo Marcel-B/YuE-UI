@@ -202,6 +202,15 @@ public sealed class FakeLmStudio : ILmStudioStarter
 
     public string Answer { get; set; } = "[Verse]\nLine one\n\n[Chorus]\nLine two";
 
+    /// <summary>The whole answer instead of one built from <see cref="Answer"/>, e.g. with only reasoning.</summary>
+    public object? RawAnswer { get; set; }
+
+    /// <summary>An instance the user loaded in LM Studio themselves.</summary>
+    public string? LoadedInstance { get; set; }
+
+    /// <summary>LM Studio's guardrails refusing the load, with this message.</summary>
+    public string? LoadRefusal { get; set; }
+
     public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
 
     /// <summary>Holds the completion until a test lets it go, to look at the server meanwhile.</summary>
@@ -233,14 +242,33 @@ public sealed class FakeLmStudio : ILmStudioStarter
             switch (path)
             {
                 case "/v1/models":
-                    return Json(HttpStatusCode.OK, new { data = new[] { new { id = "google/gemma-4-26b-a4b-qat" } } });
+                    return Json(HttpStatusCode.OK, new { data = new[] { new { id = "google/gemma-4-e4b" } } });
+                case "/api/v1/models" when request.Method == HttpMethod.Get:
+                    return Json(HttpStatusCode.OK, new
+                    {
+                        models = new[]
+                        {
+                            new { key = "google/gemma-4-e4b", loaded_instances = lm.LoadedInstance is { } id ? new[] { new { id } } : [] },
+                        },
+                    });
+                case "/api/v1/models/load":
+                    return lm.LoadRefusal is { } refusal
+                        ? Json(HttpStatusCode.InternalServerError, new { error = new { type = "model_load_failed", message = refusal } })
+                        : Json(HttpStatusCode.OK, new
+                        {
+                            type = "llm",
+                            instance_id = $"{body?["model"]}:1",
+                            status = "loaded",
+                            load_time_seconds = 2.5,
+                            load_config = new { context_length = (int?)body?["context_length"] },
+                        });
                 case "/v1/chat/completions":
                     if (lm.Gate is { } gate)
                     {
                         await gate.Task.WaitAsync(cancellationToken);
                     }
                     return lm.Status == HttpStatusCode.OK
-                        ? Json(HttpStatusCode.OK, new { choices = new[] { new { message = new { role = "assistant", content = lm.Answer } } } })
+                        ? Json(HttpStatusCode.OK, lm.RawAnswer ?? new { choices = new[] { new { message = new { role = "assistant", content = lm.Answer } } } })
                         : Json(lm.Status, new { error = new { message = "Model not found" } });
                 case "/api/v1/models/unload":
                     return Json(HttpStatusCode.OK, new { instance_id = (string?)body?["instance_id"] });
