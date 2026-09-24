@@ -92,12 +92,13 @@ public sealed class TranscriptionEndpointTests : IDisposable
         var (id, _) = await StartTranscription();
 
         _app.Worker.Emit(new { @event = "transcribe", id, stage = "failed", code = "afconvert", message = "unsupported file" });
-        var status = await _app.WaitForStatus(_client, s => s.Transcriptions!.Any(t => t.Finished));
+        // The state goes out just before the log entry; wait for both.
+        var status = await _app.WaitForStatus(_client, s => s.Transcriptions!.Any(t => t.Finished)
+            && s.Log.Any(entry => entry.Level == "error" && entry.Message.Contains("unsupported file", StringComparison.Ordinal)));
 
         var failed = Assert.Single(status.Transcriptions!);
         Assert.Equal("afconvert", failed.Code);
         Assert.Equal("unsupported file", failed.Message);
-        Assert.Contains(status.Log, entry => entry.Level == "error" && entry.Message.Contains("unsupported file", StringComparison.Ordinal));
     }
 
     [Fact]
