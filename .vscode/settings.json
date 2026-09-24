@@ -1,0 +1,8 @@
+{
+  // Prettier with the config in src/YueUI.Api/ClientApp/.prettierrc.json; overrides the user-level prettier-eslint
+  // formatter, which needs an ESLint setup this project doesn't have.
+  "[vue][typescript][javascript][css][json][jsonc][html]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  }
+}

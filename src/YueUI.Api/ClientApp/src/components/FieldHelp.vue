@@ -11,33 +11,19 @@ const open = ref(false)
 <template>
   <small :id="id" class="muted help">
     {{ hint }}
-    <button
+    <Button
       v-if="more"
       type="button"
-      class="link"
+      class="underline"
+      size="small"
+      text
       :aria-expanded="open"
       :aria-controls="`${id}-more`"
       @click="open = !open"
-    >
-      {{ t('moreInfo') }}
-    </button>
+      :label="t('moreInfo')"
+    />
   </small>
-  <div v-if="more && open" :id="`${id}-more`" class="more">{{ more }}</div>
+  <div v-if="more && open" :id="`${id}-more`" class="text-xs">{{ more }}</div>
 </template>
 
-<style scoped>
-.help .link {
-  margin-left: 0.2rem;
-  font-size: inherit;
-}
-
-/* The texts carry their examples and lists as line breaks. */
-.more {
-  padding: 0.6rem 0.75rem;
-  border-radius: var(--radius-small);
-  background: var(--surface-sunken);
-  font-size: 0.85rem;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-</style>
+<style scoped></style>

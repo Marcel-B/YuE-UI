@@ -148,7 +148,11 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
       detail?: string
       errors?: Record<string, string[]>
     } | null
-    throw new ApiError(problem?.detail ?? problem?.title ?? `HTTP ${response.status}`, response.status, problem?.errors ?? {})
+    throw new ApiError(
+      problem?.detail ?? problem?.title ?? `HTTP ${response.status}`,
+      response.status,
+      problem?.errors ?? {},
+    )
   }
   return response
 }

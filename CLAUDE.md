@@ -18,7 +18,7 @@ dotnet publish src/YueUI.Api -c Release -o publish      # runs npm ci + npm run 
 deploy/install.sh                # publish + LaunchAgent (de.bvelop.yueui); deploy/uninstall.sh removes it
 ```
 
-Frontend only, from `src/YueUI.Api/ClientApp`: `npm run dev`, `npm run build` (vue-tsc, then Vite), `npm run type-check`. Pass `-p:SkipClientAppBuild=true` to skip every npm step.
+Frontend only, from `src/YueUI.Api/ClientApp`: `npm run dev`, `npm run build` (vue-tsc, then Vite), `npm run type-check`, `npm run format` (Prettier, config in `.prettierrc.json`; VS Code formats on save through `.vscode/settings.json`). Pass `-p:SkipClientAppBuild=true` to skip every npm step.
 
 ## Architecture
 
@@ -39,7 +39,11 @@ Minimal API, endpoint groups per file: `WorkerEndpoints` (status, SSE via `Typed
 
 ### Frontend (`src/YueUI.Api/ClientApp`)
 
-Vue 3 + TypeScript + Vite, no router, no state library, no component framework. `App.vue` holds the state and the event subscription; `api.ts` is the only place that talks to `/api`; `types.ts` mirrors the API's records by hand; `i18n.ts` holds every German and English string; `form.ts` maps the form to `GenerateRequest` and keeps it in `localStorage`. Mobile first (the main client is a phone): inputs are 16px to avoid iOS zoom, audio uses `preload="none"`.
+Vue 3 + TypeScript + Vite, no router, no state library. `App.vue` holds the state and the event subscription; `api.ts` is the only place that talks to `/api`; `types.ts` mirrors the API's records by hand; `i18n.ts` holds every German and English string; `form.ts` maps the form to `GenerateRequest` and keeps it in `localStorage`. Mobile first (the main client is a phone): inputs are 16px to avoid iOS zoom, audio uses `preload="none"`.
+
+UI components come from PrimeVue 4 (styled mode, Aura preset from `@primeuix/themes`), configured and registered globally in `main.ts`. Use a PrimeVue component (`Button`, `Card`, `InputText`, `ProgressBar`, …) instead of styling native elements; adjust the look through the preset's design tokens rather than by overriding `.p-*` classes. The app's own `.button`, `.card`, `.link` and input rules in `style.css` predate PrimeVue and are being replaced; don't combine them with PrimeVue components (e.g. `class="link"` on a `Button`), both would style the same element. `style.css` keeps page layout and small helpers (`.muted`); layout that belongs to one component stays in its `<style scoped>`.
+
+Tailwind CSS 4 (via `@tailwindcss/vite`, without preflight) with `tailwindcss-primeui`, which adds utilities for PrimeVue's tokens (`bg-primary`, `text-muted-color`, `bg-emphasis`, …). Cascade layers decide what wins, in this order (declared at the top of `style.css`): `theme, base, primevue, components, utilities`. So utilities override PrimeVue, and PrimeVue overrides the app's own element rules in `base`. Keep global CSS inside a layer; an unlayered rule, including every `<style scoped>` block, beats all of them.
 
 ## Conventions
 
