@@ -1,232 +1,236 @@
-:root {
-  --bg: #f6f7fb;
-  --surface: #ffffff;
-  --surface-sunken: #f1f3f8;
-  --text: #16181d;
-  --text-muted: #5d6474;
-  --border: #e3e6ee;
-  --border-strong: #c9cedb;
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-soft: #e8e7fd;
-  --on-accent: #ffffff;
-  --success: #067647;
-  --success-soft: #dcfae6;
-  --danger: #d92d20;
-  --danger-soft: #fee4e2;
-  --warning-text: #b54708;
-  --warning-soft: #fef0c7;
-  --radius: 12px;
-  --radius-small: 8px;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+/* PrimeVue (cssLayer "primevue" in main.ts) sits between Tailwind's base and utilities, so utility classes override
+   PrimeVue's styles. Rules outside a layer beat every layer, which is why this file puts its own rules into base and
+   components; <style scoped> blocks are unlayered and still win over utilities. */
+@layer theme, base, primevue, components, utilities;
+/* Without Tailwind's preflight: it would reset margins, lists and native controls the current components rely on. */
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import 'tailwindcss-primeui';
+@import 'primeicons/primeicons.css';
 
-  color-scheme: light;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
-  -webkit-font-smoothing: antialiased;
-  -webkit-text-size-adjust: 100%;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --bg: #0f1115;
-    --surface: #171a21;
-    --surface-sunken: #1e222b;
-    --text: #e8eaf0;
-    --text-muted: #9aa1b2;
-    --border: #282d38;
-    --border-strong: #3a404e;
-    --accent: #7c74ff;
-    --accent-hover: #948dff;
-    --accent-soft: #2a2752;
-    --on-accent: #0f1115;
-    --success: #47cd89;
-    --success-soft: #053321;
-    --danger: #f97066;
-    --danger-soft: #55160c;
-    --warning-text: #fdb022;
-    --warning-soft: #4e1d09;
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-sunken: #f1f3f8;
+    --text: #16181d;
+    --text-muted: #5d6474;
+    --border: #e3e6ee;
+    --border-strong: #c9cedb;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-soft: #e8e7fd;
+    --on-accent: #ffffff;
+    --success: #067647;
+    --success-soft: #dcfae6;
+    --danger: #d92d20;
+    --danger-soft: #fee4e2;
+    --warning-text: #b54708;
+    --warning-soft: #fef0c7;
+    --radius: 12px;
+    --radius-small: 8px;
+    --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-    color-scheme: dark;
+    color-scheme: light;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --surface: #171a21;
+      --surface-sunken: #1e222b;
+      --text: #e8eaf0;
+      --text-muted: #9aa1b2;
+      --border: #282d38;
+      --border-strong: #3a404e;
+      --accent: #7c74ff;
+      --accent-hover: #948dff;
+      --accent-soft: #2a2752;
+      --on-accent: #0f1115;
+      --success: #47cd89;
+      --success-soft: #053321;
+      --danger: #f97066;
+      --danger-soft: #55160c;
+      --warning-text: #fdb022;
+      --warning-soft: #4e1d09;
+
+      color-scheme: dark;
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+  }
+
+  #app {
+    max-width: 72rem;
+    margin: 0 auto;
+    /* The notch and home indicator of a phone in landscape or as a home-screen app. */
+    padding: max(1.25rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+      max(3rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
+
+  h2 {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+  }
+
+  /* 16px keeps iOS Safari from zooming into a field on focus. */
+  input[type='text'],
+  input[type='number'],
+  select,
+  textarea {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: max(1rem, 16px);
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  input:disabled,
+  select:disabled {
+    opacity: 0.5;
+  }
+
+  input[type='checkbox'] {
+    width: 1.1rem;
+    height: 1.1rem;
+    flex: none;
+    accent-color: var(--accent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 }
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-}
-
-#app {
-  max-width: 72rem;
-  margin: 0 auto;
-  /* The notch and home indicator of a phone in landscape or as a home-screen app. */
-  padding: max(1.25rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(3rem, env(safe-area-inset-bottom))
-    max(1rem, env(safe-area-inset-left));
-}
-
-h2 {
-  margin: 0 0 1rem;
-  font-size: 1.1rem;
-}
-
-.card {
-  padding: 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-@media (max-width: 30rem) {
+@layer components {
   .card {
-    padding: 1rem;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
   }
-}
 
-.muted {
-  color: var(--text-muted);
-}
+  @media (max-width: 30rem) {
+    .card {
+      padding: 1rem;
+    }
+  }
 
-.danger {
-  color: var(--danger);
-}
+  .muted {
+    color: var(--text-muted);
+  }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
+  .danger {
+    color: var(--danger);
+  }
 
-.field > span,
-.field > label:not(.check) {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
 
-.field small {
-  font-size: 0.8rem;
-}
+  .field > span,
+  .field > label:not(.check) {
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
 
-.check {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-}
+  .field small {
+    font-size: 0.8rem;
+  }
 
-/* 16px keeps iOS Safari from zooming into a field on focus. */
-input[type='text'],
-input[type='number'],
-select,
-textarea {
-  width: 100%;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-small);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-size: max(1rem, 16px);
-}
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
 
-textarea {
-  resize: vertical;
-}
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.5rem;
+    padding: 0.55rem 1.1rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-small);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
 
-input:disabled,
-select:disabled {
-  opacity: 0.5;
-}
+  .button.small {
+    min-height: 2rem;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.85rem;
+  }
 
-input[type='checkbox'] {
-  width: 1.1rem;
-  height: 1.1rem;
-  flex: none;
-  accent-color: var(--accent);
-}
+  .button.primary {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+  .button.primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
 
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.5rem;
-  padding: 0.55rem 1.1rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-small);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-}
+  .button.secondary {
+    border-color: var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+  }
 
-.button.small {
-  min-height: 2rem;
-  padding: 0.3rem 0.75rem;
-  font-size: 0.85rem;
-}
+  .button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 
-.button.primary {
-  background: var(--accent);
-  color: var(--on-accent);
-}
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    text-decoration: underline;
+  }
 
-.button.primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
+  .link:disabled {
+    cursor: default;
+    color: var(--text-muted);
+    text-decoration: none;
+  }
 
-.button.secondary {
-  border-color: var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-}
-
-.button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: 0.9rem;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.link:disabled {
-  cursor: default;
-  color: var(--text-muted);
-  text-decoration: none;
-}
-
-.badge {
-  padding: 0.05rem 0.45rem;
-  border-radius: 999px;
-  background: var(--surface-sunken);
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+  .badge {
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
 }

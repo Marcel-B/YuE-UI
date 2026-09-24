@@ -48,15 +48,7 @@ export const defaultFullSteps = 32
 const storageKey = 'yue-ui.form'
 
 type AdvancedKey =
-  | 'cot'
-  | 'seed'
-  | 'draftSteps'
-  | 'fullSteps'
-  | 'engines'
-  | 'maxSeconds'
-  | 'abc'
-  | 'abcSampling'
-  | 'semanticSampling'
+  'cot' | 'seed' | 'draftSteps' | 'fullSteps' | 'engines' | 'maxSeconds' | 'abc' | 'abcSampling' | 'semanticSampling'
 
 /** The advanced section, set to what the worker would do without them. */
 export function defaultAdvanced(): Pick<FormState, AdvancedKey> {

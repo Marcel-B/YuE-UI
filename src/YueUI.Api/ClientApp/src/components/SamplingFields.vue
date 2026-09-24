@@ -19,7 +19,15 @@ interface Field {
 
 // The ranges YuE2's Sampling accepts (the API checks them as well); top-k capped at a sensible 1000.
 const fields: Field[] = [
-  { key: 'temperature', label: 'temperature', hint: 'temperatureHint', more: 'temperatureMore', min: 0, max: 5, step: 0.05 },
+  {
+    key: 'temperature',
+    label: 'temperature',
+    hint: 'temperatureHint',
+    more: 'temperatureMore',
+    min: 0,
+    max: 5,
+    step: 0.05,
+  },
   { key: 'topP', label: 'topP', hint: 'topPHint', more: 'topPMore', min: 0.01, max: 1, step: 0.01 },
   { key: 'topK', label: 'topK', hint: 'topKHint', more: 'topKMore', min: 1, max: 1000, step: 1 },
   {
@@ -31,7 +39,15 @@ const fields: Field[] = [
     max: 5,
     step: 0.005,
   },
-  { key: 'penaltyWindow', label: 'penaltyWindow', hint: 'penaltyWindowHint', more: 'penaltyWindowMore', min: 1, max: 100, step: 1 },
+  {
+    key: 'penaltyWindow',
+    label: 'penaltyWindow',
+    hint: 'penaltyWindowHint',
+    more: 'penaltyWindowMore',
+    min: 1,
+    max: 100,
+    step: 1,
+  },
 ]
 
 function id(field: Field): string {
@@ -61,7 +77,9 @@ function hint(field: Field): string {
         :aria-describedby="`${id(field)}-help`"
       />
       <FieldHelp :id="`${id(field)}-help`" :hint="hint(field)" :more="t(field.more)" />
-      <small v-if="errors[`${phase}.${field.key}`]" class="danger">{{ errors[`${phase}.${field.key}`]!.join(' ') }}</small>
+      <small v-if="errors[`${phase}.${field.key}`]" class="danger">{{
+        errors[`${phase}.${field.key}`]!.join(' ')
+      }}</small>
     </div>
   </div>
 </template>
