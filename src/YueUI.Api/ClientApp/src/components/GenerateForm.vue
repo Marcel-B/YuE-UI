@@ -3,13 +3,15 @@ import { computed, ref } from 'vue'
 import { ApiError, generate } from '../api'
 import {
   advancedChanged,
-  defaultAdvanced,
+  resetAdvanced,
   defaultFormState,
+  defaultSampling,
   exampleScore,
   lengthChoices,
   maxSongSeconds,
   toGenerateRequest,
   type FormState,
+  type SamplingPhase,
 } from '../form'
 import { formatDuration, t } from '../i18n'
 import FieldHelp from './FieldHelp.vue'
@@ -25,7 +27,9 @@ const fieldErrors = ref<Record<string, string[]>>({})
 
 const changed = computed(() => advancedChanged(form.value))
 // The API refuses this too; saying so before sending saves a round trip from the phone.
-const scoreWithoutPlanning = computed(() => form.value.abc.trim() !== '' && form.value.cot === 'off' && !form.value.instrumental)
+const scoreWithoutPlanning = computed(
+  () => form.value.abc.trim() !== '' && form.value.cot === 'off' && !form.value.instrumental,
+)
 // The worker writes a score unless planning is off (an instrumental turns it back on) or one is supplied.
 const plansScore = computed(() => (form.value.cot !== 'off' || form.value.instrumental) && form.value.abc.trim() === '')
 // One field for the steps of the chosen quality; each keeps its own value.
@@ -70,8 +74,21 @@ function reset(): void {
   fieldErrors.value = {}
 }
 
-function resetAdvanced(): void {
-  form.value = { ...form.value, ...defaultAdvanced() }
+// App's trash button resets the form; message and field errors live here, so it calls this instead of the model.
+defineExpose({ reset })
+
+/** Parameters only: a score someone pasted or transcribed has its own button. */
+function resetParameters(): void {
+  form.value = resetAdvanced(form.value)
+  fieldErrors.value = {}
+}
+
+function samplingChanged(phase: SamplingPhase): boolean {
+  return JSON.stringify(form.value[phase]) !== JSON.stringify(defaultSampling[phase])
+}
+
+function resetSampling(phase: SamplingPhase): void {
+  form.value = { ...form.value, [phase]: { ...defaultSampling[phase] } }
 }
 
 function lengthLabel(seconds: number): string {
@@ -81,28 +98,38 @@ function lengthLabel(seconds: number): string {
 </script>
 
 <template>
-  <form class="card generate" @submit.prevent="submit">
-    <div class="heading">
-      <h2>{{ t('newSong') }}</h2>
-      <button type="button" class="link" @click="reset">{{ t('resetForm') }}</button>
-    </div>
+  <form @submit.prevent="submit">
 
-    <div class="field">
+    <FloatLabel variant="on">
+      <InputText
+        id="gen-title"
+        v-model="form.title"
+        type="text"
+        maxlength="120"
+        :placeholder="t('titlePlaceholder')"
+        aria-describedby="gen-title-help"
+      />
       <label for="gen-title">{{ t('title') }}</label>
-      <input id="gen-title" v-model="form.title" type="text" maxlength="120" :placeholder="t('titlePlaceholder')" aria-describedby="gen-title-help" />
       <FieldHelp id="gen-title-help" :hint="t('titleHint')" />
-    </div>
+    </FloatLabel>
 
-    <div class="field">
-      <label for="gen-style">{{ t('style') }}</label>
-      <textarea id="gen-style" v-model="form.style" rows="3" required :placeholder="t('stylePlaceholder')" aria-describedby="gen-style-help" />
+    <FloatLabel variant="on" class="mt-6">
+      <Textarea
+        id="gen-style"
+        v-model="form.style"
+        rows="3"
+        required
+        :placeholder="t('stylePlaceholder')"
+        aria-describedby="gen-style-help"
+      />
       <FieldHelp id="gen-style-help" :hint="t('styleHint')" :more="t('styleMore')" />
+      <label for="gen-style">{{ t('style') }}</label>
       <small v-if="fieldErrors.style" class="danger">{{ fieldErrors.style.join(' ') }}</small>
-    </div>
+    </FloatLabel>
 
-    <div class="field">
-      <label for="gen-lyrics">{{ form.instrumental ? t('lyricsOptional') : t('lyrics') }}</label>
-      <textarea
+        <FloatLabel variant="on" class="mt-6">
+
+      <Textarea
         id="gen-lyrics"
         v-model="form.lyrics"
         class="mono"
@@ -112,11 +139,12 @@ function lengthLabel(seconds: number): string {
         :placeholder="t('lyricsPlaceholder')"
         aria-describedby="gen-lyrics-help"
       />
+      <label for="gen-lyrics">{{ form.instrumental ? t('lyricsOptional') : t('lyrics') }}</label>
       <FieldHelp id="gen-lyrics-help" :hint="t('lyricsHint')" :more="t('lyricsMore')" />
       <small v-if="fieldErrors.lyrics" class="danger">{{ fieldErrors.lyrics.join(' ') }}</small>
-    </div>
+    </FloatLabel>
 
-    <div class="field">
+    <div class="field mt-6">
       <label class="check">
         <input v-model="form.instrumental" type="checkbox" aria-describedby="gen-instrumental-help" />
         <span>{{ t('instrumental') }}</span>
@@ -152,10 +180,13 @@ function lengthLabel(seconds: number): string {
       <summary>
         {{ t('advanced') }}
         <span v-if="changed" class="badge changed">{{ t('advancedChanged') }}</span>
+        <span v-if="form.abc.trim() !== ''" class="badge changed">{{ t('advancedWithScore') }}</span>
       </summary>
       <div class="advanced-head">
         <small class="muted">{{ t('advancedIntro') }}</small>
-        <button type="button" class="link" :disabled="!changed" @click="resetAdvanced">{{ t('advancedReset') }}</button>
+        <button type="button" class="button secondary small" :disabled="!changed" @click="resetParameters">
+          {{ changed ? t('advancedReset') : t('advancedAtDefaults') }}
+        </button>
       </div>
       <p v-if="extensions === false" class="notice" role="note">{{ t('extensionsOff') }}</p>
 
@@ -196,7 +227,11 @@ function lengthLabel(seconds: number): string {
             :max="form.quality === 'draft' ? 32 : 64"
             aria-describedby="gen-steps-help"
           />
-          <FieldHelp id="gen-steps-help" :hint="form.quality === 'draft' ? t('draftStepsHint') : t('fullStepsHint')" :more="t('stepsMore')" />
+          <FieldHelp
+            id="gen-steps-help"
+            :hint="form.quality === 'draft' ? t('draftStepsHint') : t('fullStepsHint')"
+            :more="t('stepsMore')"
+          />
           <small v-if="fieldErrors.draftSteps || fieldErrors.fullSteps" class="danger">
             {{ (fieldErrors.draftSteps ?? fieldErrors.fullSteps)!.join(' ') }}
           </small>
@@ -225,13 +260,16 @@ function lengthLabel(seconds: number): string {
         <div class="field wide">
           <div class="label-row">
             <label for="gen-abc">{{ t('abc') }}</label>
-            <button v-if="form.abc.trim() === ''" type="button" class="link" @click="form.abc = exampleScore">{{ t('abcExample') }}</button>
+            <button v-if="form.abc.trim() === ''" type="button" class="link" @click="form.abc = exampleScore">
+              {{ t('abcExample') }}
+            </button>
+            <button v-else type="button" class="link" @click="form.abc = ''">{{ t('abcClear') }}</button>
           </div>
-          <textarea
+          <Textarea
             id="gen-abc"
             v-model="form.abc"
             class="mono"
-            rows="8"
+            :rows="8"
             spellcheck="false"
             autocapitalize="off"
             autocomplete="off"
@@ -247,19 +285,49 @@ function lengthLabel(seconds: number): string {
           <summary>{{ t('samplingSemantic') }}</summary>
           <small class="muted">{{ t('samplingSemanticIntro') }}</small>
           <SamplingFields v-model="form.semanticSampling" phase="semanticSampling" :errors="fieldErrors" />
+          <button
+            type="button"
+            class="button secondary small group-reset"
+            :disabled="!samplingChanged('semanticSampling')"
+            @click="resetSampling('semanticSampling')"
+          >
+            {{ samplingChanged('semanticSampling') ? t('samplingReset') : t('samplingAtDefaults') }}
+          </button>
         </details>
 
         <details class="sampling wide">
           <summary>{{ t('samplingAbc') }}</summary>
           <small class="muted">{{ t('samplingAbcIntro') }}</small>
           <small v-if="!plansScore" class="inactive">{{ t('samplingAbcInactive') }}</small>
-          <SamplingFields v-model="form.abcSampling" phase="abcSampling" :errors="fieldErrors" :disabled="!plansScore" />
+          <SamplingFields
+            v-model="form.abcSampling"
+            phase="abcSampling"
+            :errors="fieldErrors"
+            :disabled="!plansScore"
+          />
+          <button
+            type="button"
+            class="button secondary small group-reset"
+            :disabled="!samplingChanged('abcSampling')"
+            @click="resetSampling('abcSampling')"
+          >
+            {{ samplingChanged('abcSampling') ? t('samplingReset') : t('samplingAtDefaults') }}
+          </button>
         </details>
+      </div>
+
+      <!-- The section is long on a phone: the same reset at its end. -->
+      <div class="advanced-foot">
+        <button type="button" class="button secondary small" :disabled="!changed" @click="resetParameters">
+          {{ changed ? t('advancedReset') : t('advancedAtDefaults') }}
+        </button>
       </div>
     </details>
 
     <div class="actions">
-      <button type="submit" class="button primary" :disabled="sending || scoreWithoutPlanning">{{ sending ? t('generating') : t('generate') }}</button>
+      <button type="submit" class="button primary" :disabled="sending || scoreWithoutPlanning">
+        {{ sending ? t('generating') : t('generate') }}
+      </button>
       <span v-if="message" :class="message.error ? 'danger' : 'muted'" role="status">{{ message.text }}</span>
     </div>
   </form>
@@ -347,6 +415,16 @@ function lengthLabel(seconds: number): string {
   margin-left: 0.4rem;
   background: var(--warning-soft);
   color: var(--warning-text);
+}
+
+.advanced-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.group-reset {
+  margin-top: 0.9rem;
 }
 
 .advanced-head {

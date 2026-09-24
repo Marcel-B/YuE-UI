@@ -48,7 +48,8 @@ public sealed class YuePaths
 
     private string[] SheetSageCandidates =>
     [
-        Path.Combine(InstallRoot, ".venv-sheetsage2", "bin", "python"),
+        // YuE Studio's installer (it also leaves sheetsage-installed.json next to it).
+        Path.Combine(InstallRoot, "sheetsage-env", "bin", "python"),
         // The worker's own default, next to its sources.
         Path.Combine(SourceRoot, ".venv-sheetsage2", "bin", "python"),
     ];

@@ -61,7 +61,10 @@ async function start(): Promise<void> {
     await transcribe(file.value, task.value)
     message.value = { text: t('transcriptionStarted'), error: false }
   } catch (caught) {
-    message.value = { text: caught instanceof ApiError && caught.status === 0 ? t('errorNetwork') : String((caught as Error).message), error: true }
+    message.value = {
+      text: caught instanceof ApiError && caught.status === 0 ? t('errorNetwork') : String((caught as Error).message),
+      error: true,
+    }
     if (caught instanceof ApiError && caught.status === 503) {
       void loadList()
     }
@@ -109,8 +112,7 @@ function taskLabel(value: TranscriptionTask | null): string {
 </script>
 
 <template>
-  <section class="card transcribe">
-    <h2>{{ t('transcription') }}</h2>
+  <section>
     <FieldHelp id="transcribe-help" :hint="t('transcriptionIntro')" :more="t('transcriptionMore')" />
 
     <p v-if="list && !list.installed" class="notice" role="note">{{ t('transcriptionNotInstalled') }}</p>
@@ -138,7 +140,11 @@ function taskLabel(value: TranscriptionTask | null): string {
       </div>
 
       <div class="actions">
-        <button type="submit" class="button primary" :disabled="!file || sending || running !== null || list?.installed === false">
+        <button
+          type="submit"
+          class="button primary"
+          :disabled="!file || sending || running !== null || list?.installed === false"
+        >
           {{ sending ? t('uploading') : t('transcribe') }}
         </button>
         <span v-if="message" :class="message.error ? 'danger' : 'muted'" role="status">{{ message.text }}</span>
@@ -156,7 +162,8 @@ function taskLabel(value: TranscriptionTask | null): string {
       <small class="muted">{{ running.detail }}</small>
     </div>
     <p v-else-if="lastFailure" class="danger failure">
-      {{ lastFailure.fileName }}: {{ t(`transcriptionStage_${lastFailure.stage}`) }}{{ lastFailure.message ? ` – ${lastFailure.message}` : '' }}
+      {{ lastFailure.fileName }}: {{ t(`transcriptionStage_${lastFailure.stage}`)
+      }}{{ lastFailure.message ? ` – ${lastFailure.message}` : '' }}
     </p>
 
     <h3>{{ t('transcriptions') }}</h3>
@@ -183,121 +190,4 @@ function taskLabel(value: TranscriptionTask | null): string {
   </section>
 </template>
 
-<style scoped>
-.transcribe {
-  display: flex;
-  flex-direction: column;
-  gap: 0.8rem;
-  margin-top: 1rem;
-}
-
-h2 {
-  margin: 0;
-}
-
-h3 {
-  margin: 0.4rem 0 0;
-  font-size: 0.95rem;
-}
-
-.notice {
-  margin: 0;
-  padding: 0.6rem 0.75rem;
-  border-radius: var(--radius-small);
-  background: var(--warning-soft);
-  color: var(--warning-text);
-  font-size: 0.85rem;
-}
-
-.start {
-  display: flex;
-  flex-direction: column;
-  gap: 0.8rem;
-}
-
-input[type='file'] {
-  max-width: 100%;
-  font: inherit;
-  font-size: max(1rem, 16px);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-}
-
-.running {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.75rem;
-  border-radius: var(--radius-small);
-  background: var(--surface-sunken);
-}
-
-.line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.3rem 0.8rem;
-}
-
-.push {
-  margin-left: auto;
-}
-
-progress {
-  width: 100%;
-  height: 0.5rem;
-  accent-color: var(--accent);
-}
-
-.failure {
-  margin: 0;
-  font-size: 0.9rem;
-}
-
-.items {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--border);
-}
-
-.name {
-  overflow-wrap: anywhere;
-}
-
-.links {
-  gap: 0.9rem;
-}
-
-details summary {
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-pre {
-  max-height: 16rem;
-  margin: 0.4rem 0 0;
-  padding: 0.6rem;
-  overflow: auto;
-  border-radius: var(--radius-small);
-  background: var(--surface-sunken);
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-}
-</style>
+<style scoped></style>

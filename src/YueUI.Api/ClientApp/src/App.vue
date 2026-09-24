@@ -10,13 +10,18 @@ import { locale, setLocale, t, workerLabel } from './i18n'
 import type { LogEntry, RunInfo, SongState, TranscriptionState, WorkerInfo } from './types'
 
 const logCapacity = 300
-
 const form = ref(loadFormState())
 watch(form, (value) => saveFormState(value), { deep: true })
 
 // ---- Live state of the worker, from the event stream ----------------------------------------------
 
-const worker = ref<WorkerInfo>({ status: 'stopped', busy: false, studioRunning: false, lastError: null, extensions: null })
+const worker = ref<WorkerInfo>({
+  status: 'stopped',
+  busy: false,
+  studioRunning: false,
+  lastError: null,
+  extensions: null,
+})
 const songs = ref<SongState[]>([])
 const log = ref<LogEntry[]>([])
 const transcriptions = ref<TranscriptionState[]>([])
@@ -116,6 +121,8 @@ function show(text: string, error = false): void {
 }
 
 const formSection = useTemplateRef<HTMLElement>('formSection')
+const generateForm = useTemplateRef<InstanceType<typeof GenerateForm>>('generateForm')
+const queueList = useTemplateRef<InstanceType<typeof QueueList>>('queueList')
 function useTemplate(run: RunInfo): void {
   form.value = { ...form.value, title: run.title, style: run.style, lyrics: run.lyrics }
   formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -149,25 +156,88 @@ function useScore(abc: string, name: string): void {
     <p v-if="notice" :class="['banner', notice.error ? 'danger' : 'info']" role="status">{{ notice.text }}</p>
   </div>
 
-  <main class="layout">
-    <div ref="formSection" class="form-column">
-      <GenerateForm v-model="form" :extensions="worker.extensions" />
-    </div>
-    <div class="queue-column">
-      <QueueList :songs="queue" :worker="worker" :log="log" @hide-finished="hideFinished" @error="show($event, true)" />
-      <TranscribePanel :transcriptions="transcriptions" @use-score="useScore" @error="show($event, true)" />
-    </div>
-    <div class="library-row">
-      <LibraryList
-        :runs="runs"
-        :loading="libraryLoading"
-        :error="libraryError"
-        :busy-ids="busyIds"
-        @refresh="loadLibrary"
-        @template="useTemplate"
-        @error="show($event, true)"
-      />
-    </div>
+  <main class="grid gap-4 grid-cols-1 md:grid-cols-2">
+    <Card>
+      <template #title>
+        <h2>
+          <div class="flex justify-between">
+            <div>
+              {{ t('newSong') }}
+            </div>
+
+            <Button icon="pi pi-trash" rounded text :aria-label="t('resetForm')" @click="generateForm?.reset()" />
+          </div>
+        </h2>
+      </template>
+      <template #content>
+        <GenerateForm ref="generateForm" v-model="form" :extensions="worker.extensions" />
+      </template>
+    </Card>
+    <!-- <div ref="formSection"></div> -->
+     <div>
+
+    <Card>
+      <template #title>
+        <div class="flex justify-between">
+          <h2>{{ t('queue') }}</h2>
+          <Button
+            icon="pi pi-stop-filled"
+            text
+            rounded
+            v-if="worker.busy"
+            @click="queueList?.run(queueList?.stopAll)"
+          />
+        </div>
+      </template>
+      <template #content>
+        <QueueList
+          ref="queueList"
+          :songs="queue"
+          :worker="worker"
+          :log="log"
+          @hide-finished="hideFinished"
+          @error="show($event, true)"
+        />
+      </template>
+    </Card>
+   
+       <Card class="mt-4">
+      <template #title>
+        <h2>{{ t('transcriptions') }}</h2>
+      </template>
+      <template #content>
+        <TranscribePanel :transcriptions="transcriptions" @use-score="useScore" @error="show($event, true)" />
+      </template>
+    </Card>
+     </div>
+   
+    <Card class="col-span-2">
+      <template #title>
+        <div class="flex justify-between items-center">
+          <h2>{{ t('library') }}</h2>
+          <Button
+            icon="pi pi-refresh"
+            :disabled="libraryLoading"
+            text
+            rounded
+            :aria-label="t('refresh')"
+            @click="loadLibrary"
+          />
+        </div>
+      </template>
+      <template #content>
+        <LibraryList
+          :runs="runs"
+          :loading="libraryLoading"
+          :error="libraryError"
+          :busy-ids="busyIds"
+          @template="useTemplate"
+          @error="show($event, true)"
+        />
+      </template>
+    </Card>
+
+
   </main>
 </template>
 

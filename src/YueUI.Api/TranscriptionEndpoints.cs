@@ -40,7 +40,7 @@ public static partial class TranscriptionEndpoints
     }
 
     private static async Task<IResult> Transcribe(
-        IFormFile? file, [FromForm] string? task, YuePaths paths, WorkerHost host, CancellationToken cancellationToken)
+        IFormFile? file, [FromForm] string? task, YuePaths paths, WorkerHost host, TimeProvider time, CancellationToken cancellationToken)
     {
         task ??= "melody-full";
         var errors = new Dictionary<string, string[]>();
@@ -75,7 +75,14 @@ public static partial class TranscriptionEndpoints
             await file.CopyToAsync(target, cancellationToken);
         }
 
-        var transcription = new TranscriptionState { Id = id, FileName = file.FileName, Task = task, UploadDirectory = uploadDirectory };
+        var transcription = new TranscriptionState
+        {
+            Id = id,
+            FileName = file.FileName,
+            Task = task,
+            UploadDirectory = uploadDirectory,
+            UpdatedAt = time.GetUtcNow(),
+        };
         try
         {
             if (!await host.TranscribeAsync(transcription, audioPath, offline: paths.SheetSageModelsCached, cancellationToken))

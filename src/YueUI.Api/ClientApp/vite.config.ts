@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
@@ -7,7 +8,7 @@ const apiTarget = process.env.YUE_API_URL ?? 'http://127.0.0.1:5090'
 
 export default defineConfig({
   base: '/ui/',
-  plugins: [vue()],
+  plugins: [vue(), tailwindcss()],
   server: {
     host: '127.0.0.1',
     // 5173 belongs to YuE to Logic's dev server, so both can run side by side.

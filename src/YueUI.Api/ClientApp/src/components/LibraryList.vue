@@ -13,7 +13,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  refresh: []
   template: [run: RunInfo]
   error: [message: string]
 }>()
@@ -29,110 +28,111 @@ async function renderFull(song: SongInfo): Promise<void> {
     emit('error', caught instanceof Error ? caught.message : String(caught))
   }
 }
+const severityByQuality: Record<string, string> = {
+  draft: 'warning',
+  full: 'success',
+}
 </script>
 
 <template>
-  <section class="library">
-    <div class="heading">
-      <h2>{{ t('library') }}</h2>
-      <button type="button" class="link" :disabled="loading" @click="emit('refresh')">{{ t('refresh') }}</button>
-    </div>
-
+  <section>
     <p v-if="error" class="danger">{{ t('libraryError', { message: error }) }}</p>
     <p v-else-if="!loading && runs.length === 0" class="muted">{{ t('libraryEmpty') }}</p>
+    <DataView :value="visible">
+      <template #list="slotProps">
+        <div v-for="(run, index) in slotProps.items" :key="index">
+          <Fieldset :legend="run.title || t('untitled')">
+            <div class="flex justify-between items-center">
+              <div>
+                <span v-if="run.createdAt" class="muted text-sm">{{ formatDateTime(run.createdAt) }}</span>
+              </div>
+              <Button
+                icon="pi pi-upload"
+                v-tooltip="t('useAsTemplate')"
+                text
+                class="secondary"
+                @click="emit('template', run)"
+              />
+            </div>
+            <p class="style muted">{{ run.style }}</p>
+            <div class="flex top-0">
+              <div class="extras flex-1">
+                <details v-if="run.lyrics" class="lyrics">
+                  <summary>{{ t('showLyrics') }}</summary>
+                  <pre>{{ run.lyrics }}</pre>
+                </details>
+              </div>
+              <Button
+                as="a"
+                text
+                v-if="run.songs.length > 1"
+                v-tooltip="t('zipRun')"
+                icon="pi pi-box"
+                :href="runZipUrl(run.id)"
+              />
+            </div>
 
-    <article v-for="run in visible" :key="run.id" class="card run">
-      <header>
-        <div class="titles">
-          <h3>{{ run.title || t('untitled') }}</h3>
-          <span v-if="run.createdAt" class="muted date">{{ formatDateTime(run.createdAt) }}</span>
+            <ul class="songs">
+              <li v-for="song in run.songs" :key="song.id" class="song">
+                <div class="flex gap-3 items-center">
+                  <div><strong>{{ t('songN', { n: song.index }) }}</strong></div>
+                  <div v-if="song.seconds" class="muted">{{ formatDuration(song.seconds) }}</div>
+                  <Tag v-if="song.quality" :severity="severityByQuality[song.quality]">
+                    {{ song.quality === 'draft' ? t('qualityDraft') : t('qualityFull') }}
+                  </Tag>
+                  <div v-if="song.seed !== null" class="muted seed">#{{ song.seed }}</div>
+       
+                </div>
+                <div class="flex justify-between">
+
+                    <Button
+                      v-if="song.canRender && song.quality !== 'full'"
+                      :label="busyIds.has(song.id) ? t('rendering') : t('renderFull')"
+                      :loading="busyIds.has(song.id) ? true : false"
+                      text
+                      size="small"
+                      :disabled="busyIds.has(song.id)"
+                      @click="renderFull(song)"
+                    />
+                    <div class="flex justify-end">
+
+                    <Button as="a" text v-if="song.hasAudio" size="small" :href="audioUrl(song.id, true)">{{
+                      t('download')
+                    }}</Button>
+                    <Button as="a" text v-if="song.hasScore" size="small" :href="scoreUrl(song.id)">{{
+                      t('score')
+                    }}</Button>
+                    <Button
+                      v-if="song.hasAudio || song.hasScore"
+                      as="a"
+                      text
+                      size="small"
+                      rounded
+                      icon="pi pi-box"
+                      v-tooltip="t('zipTitle')"
+                      :href="songZipUrl(song.id)"
+                      :title="t('zipTitle')"
+                    />
+                </div>
+                  </div>
+                <!-- preload="none": a page of five-minute FLACs would otherwise start loading on a phone. -->
+                <audio v-if="song.hasAudio" controls preload="none" :src="audioUrl(song.id)" />
+                <span v-else class="muted">{{ t('noAudio') }}</span>
+              </li>
+            </ul>
+          </Fieldset>
         </div>
-        <button type="button" class="button secondary small" @click="emit('template', run)">{{ t('useAsTemplate') }}</button>
-      </header>
-      <p class="style muted">{{ run.style }}</p>
-      <div class="extras">
-        <details v-if="run.lyrics" class="lyrics">
-          <summary>{{ t('showLyrics') }}</summary>
-          <pre>{{ run.lyrics }}</pre>
-        </details>
-        <a v-if="run.songs.length > 1" class="link zip-run" :href="runZipUrl(run.id)">{{ t('zipRun') }}</a>
-      </div>
-
-      <ul class="songs">
-        <li v-for="song in run.songs" :key="song.id" class="song">
-          <div class="line">
-            <strong>{{ t('songN', { n: song.index }) }}</strong>
-            <span v-if="song.seconds" class="muted">{{ formatDuration(song.seconds) }}</span>
-            <span v-if="song.quality" :class="['badge', song.quality]">
-              {{ song.quality === 'draft' ? t('qualityDraft') : t('qualityFull') }}
-            </span>
-            <span v-if="song.seed !== null" class="muted seed">#{{ song.seed }}</span>
-            <span class="links">
-              <button
-                v-if="song.canRender && song.quality !== 'full'"
-                type="button"
-                class="link"
-                :disabled="busyIds.has(song.id)"
-                @click="renderFull(song)"
-              >
-                {{ busyIds.has(song.id) ? t('rendering') : t('renderFull') }}
-              </button>
-              <a v-if="song.hasAudio" class="link" :href="audioUrl(song.id, true)">{{ t('download') }}</a>
-              <a v-if="song.hasScore" class="link" :href="scoreUrl(song.id)">{{ t('score') }}</a>
-              <a v-if="song.hasAudio || song.hasScore" class="link" :href="songZipUrl(song.id)" :title="t('zipTitle')">{{ t('zip') }}</a>
-            </span>
-          </div>
-          <!-- preload="none": a page of five-minute FLACs would otherwise start loading on a phone. -->
-          <audio v-if="song.hasAudio" controls preload="none" :src="audioUrl(song.id)" />
-          <span v-else class="muted">{{ t('noAudio') }}</span>
-        </li>
-      </ul>
-    </article>
-
-    <button v-if="runs.length > shown" type="button" class="button secondary more" @click="shown += pageSize">
-      {{ t('showMore') }}
-    </button>
+      </template>
+      <template #footer>
+        <Button v-if="runs.length > shown" @click="shown += pageSize">
+          {{ t('showMore') }}
+        </Button>
+      </template>
+    </DataView>
   </section>
 </template>
 
 <style scoped>
-.library {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.heading h2 {
-  margin: 0;
-}
-
-.run header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.titles {
-  min-width: 0;
-}
-
-h3 {
-  margin: 0;
-  font-size: 1.05rem;
-  overflow-wrap: anywhere;
-}
-
-.date {
-  font-size: 0.85rem;
-}
-
 .style {
   display: -webkit-box;
   margin: 0.5rem 0 0;
@@ -196,13 +196,6 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-}
-
-.line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem;
 }
 
 .seed {

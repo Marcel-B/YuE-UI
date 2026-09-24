@@ -49,8 +49,13 @@ const messages = {
       'Song 1 bekommt den Seed, Song 2 den Seed + 1 usw. – gleicher Stil und Text, verschiedene Interpretationen. Bis zu vier Songs (zwei auf Macs mit weniger als 24 GB) werden gemeinsam komponiert und kosten dabei kaum mehr Zeit als einer; die Synthese läuft danach Song für Song.',
     advanced: 'Erweiterte Parameter',
     advancedChanged: 'angepasst',
-    advancedIntro: 'Mit den Standardwerten vorbelegt; für einen normalen Song muss hier nichts geändert werden.',
-    advancedReset: 'Standardwerte',
+    advancedIntro:
+      'Mit den Standardwerten vorbelegt; für einen normalen Song muss hier nichts geändert werden. Das Zurücksetzen lässt eine eigene Partitur samt ihrer Planung stehen.',
+    advancedReset: 'Auf Standardwerte zurücksetzen',
+    advancedAtDefaults: 'Alles auf Standardwerten',
+    advancedWithScore: 'mit Partitur',
+    samplingReset: 'Diese Gruppe zurücksetzen',
+    samplingAtDefaults: 'Auf Standardwerten',
     cot: 'Planung',
     cotFull: 'Melodie und Akkorde',
     cotMelody: 'Nur Melodie',
@@ -77,7 +82,8 @@ const messages = {
     enginesMore:
       '• Automatisch (Standard): Entwürfe auf der GPU, volle Qualität auf der Neural Engine – dort bei kurzen Songs etwa doppelt so schnell.\n• Nur GPU: lässt die rund 2,8 GB der Neural Engine frei, hilfreich bei knappem Speicher, z. B. wenn YuE Studio zugleich läuft.\n• GPU und Neural Engine: auch Entwürfe dürfen auf die Neural Engine.\n\nKann die Neural Engine einen Song nicht übernehmen (etwa einen sehr langen), läuft er auf der GPU.',
     maxLength: 'Maximale Länge',
-    maxLengthHint: 'Obergrenze für die Songlänge; der Song endet sonst von selbst, wenn der Text gesungen ist. Über 6:00 ist Neuland für das Modell.',
+    maxLengthHint:
+      'Obergrenze für die Songlänge; der Song endet sonst von selbst, wenn der Text gesungen ist. Über 6:00 ist Neuland für das Modell.',
     maxLengthMore:
       'Wie lang ein Song wird, ergibt sich aus Text und Stil. Erreicht er die Grenze, wird er dort abgeschnitten. Eine kurze Grenze spart Zeit, wenn nur der Anfang interessiert, z. B. 1:00 zum Ausprobieren eines Stils.\n\nStandard des Modells sind 6:00 (9000 Tokens, 25 pro Sekunde). Bis 10:00 geht es über die YueUI-Erweiterung des Workers; mehr passt nicht in den Kontext des Modells, den sich Prompt, Partitur und Song teilen (24576 Tokens). Über 6:00 ist ungetestet: Das Modell muss dafür einen längeren Text auch wirklich ausfüllen, und die Neural Engine übernimmt Songs über etwa 8 Minuten nicht mehr, sie laufen dann auf der GPU.',
     abc: 'Eigene Partitur (ABC)',
@@ -86,6 +92,7 @@ const messages = {
     abcMore:
       'Zum Beispiel die ABC-Datei eines Songs aus der Bibliothek mit geänderten Akkorden oder einem anderen Tempo (Q:), oder eine mit SheetSage2 transkribierte Melodie für ein Cover. Braucht die Planung „Melodie und Akkorde“ (Akkorde werden übernommen) oder „Nur Melodie“ mit einer Partitur ohne Akkordsymbole (die Begleitung ist frei). Die Silben des Textes sollten zu den Noten der Stimme „Vocal“ passen. Bei „Instrumental“ bleibt die Gesangsstimme einer eigenen Partitur erhalten – dort also die Vocal-Takte durch Pausen ersetzen.\n\n„Beispiel einsetzen“ lädt die Partitur zu „City Lights“ (siehe Beispiel beim Songtext).',
     abcExample: 'Beispiel einsetzen',
+    abcClear: 'Partitur entfernen',
     samplingSemantic: 'Sampling: Song',
     samplingSemanticIntro:
       'Steuert, wie die Song-Tokens gezogen werden – also Klang, Arrangement und Gesang. Vorbelegt mit den Werten des Modells; laut YuE2-Dokumentation kann jede Änderung die Qualität verändern. Ein Auftrag mit geändertem Sampling wird nicht mit anderen Aufträgen zusammen komponiert.',
@@ -123,7 +130,8 @@ const messages = {
     resetForm: 'Leeren',
 
     transcription: 'Transkription (SheetSage2)',
-    transcriptionIntro: 'Macht aus einer Aufnahme eine Melodie-Partitur (ABC), die sich als eigene Partitur für einen neuen Song nutzen lässt, etwa für ein Cover.',
+    transcriptionIntro:
+      'Macht aus einer Aufnahme eine Melodie-Partitur (ABC), die sich als eigene Partitur für einen neuen Song nutzen lässt, etwa für ein Cover.',
     transcriptionMore:
       'SheetSage2 erkennt Takt, Tonart, Form und Melodie einer Aufnahme und schreibt sie als ABC in dem Format, das YuE2 versteht (Stimmen „Vocal“ und „Ins“). Akkorde lässt es weg, damit sich die Begleitung dem neuen Stil anpasst. Es läuft auf der CPU und braucht einige Minuten; rechnet gleichzeitig ein Song, wird beides langsamer.\n\nFür ein Cover: „Als Partitur übernehmen“ (stellt die Planung auf „Nur Melodie“), dann einen neuen Stil und einen Text schreiben, dessen Silben zur Melodie passen.\n\nDie Gewichte von SheetSage2 stehen unter CC BY-NC 4.0 (nicht kommerziell).',
     transcriptionNotInstalled:
@@ -239,8 +247,13 @@ const messages = {
       'Song 1 gets the seed, song 2 the seed + 1 and so on – same style and lyrics, different interpretations. Up to four songs (two on Macs with less than 24 GB) are composed together at hardly more cost than one; synthesis then runs song by song.',
     advanced: 'Advanced parameters',
     advancedChanged: 'changed',
-    advancedIntro: 'Preset to the defaults; a normal song needs no changes here.',
-    advancedReset: 'Defaults',
+    advancedIntro:
+      'Preset to the defaults; a normal song needs no changes here. Resetting leaves your own score and its planning in place.',
+    advancedReset: 'Reset to defaults',
+    advancedAtDefaults: 'All at defaults',
+    advancedWithScore: 'with score',
+    samplingReset: 'Reset this group',
+    samplingAtDefaults: 'At defaults',
     cot: 'Planning',
     cotFull: 'Melody and chords',
     cotMelody: 'Melody only',
@@ -267,7 +280,8 @@ const messages = {
     enginesMore:
       '• Automatic (default): drafts on the GPU, full quality on the Neural Engine – about twice as fast there for short songs.\n• GPU only: leaves the Neural Engine’s roughly 2.8 GB unmapped, which helps when memory is tight, e.g. while YuE Studio is running too.\n• GPU and Neural Engine: drafts may use the Neural Engine as well.\n\nA song the Neural Engine cannot take (a very long one, say) runs on the GPU.',
     maxLength: 'Maximum length',
-    maxLengthHint: 'Upper limit for the song length; otherwise the song ends by itself once the lyrics are sung. Beyond 6:00 is new ground for the model.',
+    maxLengthHint:
+      'Upper limit for the song length; otherwise the song ends by itself once the lyrics are sung. Beyond 6:00 is new ground for the model.',
     maxLengthMore:
       'How long a song gets follows from its lyrics and style. If it reaches the limit, it is cut off there. A short limit saves time when only the beginning matters, e.g. 1:00 to try out a style.\n\nThe model’s default is 6:00 (9000 tokens, 25 per second). Up to 10:00 works through YueUI’s worker extension; more does not fit the model’s context, which prompt, score and song share (24576 tokens). Beyond 6:00 is untested: the model has to actually fill it with longer lyrics, and the Neural Engine no longer takes songs over about 8 minutes, so they run on the GPU.',
     abc: 'Your own score (ABC)',
@@ -276,11 +290,13 @@ const messages = {
     abcMore:
       'For example the ABC file of a song from the library with changed chords or a different tempo (Q:), or a melody transcribed with SheetSage2 for a cover. Needs the planning “Melody and chords” (the chords are kept) or “Melody only” with a score without chord symbols (the accompaniment is free). The syllables of the lyrics should match the notes of the “Vocal” voice. With “Instrumental” the vocal voice of your own score is kept – replace its bars with rests there.\n\n“Insert example” loads the score of “City Lights” (see the example under lyrics).',
     abcExample: 'Insert example',
+    abcClear: 'Remove score',
     samplingSemantic: 'Sampling: song',
     samplingSemanticIntro:
       'Controls how the song tokens are drawn – the sound, arrangement and singing. Preset to the model’s values; according to the YuE2 documentation any change may change the quality. A job with changed sampling is not composed together with other jobs.',
     samplingAbc: 'Sampling: score',
-    samplingAbcIntro: 'Controls how the score with melody and chords is written. The model’s values are more cautious here than for the song.',
+    samplingAbcIntro:
+      'Controls how the score with melody and chords is written. The model’s values are more cautious here than for the song.',
     samplingAbcInactive: 'No effect right now: without planning or with your own score, YuE2 writes no score.',
     samplingDefault: 'Default: {value}',
     temperature: 'Temperature',
@@ -312,7 +328,8 @@ const messages = {
     resetForm: 'Clear',
 
     transcription: 'Transcription (SheetSage2)',
-    transcriptionIntro: 'Turns a recording into a melody score (ABC) that can serve as your own score for a new song, for a cover, say.',
+    transcriptionIntro:
+      'Turns a recording into a melody score (ABC) that can serve as your own score for a new song, for a cover, say.',
     transcriptionMore:
       'SheetSage2 recognizes the meter, key, form and melody of a recording and writes them as ABC in the format YuE2 reads (voices “Vocal” and “Ins”). It leaves out chords so the accompaniment can adapt to the new style. It runs on the CPU and takes a few minutes; if a song is generating at the same time, both get slower.\n\nFor a cover: “Use as score” (sets planning to “Melody only”), then write a new style and lyrics whose syllables fit the melody.\n\nSheetSage2’s weights are licensed CC BY-NC 4.0 (non-commercial).',
     transcriptionNotInstalled:
@@ -431,7 +448,9 @@ export function workerLabel(status: WorkerStatus, busy: boolean): string {
 /** An ISO timestamp as the locale writes date and time, e.g. "22.09.2026, 10:05". */
 export function formatDateTime(iso: string): string {
   const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(locale.value, { dateStyle: 'short', timeStyle: 'short' })
+  return Number.isNaN(date.getTime())
+    ? iso
+    : date.toLocaleString(locale.value, { dateStyle: 'short', timeStyle: 'short' })
 }
 
 export function formatTime(iso: string): string {

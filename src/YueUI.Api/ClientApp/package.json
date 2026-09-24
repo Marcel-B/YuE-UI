@@ -10,15 +10,23 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "type-check": "vue-tsc -b",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "format": "prettier --write src"
   },
   "dependencies": {
+    "@primeuix/themes": "^3.0.1",
+    "primeicons": "^8.0.2",
+    "primevue": "^4.3.0",
     "vue": "^3.5.43"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.0.0",
     "@vitejs/plugin-vue": "^6.0.9",
     "@vue/tsconfig": "^0.9.1",
+    "prettier": "^3.9.9",
+    "tailwindcss": "^4.3.3",
+    "tailwindcss-primeui": "^0.6.1",
     "typescript": "~5.9.3",
     "vite": "^8.3.0",
     "vue-tsc": "^3.3.11"

@@ -61,7 +61,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// <summary>Where YuE Studio's installer puts SheetSage2's environment; an empty file is enough for the server.</summary>
     public void InstallSheetSage()
     {
-        var python = Path.Combine(Root, "install", ".venv-sheetsage2", "bin", "python");
+        var python = Path.Combine(Root, "install", "sheetsage-env", "bin", "python");
         Directory.CreateDirectory(Path.GetDirectoryName(python)!);
         File.WriteAllText(python, "");
     }

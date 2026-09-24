@@ -60,7 +60,7 @@ SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI ins
 | `Urls` | `http://127.0.0.1:5090` | Adresse des Servers |
 | `Yue:InstallRoot` (`Yue__InstallRoot`) | `~/Library/Application Support/YuE Studio` | Installation von YuE Studio (`env/`, `src/`, `models/`) |
 | `Yue:OutputDir` (`Yue__OutputDir`) | `~/Music/YuE Studio` | Song-Bibliothek |
-| `Yue:SheetSagePython` (`Yue__SheetSagePython`) | `<InstallRoot>/.venv-sheetsage2/bin/python` | Python der SheetSage2-Umgebung |
+| `Yue:SheetSagePython` (`Yue__SheetSagePython`) | `<InstallRoot>/sheetsage-env/bin/python` | Python der SheetSage2-Umgebung |
 
 ## API
 
@@ -85,3 +85,13 @@ SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI ins
 | `GET` | `/api/runs/{run}/zip` | FLAC und ABC aller Songs des Laufs als ZIP |
 
 OpenAPI unter `/api/openapi`.
+
+## Roadmap
+
+Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder löschen.
+
+- [ ] Menü im Header
+- [ ] Playlists, auf einer eigenen Seite
+- [ ] PrimeVue `Timeline` für die Schritte eines Songs nutzen
+- [ ] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
+- [ ] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)
