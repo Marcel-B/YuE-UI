@@ -85,3 +85,13 @@ SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI ins
 | `GET` | `/api/runs/{run}/zip` | FLAC und ABC aller Songs des Laufs als ZIP |
 
 OpenAPI unter `/api/openapi`.
+
+## Roadmap
+
+Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder löschen.
+
+- [ ] Menü im Header
+- [ ] Playlists, auf einer eigenen Seite
+- [ ] PrimeVue `Timeline` für die Schritte eines Songs nutzen
+- [ ] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
+- [ ] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)
