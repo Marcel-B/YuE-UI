@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
-import { audioUrl, deleteRun, deleteSong, render, runZipUrl, scoreUrl, songZipUrl } from '../api'
+import { audioUrl, deleteRun, deleteSong, render, runZipUrl, scoreUrl, songScore, songZipUrl } from '../api'
 import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
 import type { RunInfo, SongInfo } from '../types'
 
@@ -15,6 +15,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   template: [run: RunInfo]
+  /** The song's score for the next song, together with its run's style and lyrics. */
+  useScore: [run: RunInfo, song: SongInfo, abc: string]
   /** Something was deleted; carries the run's title for the notice. */
   deleted: [title: string]
   error: [message: string]
@@ -31,6 +33,32 @@ async function renderFull(song: SongInfo): Promise<void> {
     await render(song.id, 'full')
   } catch (caught) {
     emit('error', caught instanceof Error ? caught.message : String(caught))
+  }
+}
+
+/** Scores opened with "View ABC" or used, by song id; a song's score does not change once it is written. */
+const scores = ref<Record<string, string>>({})
+
+async function score(song: SongInfo): Promise<string> {
+  scores.value[song.id] ??= await songScore(song.id)
+  return scores.value[song.id]!
+}
+
+async function useScore(run: RunInfo, song: SongInfo): Promise<void> {
+  try {
+    emit('useScore', run, song, await score(song))
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  }
+}
+
+async function toggleScore(song: SongInfo, event: Event): Promise<void> {
+  if ((event.target as HTMLDetailsElement).open && !scores.value[song.id]) {
+    try {
+      await score(song)
+    } catch (caught) {
+      emit('error', caught instanceof Error ? caught.message : String(caught))
+    }
   }
 }
 
@@ -162,6 +190,16 @@ const severityByQuality: Record<string, string> = {
                       t('score')
                     }}</Button>
                     <Button
+                      v-if="song.hasScore"
+                      icon="pi pi-file-import"
+                      text
+                      size="small"
+                      rounded
+                      v-tooltip="t('useScore')"
+                      :aria-label="t('useScore')"
+                      @click="useScore(run, song)"
+                    />
+                    <Button
                       v-if="song.hasAudio || song.hasScore"
                       as="a"
                       text
@@ -188,6 +226,10 @@ const severityByQuality: Record<string, string> = {
                 <!-- preload="none": a page of five-minute FLACs would otherwise start loading on a phone. -->
                 <audio v-if="song.hasAudio" controls preload="none" :src="audioUrl(song.id)" />
                 <span v-else class="muted">{{ t('noAudio') }}</span>
+                <details v-if="song.hasScore" class="score" @toggle="toggleScore(song, $event)">
+                  <summary>{{ t('showScore') }}</summary>
+                  <pre>{{ scores[song.id] ?? '…' }}</pre>
+                </details>
               </li>
             </ul>
           </Fieldset>
@@ -235,12 +277,18 @@ const severityByQuality: Record<string, string> = {
   line-height: 1.5;
 }
 
-.lyrics summary {
+.score {
+  font-size: 0.9rem;
+}
+
+.lyrics summary,
+.score summary {
   cursor: pointer;
   color: var(--accent);
 }
 
-.lyrics pre {
+.lyrics pre,
+.score pre {
   max-height: 20rem;
   margin: 0.5rem 0 0;
   padding: 0.5rem 0.75rem;

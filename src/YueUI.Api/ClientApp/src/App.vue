@@ -7,7 +7,16 @@ import QueueList from './components/QueueList.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import { loadFormState, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel } from './i18n'
-import type { LogEntry, LyricsState, RunInfo, SongState, StorageInfo, TranscriptionState, WorkerInfo } from './types'
+import type {
+  LogEntry,
+  LyricsState,
+  RunInfo,
+  SongInfo,
+  SongState,
+  StorageInfo,
+  TranscriptionState,
+  WorkerInfo,
+} from './types'
 
 const logCapacity = 300
 const form = ref(loadFormState())
@@ -159,6 +168,32 @@ function useScore(abc: string, name: string): void {
   formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   show(t('scoreApplied', { name }))
 }
+
+/**
+ * A song's score to build on, e.g. with changed chords or tempo: with its run's style, lyrics and the song's seed,
+ * so that a changed score is all that differs. Planning follows the score: chords are kept when it has them.
+ * Only body lines count, the voice declarations quote their names as well.
+ */
+function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
+  const cot = /^(?![A-Za-z]:|%).*"[^"]+"/m.test(abc) ? 'full' : 'melody'
+  form.value = {
+    ...form.value,
+    title: run.title,
+    style: run.style,
+    lyrics: run.lyrics,
+    abc,
+    cot,
+    seed: song.seed === null ? form.value.seed : String(song.seed),
+  }
+  formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  show(
+    t('songScoreApplied', {
+      title: run.title || t('untitled'),
+      song: t('songN', { n: song.index }),
+      planning: t(cot === 'full' ? 'cotFull' : 'cotMelody'),
+    }),
+  )
+}
 </script>
 
 <template>
@@ -263,6 +298,7 @@ function useScore(abc: string, name: string): void {
           :error="libraryError"
           :busy-ids="busyIds"
           @template="useTemplate"
+          @use-score="useSongScore"
           @deleted="onDeleted"
           @error="show($event, true)"
         />
