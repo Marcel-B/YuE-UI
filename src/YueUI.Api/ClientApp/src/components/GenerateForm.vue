@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { ApiError, generate } from '../api'
+import { computed, ref, watch } from 'vue'
+import { useConfirm } from 'primevue/useconfirm'
+import { ApiError, draftLyrics, generate } from '../api'
 import {
   advancedChanged,
   resetAdvanced,
@@ -14,11 +15,18 @@ import {
   type SamplingPhase,
 } from '../form'
 import { formatDuration, t } from '../i18n'
+import type { LyricsState } from '../types'
 import FieldHelp from './FieldHelp.vue'
 import SamplingFields from './SamplingFields.vue'
 
-/** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
-defineProps<{ extensions: boolean | null }>()
+const props = defineProps<{
+  /** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
+  extensions: boolean | null
+  /** YuE2 is generating, so there is no memory for the lyrics model. */
+  busy: boolean
+  /** The last lyrics draft from the event stream, from any browser. */
+  lyricsDraft: LyricsState | null
+}>()
 const form = defineModel<FormState>({ required: true })
 
 const sending = ref(false)
@@ -58,6 +66,58 @@ async function submit(): Promise<void> {
     message.value = { text: errorText(caught), error: true }
   } finally {
     sending.value = false
+  }
+}
+
+const confirm = useConfirm()
+const starting = ref(false)
+const draftMessage = ref<{ text: string; error: boolean } | null>(null)
+/** Whichever browser asked: while a draft is written there is no room for a second one, nor for a song. */
+const drafting = computed(() => starting.value || props.lyricsDraft?.stage === 'writing')
+
+/** The draft this browser asked for lands in the field when it arrives, also after a reload or a locked phone. */
+function take(draft: LyricsState | null): void {
+  if (!draft?.finished || draft.id !== form.value.lyricsDraftId) {
+    return
+  }
+  form.value.lyricsDraftId = ''
+  if (draft.stage === 'done' && draft.lyrics) {
+    form.value.lyrics = draft.lyrics
+    draftMessage.value = { text: t('lyricsDrafted'), error: false }
+  } else {
+    draftMessage.value = { text: t('errorGeneric', { message: draft.message ?? '' }), error: true }
+  }
+}
+watch(() => props.lyricsDraft, take, { immediate: true })
+
+/** A draft replaces the lyrics field; lyrics someone wrote by hand should not vanish without a question. */
+function askDraft(): void {
+  if (form.value.lyrics.trim() === '') {
+    void draft()
+    return
+  }
+  confirm.require({
+    header: t('replaceLyrics'),
+    message: t('confirmReplaceLyrics'),
+    icon: 'pi pi-pencil',
+    rejectProps: { label: t('keep'), severity: 'secondary', outlined: true },
+    acceptProps: { label: t('replace') },
+    accept: () => void draft(),
+  })
+}
+
+async function draft(): Promise<void> {
+  starting.value = true
+  draftMessage.value = null
+  try {
+    const started = await draftLyrics(form.value.lyricsIdea.trim(), form.value.style.trim())
+    form.value.lyricsDraftId = started.id
+    // A quick failure (LM Studio missing) can arrive as an event before this answer.
+    take(props.lyricsDraft)
+  } catch (caught) {
+    draftMessage.value = { text: errorText(caught), error: true }
+  } finally {
+    starting.value = false
   }
 }
 
@@ -125,6 +185,33 @@ function lengthLabel(seconds: number): string {
       <label for="gen-style">{{ t('style') }}</label>
       <small v-if="fieldErrors.style" class="danger">{{ fieldErrors.style.join(' ') }}</small>
     </FloatLabel>
+
+    <div class="mt-6 flex items-start gap-2">
+      <FloatLabel variant="on" class="min-w-0 flex-1">
+        <InputText
+          id="gen-lyrics-idea"
+          v-model="form.lyricsIdea"
+          type="text"
+          maxlength="1000"
+          :placeholder="t('lyricsIdeaPlaceholder')"
+          aria-describedby="gen-lyrics-idea-help"
+        />
+        <label for="gen-lyrics-idea">{{ t('lyricsIdea') }}</label>
+      </FloatLabel>
+      <Button
+        type="button"
+        icon="pi pi-sparkles"
+        :label="drafting ? t('draftingLyrics') : t('draftLyrics')"
+        :loading="drafting"
+        :disabled="drafting || busy || form.lyricsIdea.trim() === ''"
+        v-tooltip.bottom="busy ? t('draftBusy') : undefined"
+        @click="askDraft"
+      />
+    </div>
+    <FieldHelp id="gen-lyrics-idea-help" :hint="t('lyricsIdeaHint')" :more="t('lyricsIdeaMore')" />
+    <small v-if="draftMessage" :class="['block', draftMessage.error ? 'danger' : 'muted']" role="status">{{
+      draftMessage.text
+    }}</small>
 
     <FloatLabel variant="on" class="mt-6">
       <Textarea
@@ -323,7 +410,7 @@ function lengthLabel(seconds: number): string {
     </details>
 
     <div class="actions">
-      <button type="submit" class="button primary" :disabled="sending || scoreWithoutPlanning">
+      <button type="submit" class="button primary" :disabled="sending || drafting || scoreWithoutPlanning">
         {{ sending ? t('generating') : t('generate') }}
       </button>
       <span v-if="message" :class="message.error ? 'danger' : 'muted'" role="status">{{ message.text }}</span>

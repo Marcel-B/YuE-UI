@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using YueUI.Api;
 using YueUI.Api.Library;
+using YueUI.Api.Lyrics;
 using YueUI.Api.Worker;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -19,6 +20,11 @@ builder.Services.AddSingleton(TimeProvider.System);
 // One worker for the whole server; as a hosted service it is asked to quit (and free its memory) on shutdown.
 builder.Services.AddSingleton<WorkerHost>();
 builder.Services.AddHostedService(services => services.GetRequiredService<WorkerHost>());
+// Lyrics drafts from LM Studio; loading a 15 GB model and writing take far longer than HttpClient's 100 s default allows for.
+builder.Services.Configure<LyricsOptions>(builder.Configuration.GetSection(LyricsOptions.Section));
+builder.Services.AddSingleton<ILmStudioStarter, LmsCli>();
+builder.Services.AddSingleton<LyricsWriter>();
+builder.Services.AddHttpClient(LyricsWriter.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
@@ -42,6 +48,7 @@ api.MapMethods("/health", ClientAppEndpoints.GetAndHead, () => Results.Text("ok"
 api.MapWorkerEndpoints();
 api.MapLibraryEndpoints();
 api.MapTranscriptionEndpoints();
+api.MapLyricsEndpoints();
 
 app.MapClientApp();
 

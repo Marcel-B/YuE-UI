@@ -1,6 +1,7 @@
 import type {
   GenerateRequest,
   LogEntry,
+  LyricsState,
   RunInfo,
   SongState,
   StatusSnapshot,
@@ -28,6 +29,14 @@ export class ApiError extends Error {
 /** Queues a run; its songs then arrive as `song` events. */
 export async function generate(request: GenerateRequest): Promise<void> {
   await send('/api/generate', json('POST', request))
+}
+
+/**
+ * Starts English lyrics in YuE2's format from a few keywords, written by the language model in LM Studio; the draft
+ * arrives as a `lyrics` event. Refused (409) while YuE2 generates or another draft is being written.
+ */
+export async function draftLyrics(keywords: string, style: string): Promise<LyricsState> {
+  return (await send('/api/lyrics', json('POST', { keywords, style }))).json() as Promise<LyricsState>
 }
 
 /** Synthesizes a finished song again from its saved tokens, normally a draft at full quality. */
@@ -126,6 +135,7 @@ export interface EventHandlers {
   /** A song was written to disk or deleted: the library has changed. */
   library(): void
   transcription(transcription: TranscriptionState): void
+  lyrics(lyrics: LyricsState): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */
   connection(open: boolean): void
 }
@@ -145,6 +155,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on<LogEntry>('log', handlers.log)
   on('library', () => handlers.library())
   on<TranscriptionState>('transcription', handlers.transcription)
+  on<LyricsState>('lyrics', handlers.lyrics)
   source.onerror = () => handlers.connection(false)
   return () => source.close()
 }

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using YueUI.Api.Lyrics;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Tests;
@@ -39,6 +41,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public FakeLauncher Launcher { get; } = new();
 
     public FakeStudio Studio { get; } = new();
+
+    public FakeLmStudio LmStudio { get; } = new();
 
     public FakeWorker Worker => Launcher.Current ?? throw new InvalidOperationException("No worker was started.");
 
@@ -91,6 +95,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
         {
             services.AddSingleton(new YuePaths(Path.Combine(Root, "install"), OutputDir));
             services.AddSingleton<IStudioDetector>(Studio);
+            services.AddSingleton<ILmStudioStarter>(LmStudio);
+            // A new handler each time: the factory disposes the ones it rotates out.
+            services.AddHttpClient(LyricsWriter.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLmStudio.Handler(LmStudio));
             if (_fakeWorker)
             {
                 services.AddSingleton<IWorkerLauncher>(Launcher);
@@ -181,4 +188,96 @@ public sealed class FakeStudio : IStudioDetector
     public bool Running { get; set; }
 
     public bool IsRunning() => Running;
+}
+
+/// <summary>LM Studio's server as the lyrics writer sees it: models, chat completions and unload, all recorded.</summary>
+public sealed class FakeLmStudio : ILmStudioStarter
+{
+    public bool Running { get; set; } = true;
+
+    /// <summary>Whether <c>lms</c> is installed; starting it makes the server answer.</summary>
+    public bool CanStart { get; set; } = true;
+
+    public int Starts { get; private set; }
+
+    public string Answer { get; set; } = "[Verse]\nLine one\n\n[Chorus]\nLine two";
+
+    /// <summary>The whole answer instead of one built from <see cref="Answer"/>, e.g. with only reasoning.</summary>
+    public object? RawAnswer { get; set; }
+
+    /// <summary>An instance the user loaded in LM Studio themselves.</summary>
+    public string? LoadedInstance { get; set; }
+
+    /// <summary>LM Studio's guardrails refusing the load, with this message.</summary>
+    public string? LoadRefusal { get; set; }
+
+    public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
+
+    /// <summary>Holds the completion until a test lets it go, to look at the server meanwhile.</summary>
+    public TaskCompletionSource? Gate { get; set; }
+
+    public List<(string Path, JsonObject? Body)> Requests { get; } = [];
+
+    public Task<bool> StartAsync(CancellationToken cancellationToken)
+    {
+        Starts++;
+        Running |= CanStart;
+        return Task.FromResult(CanStart);
+    }
+
+    public sealed class Handler(FakeLmStudio lm) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (!lm.Running)
+            {
+                throw new HttpRequestException("Connection refused");
+            }
+            var body = request.Content is null ? null : JsonNode.Parse(await request.Content.ReadAsStringAsync(cancellationToken)) as JsonObject;
+            var path = request.RequestUri!.AbsolutePath;
+            lock (lm.Requests)
+            {
+                lm.Requests.Add((path, body));
+            }
+            switch (path)
+            {
+                case "/v1/models":
+                    return Json(HttpStatusCode.OK, new { data = new[] { new { id = "google/gemma-4-e4b" } } });
+                case "/api/v1/models" when request.Method == HttpMethod.Get:
+                    return Json(HttpStatusCode.OK, new
+                    {
+                        models = new[]
+                        {
+                            new { key = "google/gemma-4-e4b", loaded_instances = lm.LoadedInstance is { } id ? new[] { new { id } } : [] },
+                        },
+                    });
+                case "/api/v1/models/load":
+                    return lm.LoadRefusal is { } refusal
+                        ? Json(HttpStatusCode.InternalServerError, new { error = new { type = "model_load_failed", message = refusal } })
+                        : Json(HttpStatusCode.OK, new
+                        {
+                            type = "llm",
+                            instance_id = $"{body?["model"]}:1",
+                            status = "loaded",
+                            load_time_seconds = 2.5,
+                            load_config = new { context_length = (int?)body?["context_length"] },
+                        });
+                case "/v1/chat/completions":
+                    if (lm.Gate is { } gate)
+                    {
+                        await gate.Task.WaitAsync(cancellationToken);
+                    }
+                    return lm.Status == HttpStatusCode.OK
+                        ? Json(HttpStatusCode.OK, lm.RawAnswer ?? new { choices = new[] { new { message = new { role = "assistant", content = lm.Answer } } } })
+                        : Json(lm.Status, new { error = new { message = "Model not found" } });
+                case "/api/v1/models/unload":
+                    return Json(HttpStatusCode.OK, new { instance_id = (string?)body?["instance_id"] });
+                default:
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+        }
+
+        private static HttpResponseMessage Json(HttpStatusCode status, object value) =>
+            new(status) { Content = JsonContent.Create(value) };
+    }
 }

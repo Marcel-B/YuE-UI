@@ -5,6 +5,10 @@ export interface FormState {
   title: string
   style: string
   lyrics: string
+  /** Keywords for a lyrics draft; not sent with the song. */
+  lyricsIdea: string
+  /** The draft this browser asked for and still waits for; kept so that it lands even after a reload. */
+  lyricsDraftId: string
   instrumental: boolean
   quality: Quality
   batch: number
@@ -70,6 +74,8 @@ export function defaultFormState(): FormState {
     title: '',
     style: '',
     lyrics: '',
+    lyricsIdea: '',
+    lyricsDraftId: '',
     instrumental: false,
     quality: 'draft',
     batch: 1,

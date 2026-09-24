@@ -46,6 +46,7 @@ public sealed class WorkerHost(
     private WorkerStatus _status = WorkerStatus.Stopped;
     private string? _lastError;
     private bool? _extensions;
+    private LyricsState? _lyrics;
     private bool _studioRunning;
     private DateTimeOffset _studioCheckedAt = DateTimeOffset.MinValue;
 
@@ -164,6 +165,16 @@ public sealed class WorkerHost(
 
     /// <summary>Tells the browsers that songs were deleted, so that every open library reloads.</summary>
     public void LibraryChanged() => Publish("library", new { });
+
+    /// <summary>Keeps the lyrics draft for the snapshot of browsers that connect later, and sends it to the others.</summary>
+    public void UpdateLyrics(LyricsState lyrics)
+    {
+        lock (_gate)
+        {
+            _lyrics = lyrics;
+        }
+        Publish("lyrics", lyrics);
+    }
 
     /// <summary>Cancels every song. Does not start a worker just for that.</summary>
     public async Task StopAllAsync(CancellationToken cancellationToken)
@@ -573,7 +584,8 @@ public sealed class WorkerHost(
         WorkerInfoLocked(studioRunning),
         [.. _songs.Values.OrderBy(s => s.Run, StringComparer.Ordinal).ThenBy(s => s.Index)],
         [.. _log],
-        [.. _transcriptions.Values.OrderBy(t => t.UpdatedAt)]);
+        [.. _transcriptions.Values.OrderBy(t => t.UpdatedAt)],
+        _lyrics);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, _songs.Values.Any(s => !s.Finished), studioRunning, _lastError, _extensions);

@@ -2,6 +2,7 @@ using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using YueUI.Api.Library;
+using YueUI.Api.Lyrics;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api;
@@ -40,18 +41,22 @@ public static class WorkerEndpoints
         return api;
     }
 
-    private static async Task<IResult> Generate(GenerateRequest request, WorkerHost host, CancellationToken cancellationToken)
+    private static async Task<IResult> Generate(GenerateRequest request, WorkerHost host, LyricsWriter lyrics, CancellationToken cancellationToken)
     {
         var errors = request.Validate();
         if (errors.Count > 0)
         {
             return Results.ValidationProblem(errors);
         }
-        return await Send(() => host.GenerateAsync(request.ToWorkerCommand(), cancellationToken));
+        return lyrics.IsWriting ? WritingLyrics() : await Send(() => host.GenerateAsync(request.ToWorkerCommand(), cancellationToken));
     }
 
+    /// <summary>The lyrics model may be in memory; YuE2 beside it would not fit on 24 GB.</summary>
+    private static IResult WritingLyrics() =>
+        Results.Problem(title: "Lyrics are being written; start the song once they are done.", statusCode: StatusCodes.Status409Conflict);
+
     private static async Task<IResult> Render(
-        string run, string song, RenderRequest? request, SongLibrary library, WorkerHost host, CancellationToken cancellationToken)
+        string run, string song, RenderRequest? request, SongLibrary library, WorkerHost host, LyricsWriter lyrics, CancellationToken cancellationToken)
     {
         request ??= new RenderRequest();
         if (request.Quality is not ("draft" or "full") || request.Engines is not (null or "gpu" or "gpu+ane"))
@@ -66,7 +71,7 @@ public static class WorkerEndpoints
         {
             return Results.Problem(title: "The song's tokens were not saved, so it cannot be rendered again.", statusCode: StatusCodes.Status409Conflict);
         }
-        return await Send(() => host.RenderAsync(directory, request.Quality, request.Engines, cancellationToken));
+        return lyrics.IsWriting ? WritingLyrics() : await Send(() => host.RenderAsync(directory, request.Quality, request.Engines, cancellationToken));
     }
 
     /// <summary>The worker answers asynchronously (its "started" event reaches the browsers), so a sent command is 202.</summary>
