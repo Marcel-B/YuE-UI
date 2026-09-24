@@ -7,7 +7,7 @@ namespace YueUI.Api;
 
 /// <summary>
 /// Recordings to melody scores with SheetSage2: upload and follow a transcription (its progress comes with the
-/// worker's event stream), and the finished ones on disk with their score and all their files.
+/// worker's event stream), and the finished ones on disk with their score and all their files, or deleted.
 /// </summary>
 public static partial class TranscriptionEndpoints
 {
@@ -36,6 +36,8 @@ public static partial class TranscriptionEndpoints
                 ? LibraryEndpoints.Zip($"{id}.zip", Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
                     .Select(path => (path, Path.GetRelativePath(directory, path))))
                 : Results.NotFound());
+        api.MapDelete("/transcriptions/{id}", (string id, TranscriptionLibrary library) =>
+            library.Delete(id) ? Results.NoContent() : Results.NotFound());
         return api;
     }
 

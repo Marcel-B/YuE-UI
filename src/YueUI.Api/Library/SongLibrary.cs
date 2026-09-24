@@ -8,17 +8,20 @@ namespace YueUI.Api.Library;
 
 /// <param name="Id">The run folder's name, e.g. <c>20260921-165850-Neon-Night-Struggle</c>.</param>
 /// <param name="Style">The style prompt, from the first song's <c>request.json</c>; all songs of a run share it.</param>
+/// <param name="Bytes">What the whole run folder takes on disk.</param>
 public sealed record RunInfo(
     string Id,
     string Title,
     DateTimeOffset? CreatedAt,
     string Style,
     string Lyrics,
-    IReadOnlyList<SongInfo> Songs);
+    IReadOnlyList<SongInfo> Songs,
+    long Bytes);
 
 /// <param name="Id"><c>run/songN</c>, the key for the song endpoints and the worker's song states.</param>
 /// <param name="Quality">"draft" or "full" once synthesized.</param>
 /// <param name="CanRender">Its tokens are saved, so it can be synthesized again (a draft at full quality).</param>
+/// <param name="Bytes">What the song folder takes on disk: audio, tokens and the worker's intermediate files.</param>
 public sealed record SongInfo(
     string Id,
     int Index,
@@ -27,7 +30,8 @@ public sealed record SongInfo(
     double? Seconds,
     bool HasAudio,
     bool HasScore,
-    bool CanRender);
+    bool CanRender,
+    long Bytes);
 
 /// <summary>
 /// Reads the songs the worker (this server's or YuE Studio's) wrote to <see cref="YuePaths.OutputDir"/>:
@@ -79,6 +83,35 @@ public sealed partial class SongLibrary(YuePaths paths)
         return [.. SongFolders(directory).Select(d => d.FullName)];
     }
 
+    /// <summary>Deletes the song's folder, and the run's folder with it once no song is left.</summary>
+    /// <returns>False for a name the worker would not write or a song that does not exist.</returns>
+    public bool DeleteSong(string run, string song)
+    {
+        if (SongDirectory(run, song) is not { } directory)
+        {
+            return false;
+        }
+        Directory.Delete(directory, recursive: true);
+        var runDirectory = new DirectoryInfo(Path.Combine(paths.OutputDir, run));
+        if (!SongFolders(runDirectory).Any())
+        {
+            runDirectory.Delete(recursive: true);
+        }
+        return true;
+    }
+
+    /// <summary>Deletes the run's folder with all its songs.</summary>
+    /// <returns>False for a name the worker would not write or a run that does not exist.</returns>
+    public bool DeleteRun(string run)
+    {
+        if (SongDirectories(run) is null)
+        {
+            return false;
+        }
+        Directory.Delete(Path.Combine(paths.OutputDir, run), recursive: true);
+        return true;
+    }
+
     /// <summary>
     /// Maps a path the worker reports (<c>…/run/songN/audio.flac</c> or the song folder) to <c>run/songN</c>.
     /// </summary>
@@ -123,10 +156,28 @@ public sealed partial class SongLibrary(YuePaths paths)
                 audio && result is not null ? Number(result["audio_seconds"]) : null,
                 audio,
                 File.Exists(Path.Combine(folder.FullName, "score.abc")),
-                File.Exists(Path.Combine(folder.FullName, "semantic.npy"))));
+                File.Exists(Path.Combine(folder.FullName, "semantic.npy")),
+                Size(folder)));
         }
 
-        return new RunInfo(run.Name, title.Length > 0 ? title : TitleFromName(run.Name), CreatedAt(run.Name), style, lyrics, songs);
+        return new RunInfo(run.Name, title.Length > 0 ? title : TitleFromName(run.Name), CreatedAt(run.Name), style, lyrics, songs, Size(run));
+    }
+
+    /// <summary>The folder's files, all levels down; a file the worker deletes meanwhile counts as nothing.</summary>
+    internal static long Size(DirectoryInfo directory)
+    {
+        long bytes = 0;
+        foreach (var file in directory.EnumerateFiles("*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true }))
+        {
+            try
+            {
+                bytes += file.Length;
+            }
+            catch (IOException)
+            {
+            }
+        }
+        return bytes;
     }
 
     private static IEnumerable<DirectoryInfo> SongFolders(DirectoryInfo run) =>

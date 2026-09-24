@@ -81,6 +81,8 @@ export interface TranscriptionInfo {
   task: TranscriptionTask | null
   createdAt: string | null
   warnings: string[]
+  /** What the folder takes on disk. */
+  bytes: number
 }
 
 export interface TranscriptionList {
@@ -137,6 +139,8 @@ export interface SongInfo {
   hasScore: boolean
   /** The tokens are saved, so the song can be synthesized again (a draft at full quality). */
   canRender: boolean
+  /** What the song folder takes on disk: audio, tokens and the worker's intermediate files. */
+  bytes: number
 }
 
 export interface RunInfo {
@@ -146,4 +150,12 @@ export interface RunInfo {
   style: string
   lyrics: string
   songs: SongInfo[]
+  /** What the whole run folder takes on disk. */
+  bytes: number
+}
+
+/** The volume the songs are written to (LibraryEndpoints.cs). */
+export interface StorageInfo {
+  freeBytes: number
+  totalBytes: number
 }

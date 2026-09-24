@@ -20,6 +20,8 @@ import Menubar from 'primevue/menubar'
 import Tag from 'primevue/tag'
 import FloatLabel from 'primevue/floatlabel'
 import Textarea from 'primevue/textarea'
+import ConfirmDialog from 'primevue/confirmdialog'
+import ConfirmationService from 'primevue/confirmationservice'
 
 const app = createApp(App)
 app.use(PrimeVue, {
@@ -30,6 +32,8 @@ app.use(PrimeVue, {
     options: { cssLayer: { name: 'primevue', order: 'theme, base, primevue, components, utilities' } },
   },
 })
+// Asks before anything is deleted; App.vue holds the one ConfirmDialog.
+app.use(ConfirmationService)
 app
   .component('Button', Button)
   .component('Card', Card)
@@ -44,6 +48,7 @@ app
   .component('Menubar', Menubar)
   .component('FloatLabel', FloatLabel)
   .component('Tag', Tag)
+  .component('ConfirmDialog', ConfirmDialog)
 
 app.directive('tooltip', Tooltip)
 
