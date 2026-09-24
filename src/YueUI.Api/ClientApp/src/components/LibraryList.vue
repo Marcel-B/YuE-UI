@@ -75,27 +75,26 @@ const severityByQuality: Record<string, string> = {
             <ul class="songs">
               <li v-for="song in run.songs" :key="song.id" class="song">
                 <div class="flex gap-3 items-center">
-                  <div><strong>{{ t('songN', { n: song.index }) }}</strong></div>
+                  <div>
+                    <strong>{{ t('songN', { n: song.index }) }}</strong>
+                  </div>
                   <div v-if="song.seconds" class="muted">{{ formatDuration(song.seconds) }}</div>
                   <Tag v-if="song.quality" :severity="severityByQuality[song.quality]">
                     {{ song.quality === 'draft' ? t('qualityDraft') : t('qualityFull') }}
                   </Tag>
                   <div v-if="song.seed !== null" class="muted seed">#{{ song.seed }}</div>
-       
                 </div>
                 <div class="flex justify-between">
-
-                    <Button
-                      v-if="song.canRender && song.quality !== 'full'"
-                      :label="busyIds.has(song.id) ? t('rendering') : t('renderFull')"
-                      :loading="busyIds.has(song.id) ? true : false"
-                      text
-                      size="small"
-                      :disabled="busyIds.has(song.id)"
-                      @click="renderFull(song)"
-                    />
-                    <div class="flex justify-end">
-
+                  <Button
+                    v-if="song.canRender && song.quality !== 'full'"
+                    :label="busyIds.has(song.id) ? t('rendering') : t('renderFull')"
+                    :loading="busyIds.has(song.id) ? true : false"
+                    text
+                    size="small"
+                    :disabled="busyIds.has(song.id)"
+                    @click="renderFull(song)"
+                  />
+                  <div class="flex justify-end">
                     <Button as="a" text v-if="song.hasAudio" size="small" :href="audioUrl(song.id, true)">{{
                       t('download')
                     }}</Button>
@@ -113,8 +112,8 @@ const severityByQuality: Record<string, string> = {
                       :href="songZipUrl(song.id)"
                       :title="t('zipTitle')"
                     />
-                </div>
                   </div>
+                </div>
                 <!-- preload="none": a page of five-minute FLACs would otherwise start loading on a phone. -->
                 <audio v-if="song.hasAudio" controls preload="none" :src="audioUrl(song.id)" />
                 <span v-else class="muted">{{ t('noAudio') }}</span>
