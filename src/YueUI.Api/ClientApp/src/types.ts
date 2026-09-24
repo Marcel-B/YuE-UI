@@ -154,6 +154,11 @@ export interface RunInfo {
   bytes: number
 }
 
+/** A lyrics draft from the local language model (LyricsEndpoints.cs). */
+export interface LyricsDraft {
+  lyrics: string
+}
+
 /** The volume the songs are written to (LibraryEndpoints.cs). */
 export interface StorageInfo {
   freeBytes: number

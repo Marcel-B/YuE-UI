@@ -5,6 +5,8 @@ export interface FormState {
   title: string
   style: string
   lyrics: string
+  /** Keywords for a lyrics draft; not sent with the song. */
+  lyricsIdea: string
   instrumental: boolean
   quality: Quality
   batch: number
@@ -70,6 +72,7 @@ export function defaultFormState(): FormState {
     title: '',
     style: '',
     lyrics: '',
+    lyricsIdea: '',
     instrumental: false,
     quality: 'draft',
     batch: 1,

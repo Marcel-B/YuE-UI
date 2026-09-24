@@ -190,7 +190,7 @@ function useScore(abc: string, name: string): void {
         </h2>
       </template>
       <template #content>
-        <GenerateForm ref="generateForm" v-model="form" :extensions="worker.extensions" />
+        <GenerateForm ref="generateForm" v-model="form" :extensions="worker.extensions" :busy="worker.busy" />
       </template>
     </Card>
     <!-- <div ref="formSection"></div> -->

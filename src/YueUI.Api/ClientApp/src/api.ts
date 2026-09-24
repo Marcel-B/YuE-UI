@@ -1,6 +1,7 @@
 import type {
   GenerateRequest,
   LogEntry,
+  LyricsDraft,
   RunInfo,
   SongState,
   StatusSnapshot,
@@ -28,6 +29,15 @@ export class ApiError extends Error {
 /** Queues a run; its songs then arrive as `song` events. */
 export async function generate(request: GenerateRequest): Promise<void> {
   await send('/api/generate', json('POST', request))
+}
+
+/**
+ * English lyrics in YuE2's format from a few keywords, written by the language model in LM Studio. Loading the
+ * model takes a while; refused (409) while YuE2 generates.
+ */
+export async function draftLyrics(keywords: string, style: string): Promise<string> {
+  const draft = (await (await send('/api/lyrics', json('POST', { keywords, style }))).json()) as LyricsDraft
+  return draft.lyrics
 }
 
 /** Synthesizes a finished song again from its saved tokens, normally a draft at full quality. */
