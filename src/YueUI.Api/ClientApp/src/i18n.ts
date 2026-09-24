@@ -226,6 +226,8 @@ const messages = {
     showMore: 'Mehr anzeigen',
     useAsTemplate: 'Als Vorlage',
     templateLoaded: 'Stil und Text von „{title}“ stehen im Formular.',
+    songScoreApplied:
+      'Stil, Text, Seed und Partitur von „{title}“, {song}, stehen im Formular, die Planung auf „{planning}“. Die Partitur lässt sich unter „Erweiterte Parameter“ bearbeiten.',
     renderFull: 'Voll rendern',
     rendering: 'In Arbeit',
     download: 'FLAC',
@@ -473,6 +475,8 @@ const messages = {
     showMore: 'Show more',
     useAsTemplate: 'Use as template',
     templateLoaded: 'Style and lyrics of “{title}” are in the form.',
+    songScoreApplied:
+      'Style, lyrics, seed and score of “{title}”, {song}, are in the form, planning is set to “{planning}”. The score can be edited under “Advanced parameters”.',
     renderFull: 'Render full',
     rendering: 'In progress',
     download: 'FLAC',

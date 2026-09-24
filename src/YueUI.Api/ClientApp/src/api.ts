@@ -84,6 +84,11 @@ export function scoreUrl(songId: string): string {
   return `${apiBase}/api/songs/${songId}/score`
 }
 
+/** The song's score.abc as text, to show it or to use it for the next song. */
+export async function songScore(songId: string): Promise<string> {
+  return (await send(`/api/songs/${songId}/score`)).text()
+}
+
 /** The song's audio.flac and score.abc in one archive. */
 export function songZipUrl(songId: string): string {
   return `${apiBase}/api/songs/${songId}/zip`
