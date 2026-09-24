@@ -174,44 +174,43 @@ function useScore(abc: string, name: string): void {
       </template>
     </Card>
     <!-- <div ref="formSection"></div> -->
-     <div>
-
-    <Card>
-      <template #title>
-        <div class="flex justify-between">
-          <h2>{{ t('queue') }}</h2>
-          <Button
-            icon="pi pi-stop-filled"
-            text
-            rounded
-            v-if="worker.busy"
-            @click="queueList?.run(queueList?.stopAll)"
+    <div>
+      <Card>
+        <template #title>
+          <div class="flex flex-wrap justify-between">
+            <h2>{{ t('queue') }}</h2>
+            <Button
+              icon="pi pi-stop-filled"
+              text
+              rounded
+              v-if="worker.busy"
+              @click="queueList?.run(queueList?.stopAll)"
+            />
+          </div>
+        </template>
+        <template #content>
+          <QueueList
+            ref="queueList"
+            :songs="queue"
+            :worker="worker"
+            :log="log"
+            @hide-finished="hideFinished"
+            @error="show($event, true)"
           />
-        </div>
-      </template>
-      <template #content>
-        <QueueList
-          ref="queueList"
-          :songs="queue"
-          :worker="worker"
-          :log="log"
-          @hide-finished="hideFinished"
-          @error="show($event, true)"
-        />
-      </template>
-    </Card>
-   
-       <Card class="mt-4">
-      <template #title>
-        <h2>{{ t('transcriptions') }}</h2>
-      </template>
-      <template #content>
-        <TranscribePanel :transcriptions="transcriptions" @use-score="useScore" @error="show($event, true)" />
-      </template>
-    </Card>
-     </div>
-   
-    <Card class="col-span-2">
+        </template>
+      </Card>
+
+      <Card class="mt-4">
+        <template #title>
+          <h2>{{ t('transcriptions') }}</h2>
+        </template>
+        <template #content>
+          <TranscribePanel :transcriptions="transcriptions" @use-score="useScore" @error="show($event, true)" />
+        </template>
+      </Card>
+    </div>
+
+    <Card class="md:col-span-2">
       <template #title>
         <div class="flex justify-between items-center">
           <h2>{{ t('library') }}</h2>
@@ -236,8 +235,6 @@ function useScore(abc: string, name: string): void {
         />
       </template>
     </Card>
-
-
   </main>
 </template>
 
