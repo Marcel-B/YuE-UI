@@ -49,6 +49,12 @@ Jeder Song belegt mit FLAC, Tokens und Zwischendateien einiges an Platz. Die Bib
 
 Beide haben einen eigenen Worker und damit ein eigenes Modell im Speicher. Rechnen beide gleichzeitig, kann der Speicher knapp werden. Die Oberfläche zeigt deshalb einen Hinweis, solange die App geöffnet ist. **Worker beenden** in der Warteschlange gibt den Speicher von YuE UI sofort frei. Ansonsten entlädt der Worker das Modell nach zehn Minuten Leerlauf von selbst.
 
+## Stil aus Bausteinen
+
+Unter dem Stil-Feld öffnet **Bausteine** eine Auswahl nach Reitern: Sprache, Genre, Stimme (männlich, weiblich, Duett, Chor, Kinderstimme), Klangfarbe, Instrumente, Stimmung und Tempo. Antippen setzt einen Baustein in den Stil, nochmal Antippen nimmt ihn heraus; selbst geschriebene Begriffe bleiben stehen. Sprache, Stimme und Tempo gibt es nur einmal pro Song, eine neue Wahl ersetzt die alte (beim Tempo auch ein von Hand geschriebenes wie `95 BPM`). Die Sprache kommt nach vorn und das Tempo ans Ende, wie in den Beispielen von YuE2.
+
+Die Auswahl folgt dem [Prompt-Leitfaden von YuE](https://github.com/multimodal-art-projection/YuE/tree/YuE-v1#prompt-engineering-guide): Am stabilsten sind Genre, Instrument, Stimmung, Stimme und Klangfarbe, möglichst alle fünf, mit Begriffen aus seiner Liste der 200 häufigsten Tags (`top_200_tags.json`). YuE2 ergänzt Sprache und Tempo und versteht auch freie Beschreibungen. Duett und Chor stehen nicht in der Liste; wer welche Zeile singt, lässt sich damit nicht festlegen.
+
 ## Transkription mit SheetSage2
 
 Unter **Transkription** lässt sich eine Aufnahme hochladen (jedes Format, das macOS lesen kann, bis 300 MB). SheetSage2 macht daraus eine Melodie-Partitur im ABC-Format ohne Akkorde. **Als Partitur übernehmen** setzt sie als eigene Partitur ins Formular und stellt die Planung auf „Nur Melodie“, die Grundlage für ein Cover mit neuem Stil und Text. Jede Transkription landet als Ordner in `~/Music/YuE Studio/transcriptions` (Partitur, MIDI-Spuren, Analyse); die Liste zeigt auch die, die in YuE Studio entstanden sind.

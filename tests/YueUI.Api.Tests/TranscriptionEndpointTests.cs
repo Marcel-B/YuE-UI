@@ -82,7 +82,8 @@ public sealed class TranscriptionEndpointTests : IDisposable
         Assert.Equal("X:1\nV:Vocal\n", done.Abc);
         Assert.Equal(["key uncertain"], done.Warnings);
         Assert.Equal("My-Song-20260923-201500", done.Result);
-        Assert.False(Directory.Exists(Path.GetDirectoryName(audio)));
+        // WorkerHost stores the finished state before it deletes the upload, so the status can come first.
+        await TestApp.WaitUntil(() => !Directory.Exists(Path.GetDirectoryName(audio)));
     }
 
     [Fact]

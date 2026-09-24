@@ -18,6 +18,7 @@ import { formatDuration, t } from '../i18n'
 import type { LyricsState } from '../types'
 import FieldHelp from './FieldHelp.vue'
 import SamplingFields from './SamplingFields.vue'
+import StyleBlocks from './StyleBlocks.vue'
 
 const props = defineProps<{
   /** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
@@ -30,6 +31,7 @@ const props = defineProps<{
 const form = defineModel<FormState>({ required: true })
 
 const sending = ref(false)
+const blocksOpen = ref(false)
 const message = ref<{ text: string; error: boolean } | null>(null)
 const fieldErrors = ref<Record<string, string[]>>({})
 
@@ -185,6 +187,18 @@ function lengthLabel(seconds: number): string {
       <label for="gen-style">{{ t('style') }}</label>
       <small v-if="fieldErrors.style" class="danger">{{ fieldErrors.style.join(' ') }}</small>
     </FloatLabel>
+    <Button
+      type="button"
+      class="mt-1"
+      size="small"
+      text
+      :icon="blocksOpen ? 'pi pi-chevron-up' : 'pi pi-th-large'"
+      :label="t('styleBlocks')"
+      :aria-expanded="blocksOpen"
+      aria-controls="gen-style-blocks"
+      @click="blocksOpen = !blocksOpen"
+    />
+    <StyleBlocks v-if="blocksOpen" id="gen-style-blocks" v-model="form.style" :instrumental="form.instrumental" />
 
     <div class="mt-6 flex items-start gap-2">
       <FloatLabel variant="on" class="min-w-0 flex-1">
