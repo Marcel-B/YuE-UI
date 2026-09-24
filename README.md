@@ -79,7 +79,7 @@ LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet
 | `Yue:SheetSagePython` (`Yue__SheetSagePython`) | `<InstallRoot>/sheetsage-env/bin/python` | Python der SheetSage2-Umgebung |
 | `Lyrics:BaseUrl` (`Lyrics__BaseUrl`) | `http://127.0.0.1:1234` | Server für Textentwürfe (LM Studio oder ein anderer OpenAI-kompatibler) |
 | `Lyrics:Model` (`Lyrics__Model`) | `google/gemma-4-e4b` | Modell-ID, wie `GET /v1/models` sie listet |
-| `Lyrics:ContextLength` (`Lyrics__ContextLength`) | `8192` | Kontext, mit dem das Modell geladen wird; die Hälfte davon darf die Antwort samt Denkphase lang sein |
+| `Lyrics:ContextLength` (`Lyrics__ContextLength`) | `8192` | Kontext, mit dem das Modell geladen wird; bis auf 1024 Tokens für den Prompt darf die Antwort samt Denkphase ihn ganz nutzen |
 | `Lyrics:ApiToken` (`Lyrics__ApiToken`) | – | nur nötig, wenn in LM Studio „Require Authentication“ an ist |
 | `Lyrics:Lms` (`Lyrics__Lms`) | `~/.lmstudio/bin/lms` | Kommandozeilenwerkzeug, mit dem YuE UI den Server von LM Studio startet |
 

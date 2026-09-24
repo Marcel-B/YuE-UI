@@ -52,6 +52,9 @@ public sealed partial class LyricsWriter(
         Form: [Verse], [Chorus], [Verse], [Chorus], [Bridge], [Chorus] unless the request suggests another.
         """;
 
+    /// <summary>Room for system prompt, keywords and style; the system prompt alone is about 300 tokens.</summary>
+    private const int PromptTokens = 1024;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>A draft is in progress, so the lyrics model may be in memory: no song should start now.</summary>
@@ -240,8 +243,10 @@ public sealed partial class LyricsWriter(
                 new JsonObject { ["role"] = "system", ["content"] = SystemPrompt },
                 new JsonObject { ["role"] = "user", ["content"] = UserPrompt(keywords, style) }),
             ["temperature"] = settings.Temperature,
-            // Room for a thinking model's reasoning before the lyrics, within the context it was loaded with.
-            ["max_tokens"] = Math.Max(1024, settings.ContextLength / 2),
+            // Thinking models reason before the lyrics, and at length: Gemma 4 26B counts every line's syllables,
+            // well over 4000 tokens. So the answer gets the whole context it was loaded with except the prompt.
+            // LM Studio's reasoning "off" is no way out for Gemma 4: it thinks anyway, unmarked in the answer.
+            ["max_tokens"] = Math.Max(1024, settings.ContextLength - PromptTokens),
             ["stream"] = false,
             // LM Studio's own field: unload after this many idle seconds, should the model be loaded just in time.
             ["ttl"] = settings.IdleTtlSeconds,
@@ -278,7 +283,7 @@ public sealed partial class LyricsWriter(
             logger.LogWarning("No lyrics in the answer of {Model} (finish_reason {Finish}): {Answer}",
                 model, finish, Truncate(json?.ToJsonString() ?? "", 2000));
             throw new LyricsUnavailableException(finish == "length" && (reasoning.Length > 0 || content.Contains("<think>", StringComparison.Ordinal))
-                ? $"The model spent all its {request["max_tokens"]} tokens thinking and wrote no lyrics. Switch off thinking for it in LM Studio, or raise Lyrics:ContextLength."
+                ? $"The model spent all its {request["max_tokens"]} tokens thinking and wrote no lyrics. Raise Lyrics:ContextLength, or pick a model that thinks less."
                 : $"The model returned no lyrics (finish_reason: {finish ?? "none"}{(reasoning.Length > 0 ? ", only reasoning" : "")}).");
         }
     }
