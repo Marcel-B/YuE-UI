@@ -6,17 +6,17 @@ namespace YueUI.Api;
 /// <param name="Style">The form's style prompt, so the words fit the mood; optional.</param>
 public sealed record LyricsRequest(string? Keywords, string? Style);
 
-public sealed record LyricsDraft(string Lyrics);
-
-/// <summary>Drafting lyrics with a local language model (LM Studio), see <see cref="LyricsWriter"/>.</summary>
+/// <summary>
+/// Drafting lyrics with a local language model (LM Studio), see <see cref="LyricsWriter"/>. Like the worker's
+/// commands it answers 202; the draft arrives as a <c>lyrics</c> event.
+/// </summary>
 public static class LyricsEndpoints
 {
     public const int MaxKeywordsLength = 1000;
 
     public static RouteGroupBuilder MapLyricsEndpoints(this RouteGroupBuilder api)
     {
-        // The answer takes a while (loading the model alone is several seconds); the phone simply waits for it.
-        api.MapPost("/lyrics", async (LyricsRequest request, LyricsWriter writer, CancellationToken cancellationToken) =>
+        api.MapPost("/lyrics", (LyricsRequest request, LyricsWriter writer) =>
         {
             if (string.IsNullOrWhiteSpace(request.Keywords) || request.Keywords.Length > MaxKeywordsLength)
             {
@@ -27,15 +27,11 @@ public static class LyricsEndpoints
             }
             try
             {
-                return Results.Ok(new LyricsDraft(await writer.WriteAsync(request.Keywords, request.Style, cancellationToken)));
+                return Results.Accepted(value: writer.Start(request.Keywords, request.Style));
             }
             catch (LyricsBusyException exception)
             {
                 return Results.Problem(title: exception.Message, statusCode: StatusCodes.Status409Conflict);
-            }
-            catch (LyricsUnavailableException exception)
-            {
-                return Results.Problem(title: "LM Studio is not available", detail: exception.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
         });
         return api;

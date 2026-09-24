@@ -57,7 +57,7 @@ SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI ins
 
 ## Songtext entwerfen mit LM Studio
 
-YuE2 singt Texte, schreibt aber selbst keine. Über dem Songtext-Feld steht deshalb **Worum geht es?**: Stichwörter oder ein Satz genügen, **Text entwerfen** lässt ein Sprachmodell in [LM Studio](https://lmstudio.ai) auf dem Mac daraus einen englischen Songtext im Format von YuE2 schreiben (Abschnitte wie `[Verse]` und `[Chorus]`, vier Zeilen je Abschnitt, gleichmäßige Silben). Der Stil aus dem Formular geht mit, damit Stimmung und Tempo passen. Ein vorhandener Text wird erst nach einer Rückfrage ersetzt.
+YuE2 singt Texte, schreibt aber selbst keine. Über dem Songtext-Feld steht deshalb **Worum geht es?**: Stichwörter oder ein Satz genügen, **Text entwerfen** lässt ein Sprachmodell in [LM Studio](https://lmstudio.ai) auf dem Mac daraus einen englischen Songtext im Format von YuE2 schreiben (Abschnitte wie `[Verse]` und `[Chorus]`, vier Zeilen je Abschnitt, gleichmäßige Silben). Der Stil aus dem Formular geht mit, damit Stimmung und Tempo passen. Ein vorhandener Text wird erst nach einer Rückfrage ersetzt. Der Entwurf läuft auf dem Mac weiter, auch wenn das Handy zwischendurch sperrt oder die Seite neu lädt; der Text landet danach im Feld.
 
 LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet YuE UI ihn mit `~/.lmstudio/bin/lms daemon up` und `lms server start`. YuE UI lädt das Modell (Standard: das kleine `google/gemma-4-e4b`) erst für die Anfrage, mit einem Kontext von 8192 Tokens, und entlädt es gleich danach wieder; ein Modell, das in LM Studio schon geladen ist, nutzt es mit und lässt es geladen. Die großen Modelle (etwa `google/gemma-4-26b-a4b-qat`, rund 15 GB) haben einen Mac mit 24 GB zusammen mit den üblichen offenen Apps bis zum Einfrieren in den Swap getrieben; wer sie nutzen will, schließt vorher möglichst viel. Weigert sich LM Studio wegen zu wenig Speicher, zeigt die Oberfläche seine Meldung. Außerdem gilt: Solange YuE2 rechnet, gibt es keinen Entwurf; ein ruhender Worker wird vorher beendet; und solange ein Entwurf entsteht, startet kein Song. Der erste Entwurf dauert durch das Laden des Modells etwas länger.
 
@@ -82,7 +82,7 @@ LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet
 | Methode | Pfad | |
 |---|---|---|
 | `GET` | `/api/status` | Worker-Zustand, Songs in Arbeit, Protokoll |
-| `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `transcription`, `ping`) |
+| `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `transcription`, `lyrics`, `ping`) |
 | `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–15000, abc?, fullSteps?: 1–64, abcSampling?, semanticSampling? }`; `abc` braucht `cot` "full" oder "melody", Sampling ist `{ temperature?, topP?, topK?, repetitionPenalty?, penaltyWindow? }`, über 9000 Tokens, `fullSteps` und Sampling nur mit der Worker-Erweiterung |
 | `POST` | `/api/songs/{run}/{song}/render` | Song aus seinen Tokens neu synthetisieren, z. B. einen Entwurf in voller Qualität |
 | `POST` | `/api/songs/{run}/{song}/cancel` | Song abbrechen |
@@ -102,7 +102,7 @@ LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet
 | `DELETE` | `/api/songs/{run}/{song}` | Song löschen, mit dem letzten auch den Lauf; `409`, solange der Worker daran arbeitet |
 | `DELETE` | `/api/runs/{run}` | Lauf mit allen Songs löschen; `409`, solange der Worker an einem davon arbeitet |
 | `GET` | `/api/storage` | `{ freeBytes, totalBytes }` des Datenträgers der Bibliothek |
-| `POST` | `/api/lyrics` | Songtext entwerfen: `{ keywords, style? }` → `{ lyrics }`; `409`, solange YuE2 rechnet oder schon ein Entwurf entsteht, `503`, wenn LM Studio nicht erreichbar ist |
+| `POST` | `/api/lyrics` | Songtext entwerfen: `{ keywords, style? }`; antwortet `202`, der Entwurf kommt als `lyrics`-Event (`writing`, dann `done` mit `lyrics` oder `failed` mit `message`); `409`, solange YuE2 rechnet oder schon ein Entwurf entsteht |
 
 OpenAPI unter `/api/openapi`.
 

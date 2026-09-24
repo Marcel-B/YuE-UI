@@ -15,10 +15,10 @@ public sealed class LyricsEndpointTests : IDisposable
     [Fact]
     public async Task The_model_is_loaded_with_a_small_context_asked_with_YuE2s_rules_and_unloaded_after()
     {
-        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "night train, leaving home", style = "English, melancholic folk, 80 BPM" });
+        var draft = await Finished(new { keywords = "night train, leaving home", style = "English, melancholic folk, 80 BPM" });
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("[Verse]\nLine one\n\n[Chorus]\nLine two", (await response.Content.ReadFromJsonAsync<LyricsDraft>())!.Lyrics);
+        Assert.Equal("done", draft.Stage);
+        Assert.Equal("[Verse]\nLine one\n\n[Chorus]\nLine two", draft.Lyrics);
 
         var load = Assert.Single(_app.LmStudio.Requests, r => r.Path == "/api/v1/models/load").Body!;
         Assert.Equal("google/gemma-4-e4b", (string?)load["model"]);
@@ -53,10 +53,9 @@ public sealed class LyricsEndpointTests : IDisposable
     {
         _app.LmStudio.LoadRefusal = "Model loading was stopped due to insufficient system resources.";
 
-        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+        var draft = await Finished(new { keywords = "summer" });
 
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Contains("insufficient system resources", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Contains("insufficient system resources", draft.Message, StringComparison.Ordinal);
         Assert.DoesNotContain(_app.LmStudio.Requests, r => r.Path is "/v1/chat/completions" or "/api/v1/models/unload");
     }
 
@@ -68,10 +67,10 @@ public sealed class LyricsEndpointTests : IDisposable
             choices = new[] { new { finish_reason = "length", message = new { role = "assistant", content = "", reasoning_content = "Let me think about trains…" } } },
         };
 
-        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+        var draft = await Finished(new { keywords = "summer" });
 
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Contains("thinking", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal("failed", draft.Stage);
+        Assert.Contains("thinking", draft.Message, StringComparison.Ordinal);
         Assert.Equal("/api/v1/models/unload", _app.LmStudio.Requests[^1].Path);
     }
 
@@ -90,9 +89,7 @@ public sealed class LyricsEndpointTests : IDisposable
     {
         _app.LmStudio.Running = false;
 
-        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("done", (await Finished(new { keywords = "summer" })).Stage);
         Assert.Equal(1, _app.LmStudio.Starts);
     }
 
@@ -102,10 +99,10 @@ public sealed class LyricsEndpointTests : IDisposable
         _app.LmStudio.Running = false;
         _app.LmStudio.CanStart = false;
 
-        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+        var draft = await Finished(new { keywords = "summer" });
 
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Contains("does not answer", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal("failed", draft.Stage);
+        Assert.Contains("does not answer", draft.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -113,10 +110,10 @@ public sealed class LyricsEndpointTests : IDisposable
     {
         _app.LmStudio.Status = HttpStatusCode.NotFound;
 
-        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+        var draft = await Finished(new { keywords = "summer" });
 
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Contains("Model not found", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal("failed", draft.Stage);
+        Assert.Contains("Model not found", draft.Message, StringComparison.Ordinal);
         Assert.Equal("/api/v1/models/unload", _app.LmStudio.Requests[^1].Path);
     }
 
@@ -150,7 +147,7 @@ public sealed class LyricsEndpointTests : IDisposable
         _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath("20260922-101500-Neon-Night", "song1"), stage = "ready", detail = "" });
         await _app.WaitForStatus(_client, s => !s.Worker.Busy);
 
-        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" })).StatusCode);
+        await Finished(new { keywords = "summer" });
 
         Assert.True(_app.Worker.Disposed);
     }
@@ -159,8 +156,11 @@ public sealed class LyricsEndpointTests : IDisposable
     public async Task While_lyrics_are_written_no_song_starts_and_no_second_draft()
     {
         _app.LmStudio.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var drafting = _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+        var drafting = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+        Assert.Equal(HttpStatusCode.Accepted, drafting.StatusCode);
+        var id = (await drafting.Content.ReadFromJsonAsync<LyricsState>(TestApp.Json))!.Id;
         await WaitFor(() => _app.LmStudio.Requests.Any(r => r.Path == "/v1/chat/completions"));
+        Assert.Equal("writing", (await _app.WaitForStatus(_client, s => s.Lyrics?.Id == id)).Lyrics!.Stage);
 
         var song = await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa" });
         var second = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "winter" });
@@ -170,7 +170,7 @@ public sealed class LyricsEndpointTests : IDisposable
         Assert.Equal(0, _app.Launcher.Launches);
 
         _app.LmStudio.Gate.SetResult();
-        Assert.Equal(HttpStatusCode.OK, (await drafting).StatusCode);
+        await _app.WaitForStatus(_client, s => s.Lyrics is { Stage: "done" });
         Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa" })).StatusCode);
     }
 
@@ -182,9 +182,18 @@ public sealed class LyricsEndpointTests : IDisposable
 
     private async Task<string> Draft()
     {
-        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "rain" });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<LyricsDraft>())!.Lyrics;
+        var draft = await Finished(new { keywords = "rain" });
+        Assert.Equal("done", draft.Stage);
+        return draft.Lyrics!;
+    }
+
+    /// <summary>Starts a draft (202) and waits for its result in the status, where the browsers get it.</summary>
+    private async Task<LyricsState> Finished(object request)
+    {
+        var response = await _client.PostAsJsonAsync("/api/lyrics", request);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var id = (await response.Content.ReadFromJsonAsync<LyricsState>(TestApp.Json))!.Id;
+        return (await _app.WaitForStatus(_client, s => s.Lyrics is { Finished: true } lyrics && lyrics.Id == id)).Lyrics!;
     }
 
     /// <summary>A generate command and one queued song, as in WorkerEndpointTests.</summary>

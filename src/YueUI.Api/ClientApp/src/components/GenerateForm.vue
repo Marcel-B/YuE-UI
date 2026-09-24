@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { ApiError, draftLyrics, generate } from '../api'
 import {
@@ -15,14 +15,17 @@ import {
   type SamplingPhase,
 } from '../form'
 import { formatDuration, t } from '../i18n'
+import type { LyricsState } from '../types'
 import FieldHelp from './FieldHelp.vue'
 import SamplingFields from './SamplingFields.vue'
 
-defineProps<{
+const props = defineProps<{
   /** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
   extensions: boolean | null
   /** YuE2 is generating, so there is no memory for the lyrics model. */
   busy: boolean
+  /** The last lyrics draft from the event stream, from any browser. */
+  lyricsDraft: LyricsState | null
 }>()
 const form = defineModel<FormState>({ required: true })
 
@@ -67,8 +70,25 @@ async function submit(): Promise<void> {
 }
 
 const confirm = useConfirm()
-const drafting = ref(false)
+const starting = ref(false)
 const draftMessage = ref<{ text: string; error: boolean } | null>(null)
+/** Whichever browser asked: while a draft is written there is no room for a second one, nor for a song. */
+const drafting = computed(() => starting.value || props.lyricsDraft?.stage === 'writing')
+
+/** The draft this browser asked for lands in the field when it arrives, also after a reload or a locked phone. */
+function take(draft: LyricsState | null): void {
+  if (!draft?.finished || draft.id !== form.value.lyricsDraftId) {
+    return
+  }
+  form.value.lyricsDraftId = ''
+  if (draft.stage === 'done' && draft.lyrics) {
+    form.value.lyrics = draft.lyrics
+    draftMessage.value = { text: t('lyricsDrafted'), error: false }
+  } else {
+    draftMessage.value = { text: t('errorGeneric', { message: draft.message ?? '' }), error: true }
+  }
+}
+watch(() => props.lyricsDraft, take, { immediate: true })
 
 /** A draft replaces the lyrics field; lyrics someone wrote by hand should not vanish without a question. */
 function askDraft(): void {
@@ -87,15 +107,17 @@ function askDraft(): void {
 }
 
 async function draft(): Promise<void> {
-  drafting.value = true
+  starting.value = true
   draftMessage.value = null
   try {
-    form.value.lyrics = await draftLyrics(form.value.lyricsIdea.trim(), form.value.style.trim())
-    draftMessage.value = { text: t('lyricsDrafted'), error: false }
+    const started = await draftLyrics(form.value.lyricsIdea.trim(), form.value.style.trim())
+    form.value.lyricsDraftId = started.id
+    // A quick failure (LM Studio missing) can arrive as an event before this answer.
+    take(props.lyricsDraft)
   } catch (caught) {
     draftMessage.value = { text: errorText(caught), error: true }
   } finally {
-    drafting.value = false
+    starting.value = false
   }
 }
 

@@ -27,6 +27,7 @@ public sealed partial class LyricsWriter(
     IOptions<LyricsOptions> options,
     ILmStudioStarter starter,
     WorkerHost worker,
+    TimeProvider time,
     ILogger<LyricsWriter> logger)
 {
     public const string HttpClientName = "lyrics";
@@ -56,13 +57,14 @@ public sealed partial class LyricsWriter(
     /// <summary>A draft is in progress, so the lyrics model may be in memory: no song should start now.</summary>
     public bool IsWriting => _gate.CurrentCount == 0;
 
+    /// <summary>
+    /// Starts a draft in the background; its progress and result arrive as <c>lyrics</c> events (see
+    /// <see cref="LyricsState"/>), so a phone that locks meanwhile still gets it.
+    /// </summary>
     /// <exception cref="LyricsBusyException">Another draft is in progress, or YuE2 is generating.</exception>
-    /// <exception cref="LyricsUnavailableException">LM Studio could not be reached or refused.</exception>
-    public async Task<string> WriteAsync(string keywords, string? style, CancellationToken cancellationToken)
+    public LyricsState Start(string keywords, string? style)
     {
-        // Set once this call has loaded the model, so that it is unloaded again whatever happens next.
-        string? unload = null;
-        if (!await _gate.WaitAsync(0, cancellationToken))
+        if (!_gate.Wait(0))
         {
             throw new LyricsBusyException("Lyrics are already being written.");
         }
@@ -72,6 +74,41 @@ public sealed partial class LyricsWriter(
             _gate.Release();
             throw new LyricsBusyException("YuE2 is generating; the lyrics model would not fit into memory beside it.");
         }
+        var state = new LyricsState { Id = Guid.NewGuid().ToString("N")[..12], UpdatedAt = time.GetUtcNow() };
+        worker.UpdateLyrics(state);
+        _ = Task.Run(() => RunAsync(state, keywords, style));
+        return state;
+    }
+
+    private async Task RunAsync(LyricsState state, string keywords, string? style)
+    {
+        LyricsState result;
+        try
+        {
+            result = state with { Stage = "done", Lyrics = await WriteAsync(keywords, style, CancellationToken.None) };
+        }
+        catch (LyricsUnavailableException exception)
+        {
+            result = state with { Stage = "failed", Message = exception.Message };
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Drafting lyrics failed");
+            result = state with { Stage = "failed", Message = exception.Message };
+        }
+        finally
+        {
+            // Before the result goes out, so that a song started in answer to it is not refused.
+            _gate.Release();
+        }
+        worker.UpdateLyrics(result with { UpdatedAt = time.GetUtcNow() });
+    }
+
+    /// <exception cref="LyricsUnavailableException">LM Studio could not be reached or refused.</exception>
+    private async Task<string> WriteAsync(string keywords, string? style, CancellationToken cancellationToken)
+    {
+        // Set once this call has loaded the model, so that it is unloaded again whatever happens next.
+        string? unload = null;
         var settings = options.Value;
         using var http = httpClients.CreateClient(HttpClientName);
         http.BaseAddress = new Uri(settings.BaseUrl.TrimEnd('/') + "/");
@@ -97,7 +134,6 @@ public sealed partial class LyricsWriter(
             {
                 await UnloadAsync(http, unload);
             }
-            _gate.Release();
         }
     }
 

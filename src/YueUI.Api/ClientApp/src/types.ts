@@ -49,6 +49,7 @@ export interface StatusSnapshot {
   songs: SongState[]
   log: LogEntry[]
   transcriptions: TranscriptionState[]
+  lyrics: LyricsState | null
 }
 
 /** melody-full: the Vocal and Ins melodies; melody-vocal: only the sung one. */
@@ -154,9 +155,15 @@ export interface RunInfo {
   bytes: number
 }
 
-/** A lyrics draft from the local language model (LyricsEndpoints.cs). */
-export interface LyricsDraft {
-  lyrics: string
+/** The last lyrics draft from the local language model (Worker/WorkerModels.cs); it arrives as `lyrics` events. */
+export interface LyricsState {
+  id: string
+  stage: 'writing' | 'done' | 'failed'
+  lyrics: string | null
+  /** Why it failed, e.g. LM Studio's own message. */
+  message: string | null
+  updatedAt: string
+  finished: boolean
 }
 
 /** The volume the songs are written to (LibraryEndpoints.cs). */

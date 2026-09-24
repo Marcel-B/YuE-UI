@@ -77,7 +77,29 @@ public sealed record StatusSnapshot(
     WorkerInfo Worker,
     IReadOnlyList<SongState> Songs,
     IReadOnlyList<LogEntry> Log,
-    IReadOnlyList<TranscriptionState>? Transcriptions = null);
+    IReadOnlyList<TranscriptionState>? Transcriptions = null,
+    LyricsState? Lyrics = null);
+
+/// <summary>
+/// The last lyrics draft (Lyrics/LyricsWriter.cs). It arrives as an event rather than as the answer to the request:
+/// loading the model and writing take long enough for a phone to lock or a proxy to give up on the connection.
+/// </summary>
+public sealed record LyricsState
+{
+    public required string Id { get; init; }
+
+    /// <summary>writing, done or failed.</summary>
+    public string Stage { get; init; } = "writing";
+
+    public string? Lyrics { get; init; }
+
+    /// <summary>Why it failed, e.g. LM Studio's own message.</summary>
+    public string? Message { get; init; }
+
+    public DateTimeOffset UpdatedAt { get; init; }
+
+    public bool Finished => Stage is "done" or "failed";
+}
 
 /// <summary>
 /// A transcription in flight: a recording going through SheetSage2 in the worker, keyed by <see cref="Id"/> (this

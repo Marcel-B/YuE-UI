@@ -7,7 +7,7 @@ import QueueList from './components/QueueList.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import { loadFormState, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel } from './i18n'
-import type { LogEntry, RunInfo, SongState, StorageInfo, TranscriptionState, WorkerInfo } from './types'
+import type { LogEntry, LyricsState, RunInfo, SongState, StorageInfo, TranscriptionState, WorkerInfo } from './types'
 
 const logCapacity = 300
 const form = ref(loadFormState())
@@ -25,6 +25,7 @@ const worker = ref<WorkerInfo>({
 const songs = ref<SongState[]>([])
 const log = ref<LogEntry[]>([])
 const transcriptions = ref<TranscriptionState[]>([])
+const lyricsDraft = ref<LyricsState | null>(null)
 /** Starts optimistic: the warning is for a stream that broke, not for one that is still opening. */
 const connected = ref(true)
 /** Finished songs the user put away; the server keeps them, so they would come back with the next snapshot. */
@@ -57,6 +58,7 @@ const unsubscribe = subscribe({
     songs.value = snapshot.songs
     log.value = snapshot.log
     transcriptions.value = snapshot.transcriptions
+    lyricsDraft.value = snapshot.lyrics
     // The stream (re)opened: whatever was written meanwhile is in the library now.
     void loadLibrary()
   },
@@ -78,6 +80,9 @@ const unsubscribe = subscribe({
     } else {
       transcriptions.value.push(transcription)
     }
+  },
+  lyrics(lyrics) {
+    lyricsDraft.value = lyrics
   },
   connection(open) {
     connected.value = open
@@ -190,7 +195,13 @@ function useScore(abc: string, name: string): void {
         </h2>
       </template>
       <template #content>
-        <GenerateForm ref="generateForm" v-model="form" :extensions="worker.extensions" :busy="worker.busy" />
+        <GenerateForm
+          ref="generateForm"
+          v-model="form"
+          :extensions="worker.extensions"
+          :busy="worker.busy"
+          :lyrics-draft="lyricsDraft"
+        />
       </template>
     </Card>
     <!-- <div ref="formSection"></div> -->
