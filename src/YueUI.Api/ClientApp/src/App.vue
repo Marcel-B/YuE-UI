@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
-import { listLibrary, subscribe } from './api'
+import { getStorage, listLibrary, subscribe } from './api'
 import GenerateForm from './components/GenerateForm.vue'
 import LibraryList from './components/LibraryList.vue'
 import QueueList from './components/QueueList.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import { loadFormState, saveFormState } from './form'
-import { locale, setLocale, t, workerLabel } from './i18n'
-import type { LogEntry, RunInfo, SongState, TranscriptionState, WorkerInfo } from './types'
+import { formatBytes, locale, setLocale, t, workerLabel } from './i18n'
+import type { LogEntry, RunInfo, SongState, StorageInfo, TranscriptionState, WorkerInfo } from './types'
 
 const logCapacity = 300
 const form = ref(loadFormState())
@@ -90,17 +90,36 @@ onBeforeUnmount(unsubscribe)
 const runs = ref<RunInfo[]>([])
 const libraryLoading = ref(false)
 const libraryError = ref<string | null>(null)
+const storage = ref<StorageInfo | null>(null)
+/** What all runs take, so it is clear what deleting would gain. */
+const storageLabel = computed(() =>
+  storage.value
+    ? t('storage', {
+        used: formatBytes(runs.value.reduce((sum, run) => sum + run.bytes, 0)),
+        free: formatBytes(storage.value.freeBytes),
+      })
+    : '',
+)
 
 async function loadLibrary(): Promise<void> {
   libraryLoading.value = true
   try {
-    runs.value = await listLibrary()
+    // The free space is a hint only; the library shows without it.
+    const [library, space] = await Promise.all([listLibrary(), getStorage().catch(() => null)])
+    runs.value = library
+    storage.value = space
     libraryError.value = null
   } catch (caught) {
     libraryError.value = caught instanceof Error ? caught.message : String(caught)
   } finally {
     libraryLoading.value = false
   }
+}
+
+/** The server tells every browser to reload as well; this one should not wait for that. */
+function onDeleted(title: string): void {
+  show(t('deleted', { title }))
+  void loadLibrary()
 }
 
 /** A batch finishes its songs in quick succession; read the folder once for all of them. */
@@ -138,6 +157,7 @@ function useScore(abc: string, name: string): void {
 </script>
 
 <template>
+  <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
   <header class="top">
     <div>
       <h1>YuE UI</h1>
@@ -214,6 +234,7 @@ function useScore(abc: string, name: string): void {
       <template #title>
         <div class="flex justify-between items-center">
           <h2>{{ t('library') }}</h2>
+          <span v-if="storageLabel" class="muted text-sm font-normal ml-auto mr-2">{{ storageLabel }}</span>
           <Button
             icon="pi pi-refresh"
             :disabled="libraryLoading"
@@ -231,6 +252,7 @@ function useScore(abc: string, name: string): void {
           :error="libraryError"
           :busy-ids="busyIds"
           @template="useTemplate"
+          @deleted="onDeleted"
           @error="show($event, true)"
         />
       </template>

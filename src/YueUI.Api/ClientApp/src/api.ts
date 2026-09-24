@@ -4,6 +4,7 @@ import type {
   RunInfo,
   SongState,
   StatusSnapshot,
+  StorageInfo,
   TranscriptionList,
   TranscriptionState,
   TranscriptionTask,
@@ -51,6 +52,21 @@ export async function listLibrary(): Promise<RunInfo[]> {
   return (await send('/api/library')).json() as Promise<RunInfo[]>
 }
 
+/** Deletes the song's folder, and the run's with the last song; refused while the worker is on it. */
+export async function deleteSong(songId: string): Promise<void> {
+  await send(`/api/songs/${songId}`, { method: 'DELETE' })
+}
+
+/** Deletes the run's folder with all its songs; refused while the worker is on one of them. */
+export async function deleteRun(runId: string): Promise<void> {
+  await send(`/api/runs/${runId}`, { method: 'DELETE' })
+}
+
+/** Free and total space of the volume the songs are written to. */
+export async function getStorage(): Promise<StorageInfo> {
+  return (await send('/api/storage')).json() as Promise<StorageInfo>
+}
+
 export function audioUrl(songId: string, download = false): string {
   return `${apiBase}/api/songs/${songId}/audio${download ? '?download=true' : ''}`
 }
@@ -89,6 +105,10 @@ export async function transcriptionScore(id: string): Promise<string> {
   return (await send(`/api/transcriptions/${encodeURIComponent(id)}/score`)).text()
 }
 
+export async function deleteTranscription(id: string): Promise<void> {
+  await send(`/api/transcriptions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
 export function transcriptionScoreUrl(id: string): string {
   return `${apiBase}/api/transcriptions/${encodeURIComponent(id)}/score?download=true`
 }
@@ -103,7 +123,7 @@ export interface EventHandlers {
   song(song: SongState): void
   worker(worker: WorkerInfo): void
   log(entry: LogEntry): void
-  /** A song was written to disk: the library has changed. */
+  /** A song was written to disk or deleted: the library has changed. */
   library(): void
   transcription(transcription: TranscriptionState): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */

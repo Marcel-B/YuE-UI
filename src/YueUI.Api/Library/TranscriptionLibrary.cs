@@ -9,12 +9,14 @@ namespace YueUI.Api.Library;
 /// <param name="SourceName">The recording's file name.</param>
 /// <param name="Task">"melody-full" or "melody-vocal".</param>
 /// <param name="Warnings">What SheetSage2 noticed about the recording, e.g. an uncertain key.</param>
+/// <param name="Bytes">What the folder takes on disk.</param>
 public sealed record TranscriptionInfo(
     string Id,
     string SourceName,
     string? Task,
     DateTimeOffset? CreatedAt,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    long Bytes);
 
 /// <param name="Installed">SheetSage2's environment exists; without it the worker refuses to transcribe.</param>
 public sealed record TranscriptionList(bool Installed, IReadOnlyList<TranscriptionInfo> Items);
@@ -37,6 +39,21 @@ public sealed partial class TranscriptionLibrary(YuePaths paths)
 
     public TranscriptionInfo? Find(string id) => Directory(id) is { } directory ? Read(new DirectoryInfo(directory)) : null;
 
+    /// <summary>Deletes a finished transcription's folder.</summary>
+    /// <returns>
+    /// False if there is none of that name, or it has no score: the worker may still be writing it, and failed
+    /// attempts are not listed, so nobody could have asked for them.
+    /// </returns>
+    public bool Delete(string id)
+    {
+        if (Directory(id) is not { } directory || !File.Exists(Path.Combine(directory, "score.abc")))
+        {
+            return false;
+        }
+        System.IO.Directory.Delete(directory, recursive: true);
+        return true;
+    }
+
     private IEnumerable<DirectoryInfo> Folders()
     {
         var root = new DirectoryInfo(paths.TranscriptionsDir);
@@ -57,7 +74,8 @@ public sealed partial class TranscriptionLibrary(YuePaths paths)
             Text(input?["source_name"]) ?? (stamp.Success ? directory.Name[..stamp.Index] : directory.Name),
             Text(input?["task"]),
             createdAt,
-            [.. (manifest?["warnings"] as JsonArray ?? []).Select(w => w is JsonValue v && v.TryGetValue<string>(out var s) ? s : w?.ToJsonString() ?? "")]);
+            [.. (manifest?["warnings"] as JsonArray ?? []).Select(w => w is JsonValue v && v.TryGetValue<string>(out var s) ? s : w?.ToJsonString() ?? "")],
+            SongLibrary.Size(directory));
     }
 
     private static JsonObject? ReadJson(string path)

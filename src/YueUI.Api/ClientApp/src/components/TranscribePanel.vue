@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useConfirm } from 'primevue/useconfirm'
 import {
   ApiError,
   cancelTranscription,
+  deleteTranscription,
   listTranscriptions,
   transcribe,
   transcriptionScore,
   transcriptionScoreUrl,
   transcriptionZipUrl,
 } from '../api'
-import { formatDateTime, t } from '../i18n'
+import { formatBytes, formatDateTime, t } from '../i18n'
 import type { TranscriptionInfo, TranscriptionList, TranscriptionState, TranscriptionTask } from '../types'
 import FieldHelp from './FieldHelp.vue'
 
@@ -106,6 +108,27 @@ async function toggleScore(item: TranscriptionInfo, event: Event): Promise<void>
   }
 }
 
+const confirm = useConfirm()
+
+function askDelete(item: TranscriptionInfo): void {
+  confirm.require({
+    header: t('confirmDelete'),
+    message: t('confirmDeleteTranscription', { name: item.sourceName }),
+    icon: 'pi pi-trash',
+    rejectProps: { label: t('keep'), severity: 'secondary', outlined: true },
+    acceptProps: { label: t('delete'), severity: 'danger' },
+    accept: async () => {
+      try {
+        await deleteTranscription(item.id)
+        delete scores.value[item.id]
+        await loadList()
+      } catch (caught) {
+        emit('error', caught instanceof Error ? caught.message : String(caught))
+      }
+    },
+  })
+}
+
 function taskLabel(value: TranscriptionTask | null): string {
   return value === 'melody-vocal' ? t('taskVocal') : t('taskFull')
 }
@@ -170,16 +193,28 @@ function taskLabel(value: TranscriptionTask | null): string {
     <p v-if="list && list.items.length === 0" class="muted">{{ t('transcriptionsEmpty') }}</p>
     <ul v-if="list" class="items">
       <li v-for="item in list.items" :key="item.id" class="item">
-        <div class="line">
+        <div class="line flex flex-wrap items-center gap-x-3">
           <strong class="name">{{ item.sourceName }}</strong>
           <span class="muted">{{ taskLabel(item.task) }}</span>
           <span v-if="item.createdAt" class="muted">{{ formatDateTime(item.createdAt) }}</span>
+          <span class="muted">{{ formatBytes(item.bytes) }}</span>
         </div>
         <small v-if="item.warnings.length" class="muted">{{ t('warnings', { list: item.warnings.join('; ') }) }}</small>
-        <div class="line links">
+        <div class="line links flex flex-wrap items-center gap-x-3">
           <button type="button" class="link" @click="useScore(item)">{{ t('useScore') }}</button>
           <a class="link" :href="transcriptionScoreUrl(item.id)">{{ t('score') }}</a>
           <a class="link" :href="transcriptionZipUrl(item.id)" :title="t('filesTitle')">{{ t('files') }}</a>
+          <Button
+            icon="pi pi-trash"
+            text
+            rounded
+            size="small"
+            severity="danger"
+            class="ml-auto"
+            v-tooltip="t('deleteTranscription')"
+            :aria-label="t('deleteTranscription')"
+            @click="askDelete(item)"
+          />
         </div>
         <details @toggle="toggleScore(item, $event)">
           <summary>{{ t('showScore') }}</summary>

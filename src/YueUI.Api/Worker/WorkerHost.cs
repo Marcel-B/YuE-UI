@@ -152,6 +152,19 @@ public sealed class WorkerHost(
         return true;
     }
 
+    /// <summary>Whether the worker is still on a song of the run (or, with <paramref name="song"/>, on that one).</summary>
+    public bool IsWorkingOn(string run, string? song = null)
+    {
+        lock (_gate)
+        {
+            return _songs.Values.Any(s => !s.Finished
+                && (song is null ? s.Id.StartsWith($"{run}/", StringComparison.Ordinal) : s.Id == $"{run}/{song}"));
+        }
+    }
+
+    /// <summary>Tells the browsers that songs were deleted, so that every open library reloads.</summary>
+    public void LibraryChanged() => Publish("library", new { });
+
     /// <summary>Cancels every song. Does not start a worker just for that.</summary>
     public async Task StopAllAsync(CancellationToken cancellationToken)
     {
