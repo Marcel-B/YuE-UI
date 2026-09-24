@@ -5,7 +5,8 @@
       "name": "yueui",
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "src/YueUI.Api"],
-      "port": 5090
+      "port": 5091,
+      "autoPort": false
     }
   ]
 }

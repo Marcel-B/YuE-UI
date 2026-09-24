@@ -13,7 +13,7 @@ Requires the .NET 10 SDK and Node.js 22.12+.
 ```sh
 dotnet build                     # whole solution (YueUI.slnx)
 dotnet test                      # xUnit, with a scripted fake worker; no YuE Studio needed
-dotnet run --project src/YueUI.Api                      # API on 127.0.0.1:5090, SpaProxy starts Vite on 127.0.0.1:5174/ui/
+dotnet run --project src/YueUI.Api                      # API on 127.0.0.1:5091 (5090 is the installed app), SpaProxy starts Vite on 127.0.0.1:5174/ui/
 dotnet publish src/YueUI.Api -c Release -o publish      # runs npm ci + npm run build, ships wwwroot/ui
 deploy/install.sh                # publish + LaunchAgent (de.bvelop.yueui); deploy/uninstall.sh removes it
 ```

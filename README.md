@@ -20,7 +20,7 @@ Browser ──(Tailscale, HTTPS)──▶ tailscale serve ──▶ YueUI.Api 12
 ## Entwicklung
 
 ```sh
-dotnet run --project src/YueUI.Api     # API auf 127.0.0.1:5090, SpaProxy startet Vite auf 127.0.0.1:5174/ui/
+dotnet run --project src/YueUI.Api     # API auf 127.0.0.1:5091, SpaProxy startet Vite auf 127.0.0.1:5174/ui/
 dotnet test                            # Tests mit einem simulierten Worker
 ```
 
@@ -57,7 +57,7 @@ SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI ins
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `Urls` | `http://127.0.0.1:5090` | Adresse des Servers |
+| `Urls` | `http://127.0.0.1:5090` | Adresse des Servers (in der Entwicklung `5091`, siehe `appsettings.Development.json`, damit sie neben der installierten App läuft) |
 | `Yue:InstallRoot` (`Yue__InstallRoot`) | `~/Library/Application Support/YuE Studio` | Installation von YuE Studio (`env/`, `src/`, `models/`) |
 | `Yue:OutputDir` (`Yue__OutputDir`) | `~/Music/YuE Studio` | Song-Bibliothek |
 | `Yue:SheetSagePython` (`Yue__SheetSagePython`) | `<InstallRoot>/sheetsage-env/bin/python` | Python der SheetSage2-Umgebung |
