@@ -1,11 +1,28 @@
 <script setup lang="ts">
-import { onBeforeUnmount, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import { t } from '../i18n'
 import { attach, close, current, hasNext, hasPrevious, next, playing, previous } from '../player'
+import { playlistIds, toggleInPlaylist } from '../playlist'
+
+const emit = defineEmits<{ error: [message: string] }>()
+
+const inPlaylist = computed(() => !!current.value && playlistIds.value.includes(current.value.id))
 
 const audio = useTemplateRef<HTMLAudioElement>('audio')
 watch(audio, (element) => attach(element), { immediate: true })
 onBeforeUnmount(() => attach(null))
+
+/** The song that is playing, into the playlist or out of it, without looking for it in the library first. */
+async function togglePlaylist(): Promise<void> {
+  if (!current.value) {
+    return
+  }
+  try {
+    await toggleInPlaylist(current.value.id)
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  }
+}
 
 function ended(): void {
   if (!next()) {
@@ -22,6 +39,15 @@ function ended(): void {
         <div class="truncate font-semibold">{{ current?.title }}</div>
         <div class="truncate text-sm text-muted-color">{{ current?.detail }}</div>
       </div>
+      <Button
+        :icon="inPlaylist ? 'pi pi-check-circle' : 'pi pi-plus-circle'"
+        text
+        rounded
+        v-tooltip.top="inPlaylist ? t('removeFromPlaylist') : t('addToPlaylist')"
+        :aria-label="inPlaylist ? t('removeFromPlaylist') : t('addToPlaylist')"
+        :aria-pressed="inPlaylist"
+        @click="togglePlaylist"
+      />
       <Button
         icon="pi pi-step-backward"
         text
