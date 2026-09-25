@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Panel } from 'primevue'
 import {
   advancedChanged,
@@ -28,6 +28,16 @@ const form = defineModel<FormState>({ required: true })
 const fieldErrors = defineModel<Record<string, string[]>>('errors', { required: true })
 
 const changed = computed(() => advancedChanged(form.value))
+
+/** The request fields shown here; the sampling ones come as `abcSampling.temperature` and so on. */
+const ownFields = new Set(['cot', 'seed', 'draftSteps', 'fullSteps', 'engines', 'maxTokens', 'abc'])
+const collapsed = ref(true)
+// A refusal about one of these fields would go unseen while the panel is shut.
+watch(fieldErrors, (errors) => {
+  if (Object.keys(errors).some((key) => ownFields.has(key) || /^(abc|semantic)Sampling\./.test(key))) {
+    collapsed.value = false
+  }
+})
 // The API refuses this too; saying so before sending saves a round trip from the phone.
 const scoreWithoutPlanning = computed(
   () => form.value.abc.trim() !== '' && form.value.cot === 'off' && !form.value.instrumental,
@@ -79,7 +89,8 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
 </script>
 
 <template>
-  <Panel toggleable>
+  <!-- Collapsed at first: a normal song needs none of this, and the queue sits right below. -->
+  <Panel v-model:collapsed="collapsed" toggleable>
     <template #header>
       <div class="flex gap-4">
         {{ t('advanced') }}

@@ -157,9 +157,8 @@ OpenAPI unter `/api/openapi`.
 
 Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder löschen.
 
-- [x] Menü im Header
-- [x] Playlist, auf einer eigenen Seite
+- [ ] Suche in der Bibliothek: nach Titel und im Volltext (Style und Lyrics)
+- [ ] Songs bewerten (1 bis 5 Sterne)
 - [ ] Mehrere Playlists (die Tabelle `playlists` ist schon da)
-- [x] PrimeVue `Timeline` für die Schritte eines Songs nutzen
 - [ ] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
 - [ ] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)
