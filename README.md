@@ -47,7 +47,7 @@ Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, Warteschlange, T
 
 Abgespielt wird in einem Player am unteren Rand, der beim Seitenwechsel weiterläuft. Ein Song aus der Bibliothek spielt danach die folgenden Songs der Bibliothek, einer aus der Playlist die folgenden der Playlist. Titel und Vor/Zurück erscheinen auch auf dem Sperrbildschirm.
 
-Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn wieder heraus. Auf der Playlist-Seite lässt sich die Reihenfolge ändern. Die Playlist liegt auf dem Server in `~/Library/Application Support/YuE UI/yueui.db` (SQLite), Handy und Mac sehen also dieselbe. Gelöschte Songs fallen von selbst heraus.
+Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn wieder heraus; denselben Knopf hat der Player für den Song, der gerade läuft. Auf der Playlist-Seite lässt sich die Reihenfolge ändern. Die Playlist liegt auf dem Server in `~/Library/Application Support/YuE UI/yueui.db` (SQLite), Handy und Mac sehen also dieselbe. Gelöschte Songs fallen von selbst heraus.
 
 ## Benachrichtigungen
 

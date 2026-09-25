@@ -376,7 +376,7 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
 
   <!-- Outside the pages, so switching between them does not stop the song. The spacer keeps it off the page's end. -->
   <div v-if="current" class="h-28" />
-  <PlayerBar />
+  <PlayerBar @error="show($event, true)" />
 </template>
 
 <style scoped>
