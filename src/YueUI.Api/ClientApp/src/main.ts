@@ -28,6 +28,7 @@ import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import Badge from 'primevue/badge'
+import Timeline from 'primevue/timeline'
 
 const app = createApp(App)
 app.use(PrimeVue, {
@@ -61,6 +62,7 @@ app
   .component('TabPanels', TabPanels)
   .component('TabPanel', TabPanel)
   .component('Badge', Badge)
+  .component('Timeline', Timeline)
 
 app.directive('tooltip', Tooltip)
 
