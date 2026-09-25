@@ -51,6 +51,51 @@ public sealed class LyricsEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task The_picker_lists_LM_Studios_language_models_and_the_default()
+    {
+        var models = (await _client.GetFromJsonAsync<JsonObject>("/api/lyrics/models"))!;
+
+        Assert.Equal("google/gemma-4-e4b", (string?)models["default"]);
+        var list = models["models"]!.AsArray();
+        Assert.Equal(["google/gemma-4-e4b", "qwen/qwen3-8b"], list.Select(m => (string?)m!["id"]));
+        Assert.Equal("Qwen3 8B", (string?)list[1]!["name"]);
+        Assert.Equal(5_500_000_000L, (long?)list[1]!["sizeBytes"]);
+        Assert.DoesNotContain(_app.LmStudio.Requests, r => r.Path == "/api/v1/models/load");
+    }
+
+    [Fact]
+    public async Task Listing_models_starts_LM_Studio_and_says_when_it_cannot()
+    {
+        _app.LmStudio.Running = false;
+        Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/api/lyrics/models")).StatusCode);
+        Assert.Equal(1, _app.LmStudio.Starts);
+
+        _app.LmStudio.Running = false;
+        _app.LmStudio.CanStart = false;
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await _client.GetAsync("/api/lyrics/models")).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_chosen_model_is_loaded_asked_and_unloaded_instead_of_the_default()
+    {
+        var draft = await Finished(new { keywords = "summer", model = "qwen/qwen3-8b" });
+
+        Assert.Equal("done", draft.Stage);
+        Assert.Equal("qwen/qwen3-8b", (string?)Assert.Single(_app.LmStudio.Requests, r => r.Path == "/api/v1/models/load").Body!["model"]);
+        Assert.Equal("qwen/qwen3-8b:1", (string?)Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!["model"]);
+        Assert.Equal("qwen/qwen3-8b:1", (string?)_app.LmStudio.Requests[^1].Body!["instance_id"]);
+    }
+
+    [Fact]
+    public async Task An_overlong_model_id_is_refused()
+    {
+        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer", model = new string('x', 201) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(_app.LmStudio.Requests);
+    }
+
+    [Fact]
     public async Task An_unknown_language_is_refused()
     {
         var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer", language = "klingon" });

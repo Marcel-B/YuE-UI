@@ -61,10 +61,6 @@ public static class LogicEndpoints
             { new StringContent(name), "name" },
             { new StringContent(options.Value.SplitSections ? "true" : "false"), "splitSections" },
         };
-        if (options.Value.FitTempo && library.SecondsOf(directory) is { } seconds and > 0)
-        {
-            form.Add(new StringContent(new JsonObject { ["fitTempo"] = new JsonObject { ["audioSeconds"] = seconds } }.ToJsonString()), "options");
-        }
 
         var client = httpClients.CreateClient(HttpClientName);
         HttpResponseMessage response;

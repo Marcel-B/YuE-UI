@@ -14,12 +14,6 @@ public sealed class LogicOptions
     /// </summary>
     public string? BaseUrl { get; set; }
 
-    /// <summary>
-    /// Fits the project's tempo to the length of the audio, so the MIDI regions do not drift away from the
-    /// recording; yue-to-logic-pro leaves a score that is more than 5 % off as it is.
-    /// </summary>
-    public bool FitTempo { get; set; } = true;
-
     /// <summary>One region per song section (verse, chorus, …) instead of one per track.</summary>
     public bool SplitSections { get; set; }
 

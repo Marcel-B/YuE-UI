@@ -35,8 +35,8 @@ public sealed class LogicEndpointTests : IDisposable
         Assert.Equal("audio.flac", _app.Logic.FileNames["audio"]);
         Assert.Equal("Neon Night-song2", _app.Logic.Field("name"));
         Assert.Equal("false", _app.Logic.Field("splitSections"));
-        // The tempo is fitted to the length the worker measured (result.json's audio_seconds).
-        Assert.Equal(187.5, (double)JsonNode.Parse(_app.Logic.Field("options"))!["fitTempo"]!["audioSeconds"]!);
+        // The score keeps its own tempo: fitting it to the audio's length rarely matched the recording.
+        Assert.False(_app.Logic.Form.ContainsKey("options"));
     }
 
     [Fact]

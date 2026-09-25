@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
-import { ApiError, draftLyrics, generate } from '../api'
+import { ApiError, draftLyrics, generate, getLyricsModels } from '../api'
 import { Panel } from 'primevue'
 import {
   advancedChanged,
@@ -15,9 +15,9 @@ import {
   type FormState,
   type SamplingPhase,
 } from '../form'
-import { formatDuration, t } from '../i18n'
+import { formatBytes, formatDuration, t } from '../i18n'
 import { hasTag } from '../styleTags'
-import type { LyricsState } from '../types'
+import type { LyricsModels, LyricsState } from '../types'
 import FieldHelp from './FieldHelp.vue'
 import SamplingFields from './SamplingFields.vue'
 import StyleBlocks from './StyleBlocks.vue'
@@ -120,7 +120,12 @@ async function draft(): Promise<void> {
   starting.value = true
   draftMessage.value = null
   try {
-    const started = await draftLyrics(form.value.lyricsIdea.trim(), form.value.style.trim(), form.value.lyricsLanguage)
+    const started = await draftLyrics(
+      form.value.lyricsIdea.trim(),
+      form.value.style.trim(),
+      form.value.lyricsLanguage,
+      form.value.lyricsModel || null,
+    )
     form.value.lyricsDraftId = started.id
     // A quick failure (LM Studio missing) can arrive as an event before this answer.
     take(props.lyricsDraft)
@@ -130,6 +135,39 @@ async function draft(): Promise<void> {
     starting.value = false
   }
 }
+
+/** Null until LM Studio answered; without it the picker stays hidden and drafts use the configured model. */
+const lyricsModels = ref<LyricsModels | null>(null)
+
+onMounted(async () => {
+  try {
+    const models = await getLyricsModels()
+    // A model deleted in LM Studio since it was picked: back to the default rather than a draft that fails.
+    if (form.value.lyricsModel && !models.models.some((m) => m.id === form.value.lyricsModel)) {
+      form.value.lyricsModel = ''
+    }
+    lyricsModels.value = models
+  } catch {
+    // LM Studio is not there; a draft says so with its own message.
+  }
+})
+
+// The size is shown because on 24 GB it decides whether a model fits beside the open apps.
+const lyricsModelOptions = computed(() =>
+  (lyricsModels.value?.models ?? []).map((m) => {
+    const name = m.id === lyricsModels.value?.default ? t('lyricsModelDefault', { name: m.name }) : m.name
+    const details = [m.sizeBytes ? formatBytes(m.sizeBytes) : '', m.loaded ? t('lyricsModelLoaded') : '']
+    return { value: m.id, label: [name, ...details.filter((d) => d)].join(' · ') }
+  }),
+)
+
+/** The default is kept as "none chosen", so that a new default on the server reaches this form too. */
+const lyricsModel = computed({
+  get: () => form.value.lyricsModel || lyricsModels.value?.default || '',
+  set: (value: string) => {
+    form.value.lyricsModel = value === lyricsModels.value?.default ? '' : value
+  },
+})
 
 function errorText(caught: unknown): string {
   if (caught instanceof ApiError && caught.status === 0) {
@@ -285,6 +323,18 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
         @click="askDraft"
       />
     </div>
+    <Select
+      v-if="lyricsModelOptions.length > 1"
+      v-model="lyricsModel"
+      :options="lyricsModelOptions"
+      option-value="value"
+      option-label="label"
+      :disabled="drafting"
+      :aria-label="t('lyricsModel')"
+      :title="t('lyricsModel')"
+      size="small"
+      class="mt-2 w-full"
+    />
     <FieldHelp id="gen-lyrics-idea-help" :hint="t('lyricsIdeaHint')" :more="t('lyricsIdeaMore')" />
     <small v-if="draftMessage" :class="['block', draftMessage.error ? 'danger' : 'muted']" role="status">{{
       draftMessage.text
