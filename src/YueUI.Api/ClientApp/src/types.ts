@@ -175,8 +175,12 @@ export interface SongRequest {
 }
 
 export interface RunInfo {
+  /** The run folder's name; stays when the run is renamed. */
   id: string
+  /** The title given in this app if there is one, else the worker's. */
   title: string
+  /** The worker's title, which the folder is named after; an emptied title returns to it. */
+  originalTitle: string
   createdAt: string | null
   style: string
   lyrics: string

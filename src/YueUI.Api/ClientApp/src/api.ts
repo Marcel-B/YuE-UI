@@ -87,6 +87,11 @@ export async function deleteRun(runId: string): Promise<void> {
   await send(`/api/runs/${runId}`, { method: 'DELETE' })
 }
 
+/** Gives the run a title of its own (the folder and song ids stay); an empty one returns it to the worker's. */
+export async function renameRun(runId: string, title: string): Promise<void> {
+  await send(`/api/runs/${runId}/title`, json('PUT', { title }))
+}
+
 /** The playlist's song ids in order; songs deleted since are left out. */
 export async function getPlaylist(): Promise<PlaylistInfo> {
   return (await send('/api/playlist')).json() as Promise<PlaylistInfo>

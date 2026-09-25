@@ -11,7 +11,7 @@ import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import { fromSongRequest, loadFormState, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
-import { current } from './player'
+import { current, retitle } from './player'
 import { loadPlaylist, playlistIds } from './playlist'
 import { navigate, view, type View } from './view'
 import type {
@@ -172,6 +172,7 @@ async function loadLibrary(): Promise<void> {
     // The free space is a hint only; the library shows without it.
     const [library, space] = await Promise.all([listLibrary(), getStorage().catch(() => null)])
     runs.value = library
+    retitle(library)
     storage.value = space
     libraryError.value = null
   } catch (caught) {

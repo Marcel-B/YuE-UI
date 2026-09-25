@@ -13,6 +13,7 @@ namespace YueUI.Api.Data;
 /// <see cref="EnsureCreated"/>, applied in order to a file an earlier release wrote; never edit an old step.
 /// Version 1: playlists and their songs. There is one playlist (<see cref="DefaultPlaylistId"/>) so far, the table
 /// is there so that more can follow without moving the songs.
+/// Version 2: titles given to runs in this app (<see cref="SqliteRunTitleStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -92,6 +93,19 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     );
                     INSERT INTO playlists (id, name) VALUES (1, 'Playlist');
                     PRAGMA user_version = 1;
+                    """);
+            }
+            if (current < 2)
+            {
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE run_titles (
+                        run_id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 2;
                     """);
             }
             _ready = true;

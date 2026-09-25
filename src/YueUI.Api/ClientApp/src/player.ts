@@ -21,6 +21,21 @@ export function libraryTracks(runs: RunInfo[]): Track[] {
 }
 
 /**
+ * A run renamed since its songs were queued: the player and the lock screen take the new title, without
+ * interrupting the song.
+ */
+export function retitle(runs: RunInfo[]): void {
+  const titles = new Map(runs.flatMap((run) => run.songs.map((song) => [song.id, run.title || t('untitled')] as const)))
+  if (!tracks.value.some((track) => titles.has(track.id) && titles.get(track.id) !== track.title)) {
+    return
+  }
+  tracks.value = tracks.value.map((track) => ({ ...track, title: titles.get(track.id) ?? track.title }))
+  if (current.value) {
+    showOnLockScreen(current.value)
+  }
+}
+
+/**
  * The one player of the page. It lives outside the pages (PlayerBar.vue in App.vue), so switching between them does
  * not stop the song; the list it was started from decides what plays next.
  */

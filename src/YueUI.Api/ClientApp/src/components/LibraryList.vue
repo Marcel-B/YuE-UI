@@ -6,6 +6,7 @@ import {
   deleteRun,
   deleteSong,
   downloadLogicProject,
+  renameRun,
   render,
   runZipUrl,
   scoreUrl,
@@ -183,6 +184,35 @@ function askDeleteSong(run: RunInfo, song: SongInfo): void {
   )
 }
 
+/** The run being renamed; the dialog shows while it is set. */
+const renaming = ref<RunInfo | null>(null)
+const newTitle = ref('')
+const savingTitle = ref(false)
+
+function startRename(run: RunInfo): void {
+  renaming.value = run
+  newTitle.value = run.title
+}
+
+async function saveTitle(): Promise<void> {
+  const run = renaming.value
+  if (!run) {
+    return
+  }
+  savingTitle.value = true
+  try {
+    const title = newTitle.value.trim()
+    // The library reloads on the server's event, in every open browser alike.
+    await renameRun(run.id, title)
+    renaming.value = null
+    emit('notice', t('renamed', { title: title || run.originalTitle || t('untitled') }))
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  } finally {
+    savingTitle.value = false
+  }
+}
+
 const severityByQuality: Record<string, string> = {
   draft: 'warning',
   full: 'success',
@@ -203,6 +233,13 @@ const severityByQuality: Record<string, string> = {
                 <span class="muted text-sm">{{ formatBytes(run.bytes) }}</span>
               </div>
               <div class="flex">
+                <Button
+                  icon="pi pi-pencil"
+                  v-tooltip="t('rename')"
+                  :aria-label="t('rename')"
+                  text
+                  @click="startRename(run)"
+                />
                 <Button
                   icon="pi pi-upload"
                   v-tooltip="t('useAsTemplate')"
@@ -356,6 +393,32 @@ const severityByQuality: Record<string, string> = {
         </Button>
       </template>
     </DataView>
+    <Dialog
+      :visible="renaming !== null"
+      modal
+      :header="t('rename')"
+      :draggable="false"
+      :style="{ width: 'min(28rem, calc(100vw - 2rem))' }"
+      @update:visible="(open: boolean) => !open && (renaming = null)"
+    >
+      <form v-if="renaming" class="flex flex-col gap-3" @submit.prevent="saveTitle">
+        <InputText
+          v-model="newTitle"
+          :placeholder="renaming.originalTitle"
+          :maxlength="200"
+          autofocus
+          fluid
+          aria-describedby="rename-hint"
+        />
+        <p id="rename-hint" class="muted text-sm m-0">
+          {{ t('renameHint', { title: renaming.originalTitle || t('untitled') }) }}
+        </p>
+        <div class="flex justify-end gap-2">
+          <Button type="button" :label="t('cancel')" severity="secondary" text @click="renaming = null" />
+          <Button type="submit" :label="t('save')" :loading="savingTitle" />
+        </div>
+      </form>
+    </Dialog>
   </section>
 </template>
 

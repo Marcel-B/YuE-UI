@@ -39,6 +39,87 @@ public sealed class LibraryEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_renamed_run_keeps_its_folder_and_ids_and_shows_the_new_title_everywhere()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        _app.AddSong(run, "song1");
+        await _client.PutAsJsonAsync("/api/playlist", new { songIds = new[] { $"{run}/song1" } });
+
+        var response = await _client.PutAsJsonAsync($"/api/runs/{run}/title", new { title = "  Neonnächte  " });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.True(Directory.Exists(Path.Combine(_app.OutputDir, run, "song1")));
+        var listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Equal(run, listed.Id);
+        Assert.Equal("Neonnächte", listed.Title);
+        Assert.Equal("Neon Night", listed.OriginalTitle);
+        Assert.Equal([$"{run}/song1"], (await _client.GetFromJsonAsync<PlaylistInfo>("/api/playlist"))!.SongIds);
+        var audio = await _client.GetAsync($"/api/songs/{run}/song1/audio?download=true");
+        Assert.Equal("Neonnächte-song1.flac", audio.Content.Headers.ContentDisposition!.FileNameStar);
+    }
+
+    [Fact]
+    public async Task An_empty_title_returns_the_run_to_the_workers()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        _app.AddSong(run, "song1");
+        await _client.PutAsJsonAsync($"/api/runs/{run}/title", new { title = "Neonnächte" });
+
+        var response = await _client.PutAsJsonAsync($"/api/runs/{run}/title", new { title = " " });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Equal("Neon Night", listed.Title);
+    }
+
+    [Fact]
+    public async Task A_deleted_run_forgets_its_title()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        _app.AddSong(run, "song1");
+        await _client.PutAsJsonAsync($"/api/runs/{run}/title", new { title = "Neonnächte" });
+
+        await _client.DeleteAsync($"/api/runs/{run}");
+        _app.AddSong(run, "song1");
+
+        var listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Equal("Neon Night", listed.Title);
+    }
+
+    [Theory]
+    [InlineData("20260921-165850-Other-Song")]
+    [InlineData("..")]
+    public async Task Renaming_a_run_that_does_not_exist_is_not_found(string run)
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1");
+
+        var response = await _client.PutAsJsonAsync($"/api/runs/{run}/title", new { title = "Neonnächte" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_title_longer_than_a_line_is_refused()
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1");
+
+        var response = await _client.PutAsJsonAsync("/api/runs/20260921-165850-Neon-Night/title", new { title = new string('a', 201) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_renamed_runs_request_carries_the_new_title()
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1");
+        await _client.PutAsJsonAsync("/api/runs/20260921-165850-Neon-Night/title", new { title = "Neonnächte" });
+
+        var request = await _client.GetFromJsonAsync<SongRequest>("/api/songs/20260921-165850-Neon-Night/song1/request", TestApp.Json);
+
+        Assert.Equal("Neonnächte", request!.Title);
+    }
+
+    [Fact]
     public async Task A_songs_request_is_read_in_the_forms_terms()
     {
         var directory = _app.AddSong("20260921-165850-Neon-Night", "song2");

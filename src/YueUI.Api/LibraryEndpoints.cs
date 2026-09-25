@@ -5,6 +5,9 @@ using YueUI.Api.Worker;
 
 namespace YueUI.Api;
 
+/// <param name="Title">The new title; empty returns the run to the worker's.</param>
+public sealed record RenameRequest(string? Title);
+
 /// <param name="FreeBytes">What the current user can still write.</param>
 public sealed record StorageInfo(long FreeBytes, long TotalBytes);
 
@@ -14,6 +17,9 @@ public sealed record StorageInfo(long FreeBytes, long TotalBytes);
 /// </summary>
 public static partial class LibraryEndpoints
 {
+    /// <summary>Titles show in one line on a phone; this is only a guard against pasting a whole text.</summary>
+    public const int MaxTitleLength = 200;
+
     public static RouteGroupBuilder MapLibraryEndpoints(this RouteGroupBuilder api)
     {
         api.MapGet("/library", (SongLibrary library) => library.ListRuns());
@@ -37,6 +43,8 @@ public static partial class LibraryEndpoints
             Delete(host, host.IsWorkingOn(run, song), () => library.DeleteSong(run, song)));
         api.MapDelete("/runs/{run}", (string run, SongLibrary library, WorkerHost host) =>
             Delete(host, host.IsWorkingOn(run), () => library.DeleteRun(run)));
+        api.MapPut("/runs/{run}/title", (string run, RenameRequest request, SongLibrary library, WorkerHost host) =>
+            Rename(library, host, run, request.Title?.Trim() ?? ""));
         api.MapGet("/storage", (YuePaths paths) => Storage(paths.OutputDir));
         return api;
     }
@@ -56,6 +64,28 @@ public static partial class LibraryEndpoints
             return Results.NotFound();
         }
         host.LibraryChanged();
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Only the title shown and used for file names changes; the folder keeps its name, so the song ids in the
+    /// playlist, in links and in the worker's states stay valid (see <see cref="Data.SqliteRunTitleStore"/>).
+    /// </summary>
+    private static IResult Rename(SongLibrary library, WorkerHost host, string run, string title)
+    {
+        if (title.Length > MaxTitleLength)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["title"] = [$"At most {MaxTitleLength} characters."],
+            });
+        }
+        if (!library.Rename(run, title))
+        {
+            return Results.NotFound();
+        }
+        var directories = library.SongDirectories(run);
+        host.RunRenamed(run, directories is { Count: > 0 } ? library.TitleOf(run, directories[0]) : title);
         return Results.NoContent();
     }
 

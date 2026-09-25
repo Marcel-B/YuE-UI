@@ -275,6 +275,11 @@ const messages = {
     noAudio: 'Kein Audio',
     showLyrics: 'Text',
     untitled: 'Ohne Titel',
+    rename: 'Umbenennen',
+    renameHint:
+      'Ändert nur den angezeigten Titel und die Dateinamen beim Herunterladen; Ordner, Playlist und Links bleiben. Leer lassen für den ursprünglichen Titel „{title}“.',
+    save: 'Speichern',
+    renamed: '„{title}“ ist umbenannt.',
     storage: '{used} belegt, {free} frei',
     deleteSong: 'Song löschen',
     deleteRun: 'Alle Songs löschen',
@@ -580,6 +585,11 @@ const messages = {
     noAudio: 'No audio',
     showLyrics: 'Lyrics',
     untitled: 'Untitled',
+    rename: 'Rename',
+    renameHint:
+      'Changes only the title shown and the names of downloaded files; the folder, playlist and links stay. Leave empty for the original title “{title}”.',
+    save: 'Save',
+    renamed: '“{title}” has been renamed.',
     storage: '{used} used, {free} free',
     deleteSong: 'Delete song',
     deleteRun: 'Delete all songs',
