@@ -321,11 +321,11 @@ async function useAsNewSong(songId: string): Promise<void> {
 
   <!--
     v-show rather than v-if: a page keeps what was typed or uploaded on it while another one is open.
-    On wide screens the advanced parameters sit left of the song's fields and the queue spans both columns below; on a
-    phone everything is one column, the song's fields first.
+    On wide screens the song's fields are the left column; the right one holds the advanced parameters, collapsed since
+    a normal song needs none of them, and the queue below. On a phone everything is one column in that order.
   -->
   <main v-show="view === 'create'" class="grid gap-4 grid-cols-1 md:grid-cols-2 items-start">
-    <Card class="md:col-start-2 md:row-start-1">
+    <Card>
       <template #title>
         <h2>
           <div class="flex justify-between">
@@ -348,38 +348,35 @@ async function useAsNewSong(songId: string): Promise<void> {
       </template>
     </Card>
 
-    <AdvancedParameters
-      v-model="form"
-      v-model:errors="fieldErrors"
-      :extensions="worker.extensions"
-      class="md:col-start-1 md:row-start-1"
-    />
+    <div class="flex min-w-0 flex-col gap-4">
+      <AdvancedParameters v-model="form" v-model:errors="fieldErrors" :extensions="worker.extensions" />
 
-    <Card class="md:col-span-2">
-      <template #title>
-        <div class="flex flex-wrap justify-between">
-          <h2>{{ t('queue') }}</h2>
-          <Button
-            icon="pi pi-stop-filled"
-            text
-            rounded
-            v-if="worker.busy"
-            @click="queueList?.run(queueList?.stopAll)"
+      <Card>
+        <template #title>
+          <div class="flex flex-wrap justify-between">
+            <h2>{{ t('queue') }}</h2>
+            <Button
+              icon="pi pi-stop-filled"
+              text
+              rounded
+              v-if="worker.busy"
+              @click="queueList?.run(queueList?.stopAll)"
+            />
+          </div>
+        </template>
+        <template #content>
+          <QueueList
+            ref="queueList"
+            :songs="queue"
+            :listed="listedIds"
+            :worker="worker"
+            :log="log"
+            @hide-finished="hideFinished"
+            @error="show($event, true)"
           />
-        </div>
-      </template>
-      <template #content>
-        <QueueList
-          ref="queueList"
-          :songs="queue"
-          :listed="listedIds"
-          :worker="worker"
-          :log="log"
-          @hide-finished="hideFinished"
-          @error="show($event, true)"
-        />
-      </template>
-    </Card>
+        </template>
+      </Card>
+    </div>
   </main>
 
   <main v-show="view === 'transcribe'">
