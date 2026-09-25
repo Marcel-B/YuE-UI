@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
-import { getStorage, listLibrary, subscribe } from './api'
+import { getLogicExport, getStorage, listLibrary, subscribe } from './api'
 import GenerateForm from './components/GenerateForm.vue'
 import LibraryList from './components/LibraryList.vue'
 import QueueList from './components/QueueList.vue'
@@ -114,6 +114,12 @@ const storageLabel = computed(() =>
       })
     : '',
 )
+
+/** Songs become Logic projects only when this server knows a yue-to-logic-pro; the library hides the button otherwise. */
+const logicExport = ref(false)
+getLogicExport()
+  .then((info) => (logicExport.value = info.configured))
+  .catch(() => (logicExport.value = false))
 
 async function loadLibrary(): Promise<void> {
   libraryLoading.value = true
@@ -297,9 +303,11 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
           :loading="libraryLoading"
           :error="libraryError"
           :busy-ids="busyIds"
+          :logic-export="logicExport"
           @template="useTemplate"
           @use-score="useSongScore"
           @deleted="onDeleted"
+          @notice="show($event)"
           @error="show($event, true)"
         />
       </template>

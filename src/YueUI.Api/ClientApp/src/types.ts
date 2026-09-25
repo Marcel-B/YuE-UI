@@ -167,6 +167,18 @@ export interface LyricsState {
 }
 
 /** The volume the songs are written to (LibraryEndpoints.cs). */
+/** Whether a yue-to-logic-pro server is configured, i.e. whether songs can become Logic projects. */
+export interface LogicExportInfo {
+  configured: boolean
+}
+
+/** A warning yue-to-logic-pro gave with a Logic project (its own record, PascalCase severity). */
+export interface LogicDiagnostic {
+  severity: 'Info' | 'Warning' | 'Error'
+  code: string
+  message: string
+}
+
 export interface StorageInfo {
   freeBytes: number
   totalBytes: number

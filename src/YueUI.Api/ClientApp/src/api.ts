@@ -1,6 +1,8 @@
 import type {
   GenerateRequest,
   LogEntry,
+  LogicDiagnostic,
+  LogicExportInfo,
   LyricsState,
   RunInfo,
   SongState,
@@ -97,6 +99,45 @@ export function songZipUrl(songId: string): string {
 /** Audio and score of every song of the run. */
 export function runZipUrl(runId: string): string {
   return `${apiBase}/api/runs/${runId}/zip`
+}
+
+export async function getLogicExport(): Promise<LogicExportInfo> {
+  return (await send('/api/logic')).json() as Promise<LogicExportInfo>
+}
+
+/**
+ * Has yue-to-logic-pro build a Logic Pro project from the song's audio and score and saves the ZIP. Fetched rather
+ * than linked: building takes a while, a refusal should become a message rather than a page of JSON, and the
+ * warnings travel in a header a link cannot read.
+ */
+export async function downloadLogicProject(songId: string): Promise<LogicDiagnostic[]> {
+  const response = await send(`/api/songs/${songId}/logic`)
+  const blob = await response.blob()
+  const name = fileName(response.headers.get('Content-Disposition')) ?? 'YuE.logicx.zip'
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.append(link)
+  link.click()
+  link.remove()
+  // Safari starts the download after click() returns; revoking at once can cancel it.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  const header = response.headers.get('X-YueToLogic-Diagnostics')
+  try {
+    return header ? (JSON.parse(header) as LogicDiagnostic[]) : []
+  } catch {
+    return []
+  }
+}
+
+/** The file name of a Content-Disposition header, preferring the UTF-8 form ASP.NET Core sends alongside. */
+function fileName(disposition: string | null): string | null {
+  const utf8 = disposition?.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8) {
+    return decodeURIComponent(utf8[1]!)
+  }
+  return disposition?.match(/filename="?([^";]+)"?/i)?.[1] ?? null
 }
 
 /** Uploads a recording for SheetSage2; its progress then arrives as `transcription` events. */

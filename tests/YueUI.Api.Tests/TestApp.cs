@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Worker;
 
@@ -43,6 +44,11 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public FakeStudio Studio { get; } = new();
 
     public FakeLmStudio LmStudio { get; } = new();
+
+    public FakeLogic Logic { get; } = new();
+
+    /// <summary>Where the fake yue-to-logic-pro is expected; set to null before the first request to switch the export off.</summary>
+    public string? LogicBaseUrl { get; set; } = "http://logic.test/";
 
     public FakeWorker Worker => Launcher.Current ?? throw new InvalidOperationException("No worker was started.");
 
@@ -104,6 +110,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
             });
             // A new handler each time: the factory disposes the ones it rotates out.
             services.AddHttpClient(LyricsWriter.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLmStudio.Handler(LmStudio));
+            services.Configure<LogicOptions>(options => options.BaseUrl = LogicBaseUrl);
+            services.AddHttpClient(LogicEndpoints.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLogic.Handler(Logic));
             if (_fakeWorker)
             {
                 services.AddSingleton<IWorkerLauncher>(Launcher);
@@ -299,5 +307,62 @@ public sealed class FakeLmStudio : ILmStudioStarter
 
         private static HttpResponseMessage Json(HttpStatusCode status, object value) =>
             new(status) { Content = JsonContent.Create(value) };
+    }
+}
+
+/// <summary>yue-to-logic-pro's <c>POST /api/convert/logic</c>: records the form it gets and answers as told.</summary>
+public sealed class FakeLogic
+{
+    public bool Running { get; set; } = true;
+
+    public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
+
+    /// <summary>The body of a refusal (JSON), or of the ZIP.</summary>
+    public string? Body { get; set; }
+
+    public string? Diagnostics { get; set; }
+
+    public byte[] Zip { get; set; } = [.. "PK"u8, 3, 4, 1, 2, 3];
+
+    public Uri? RequestUri { get; private set; }
+
+    /// <summary>The form fields by name; files as their bytes.</summary>
+    public Dictionary<string, byte[]> Form { get; } = [];
+
+    public Dictionary<string, string?> FileNames { get; } = [];
+
+    public string Field(string name) => System.Text.Encoding.UTF8.GetString(Form[name]);
+
+    public sealed class Handler(FakeLogic logic) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (!logic.Running)
+            {
+                throw new HttpRequestException("Connection refused");
+            }
+            logic.RequestUri = request.RequestUri;
+            // The in-memory handler gets the very content object the server built.
+            foreach (var part in (MultipartFormDataContent)request.Content!)
+            {
+                var name = part.Headers.ContentDisposition!.Name!.Trim('"');
+                logic.Form[name] = await part.ReadAsByteArrayAsync(cancellationToken);
+                logic.FileNames[name] = part.Headers.ContentDisposition.FileName?.Trim('"');
+            }
+            if (logic.Status != HttpStatusCode.OK)
+            {
+                return new HttpResponseMessage(logic.Status)
+                {
+                    Content = new StringContent(logic.Body ?? "", System.Text.Encoding.UTF8, "application/json"),
+                };
+            }
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(logic.Zip) };
+            response.Content.Headers.ContentType = new("application/zip");
+            if (logic.Diagnostics is { } diagnostics)
+            {
+                response.Headers.Add(LogicEndpoints.DiagnosticsHeader, diagnostics);
+            }
+            return response;
+        }
     }
 }

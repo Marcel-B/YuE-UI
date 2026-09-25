@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using YueUI.Api;
 using YueUI.Api.Library;
+using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Worker;
 
@@ -25,6 +26,9 @@ builder.Services.Configure<LyricsOptions>(builder.Configuration.GetSection(Lyric
 builder.Services.AddSingleton<ILmStudioStarter, LmsCli>();
 builder.Services.AddSingleton<LyricsWriter>();
 builder.Services.AddHttpClient(LyricsWriter.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
+// Logic Pro projects from yue-to-logic-pro; uploading a long FLAC to it and building the project take minutes.
+builder.Services.Configure<LogicOptions>(builder.Configuration.GetSection(LogicOptions.Section));
+builder.Services.AddHttpClient(LogicEndpoints.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
@@ -49,6 +53,7 @@ api.MapWorkerEndpoints();
 api.MapLibraryEndpoints();
 api.MapTranscriptionEndpoints();
 api.MapLyricsEndpoints();
+api.MapLogicEndpoints();
 
 app.MapClientApp();
 

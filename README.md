@@ -67,6 +67,12 @@ YuE2 singt Texte, schreibt aber selbst keine. Über dem Songtext-Feld steht desh
 
 LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet YuE UI ihn mit `~/.lmstudio/bin/lms daemon up` und `lms server start`. YuE UI lädt das Modell (Standard: das kleine `google/gemma-4-e4b`) erst für die Anfrage, mit einem Kontext von 8192 Tokens, und entlädt es gleich danach wieder; ein Modell, das in LM Studio schon geladen ist, nutzt es mit und lässt es geladen. Die großen Modelle (etwa `google/gemma-4-26b-a4b-qat`, rund 15 GB) haben einen Mac mit 24 GB zusammen mit den üblichen offenen Apps bis zum Einfrieren in den Swap getrieben; wer sie nutzen will, schließt vorher möglichst viel. Weigert sich LM Studio wegen zu wenig Speicher, zeigt die Oberfläche seine Meldung. Außerdem gilt: Solange YuE2 rechnet, gibt es keinen Entwurf; ein ruhender Worker wird vorher beendet; und solange ein Entwurf entsteht, startet kein Song. Der erste Entwurf dauert durch das Laden des Modells etwas länger.
 
+## Als Logic-Projekt laden
+
+Steht unter `Logic:BaseUrl` ein Server von [yue-to-logic-pro](https://github.com/Marcel-B/yue-to-logic-pro), zeigt die Bibliothek bei jedem Song mit Audio und Partitur einen Knopf **Als Logic-Projekt laden**. YuE UI schickt `audio.flac` und `score.abc` direkt von Server zu Server dorthin; der Browser muss die FLAC also nicht erst herunter- und wieder hochladen. Zurück kommt ein ZIP mit dem `.logicx`-Projekt: Audio auf der ersten Spur, Gesang, Instrument und Akkorde als MIDI, Tempo, Takt und Abschnitte aus der Partitur. Das Tempo wird an die gemessene Länge der Aufnahme angepasst (`Logic:FitTempo`), damit MIDI und Audio nicht auseinanderlaufen. Hinweise von yue-to-logic-pro zeigt die Oberfläche nach dem Download an; lehnt es einen Song ab (etwa eine Partitur, die es nicht lesen kann), steht der Grund in der Fehlermeldung.
+
+yue-to-logic-pro verlangt keinen Schlüssel. Läuft es hinter einem Proxy, muss der Uploads in FLAC-Größe durchlassen (bei Nginx Proxy Manager `client_max_body_size 300m;`). Ohne `Logic:BaseUrl` gibt es den Knopf nicht.
+
 ## Konfiguration
 
 `appsettings.json` bzw. Umgebungsvariablen:
@@ -82,6 +88,9 @@ LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet
 | `Lyrics:ContextLength` (`Lyrics__ContextLength`) | `8192` | Kontext, mit dem das Modell geladen wird; bis auf 1024 Tokens für den Prompt darf die Antwort samt Denkphase ihn ganz nutzen |
 | `Lyrics:ApiToken` (`Lyrics__ApiToken`) | – | nur nötig, wenn in LM Studio „Require Authentication“ an ist |
 | `Lyrics:Lms` (`Lyrics__Lms`) | `~/.lmstudio/bin/lms` | Kommandozeilenwerkzeug, mit dem YuE UI den Server von LM Studio startet |
+| `Logic:BaseUrl` (`Logic__BaseUrl`) | – | Server von yue-to-logic-pro ohne `/api`, z. B. `https://music.idsrv.info`; leer schaltet den Logic-Export ab |
+| `Logic:FitTempo` (`Logic__FitTempo`) | `true` | Tempo an die Länge der Aufnahme anpassen |
+| `Logic:SplitSections` (`Logic__SplitSections`) | `false` | eine Region je Songabschnitt statt einer je Spur |
 
 ## API
 
@@ -105,6 +114,8 @@ LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet
 | `GET` | `/api/songs/{run}/{song}/score` | `score.abc` |
 | `GET` | `/api/songs/{run}/{song}/zip` | FLAC und ABC des Songs als ZIP |
 | `GET` | `/api/runs/{run}/zip` | FLAC und ABC aller Songs des Laufs als ZIP |
+| `GET` | `/api/logic` | `{ configured }`: ob ein Server von yue-to-logic-pro eingetragen ist |
+| `GET` | `/api/songs/{run}/{song}/logic` | Song als Logic-Projekt (ZIP mit `.logicx`), gebaut von yue-to-logic-pro; Hinweise im Header `X-YueToLogic-Diagnostics`; `422`, wenn yue-to-logic-pro den Song ablehnt, `501` ohne Server, `502`/`504`, wenn er nicht oder zu spät antwortet |
 | `DELETE` | `/api/songs/{run}/{song}` | Song löschen, mit dem letzten auch den Lauf; `409`, solange der Worker daran arbeitet |
 | `DELETE` | `/api/runs/{run}` | Lauf mit allen Songs löschen; `409`, solange der Worker an einem davon arbeitet |
 | `GET` | `/api/storage` | `{ freeBytes, totalBytes }` des Datenträgers der Bibliothek |
