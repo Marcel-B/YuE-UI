@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watchEffect } from 'vue'
-import { formatDuration, stageLabel, t } from '../i18n'
+import { formatDuration, stageLabel, stepLabel } from '../i18n'
 import type { SongState, Stage } from '../types'
 
 const props = defineProps<{ song: SongState }>()
@@ -15,7 +15,7 @@ const RENDER_PIPELINE: Stage[] = ['synth', 'decode']
 
 type Step = {
   stage: Stage
-  state: 'done' | 'current' | 'pending' | 'end'
+  state: 'done' | 'current' | 'pending'
   /** Seconds the stage took, or has taken so far. */
   seconds?: number
 }
@@ -40,13 +40,13 @@ function seconds(from: string, to: string | number): number {
 const steps = computed<Step[]>(() => {
   const song = props.song
   const history = song.stages ?? []
-  const steps: Step[] = history.map((entry, i) => {
+  // A finished song's last entry is its end (ready, failed, cancelled); the queue says that in the line above,
+  // and a sixth step would not fit a phone's width.
+  const shown = song.finished ? history.slice(0, -1) : history
+  const steps: Step[] = shown.map((entry, i) => {
     const next = history[i + 1]
-    if (next) {
-      return { stage: entry.stage, state: 'done', seconds: seconds(entry.startedAt, next.startedAt) }
-    }
-    return song.finished
-      ? { stage: entry.stage, state: 'end' }
+    return next
+      ? { stage: entry.stage, state: 'done', seconds: seconds(entry.startedAt, next.startedAt) }
       : { stage: entry.stage, state: 'current', seconds: seconds(entry.startedAt, now.value) }
   })
   if (!song.finished) {
@@ -57,60 +57,74 @@ const steps = computed<Step[]>(() => {
   return steps
 })
 
-/** From joining the queue to the end, once finished. */
-const total = computed(() => {
-  const history = props.song.stages ?? []
-  const first = history[0]
-  const last = history[history.length - 1]
-  return props.song.finished && first && last ? seconds(first.startedAt, last.startedAt) : undefined
-})
+const RADIUS = 8.5
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 function icon(step: Step): string {
   if (step.state === 'done') return 'pi pi-check'
   if (step.state === 'current') return 'pi pi-spin pi-spinner'
-  if (step.state === 'pending') return 'pi pi-circle'
-  return step.stage === 'ready' ? 'pi pi-check-circle' : step.stage === 'failed' ? 'pi pi-times-circle' : 'pi pi-ban'
+  return 'pi pi-circle'
 }
 
 function iconColor(step: Step): string {
-  if (step.state === 'pending') return 'text-muted-color'
-  if (step.state === 'end' && step.stage === 'failed') return 'text-red-500'
-  if (step.state === 'end' && step.stage === 'cancelled') return 'text-muted-color'
-  return 'text-primary'
+  return step.state === 'pending' ? 'text-muted-color' : 'text-primary'
 }
 </script>
 
 <template>
-  <Timeline :value="steps" class="mt-2" :pt="{ eventOpposite: { class: 'hidden' } }">
+  <Timeline
+    :value="steps"
+    layout="horizontal"
+    class="mt-3"
+    :pt="{
+      event: { class: 'flex-1 min-w-0' },
+      eventOpposite: { class: 'hidden' },
+      eventContent: { class: 'min-w-0' },
+    }"
+  >
     <template #marker="{ item }">
-      <i :class="[icon(item), iconColor(item), 'text-sm']" aria-hidden="true" />
+      <!-- The running stage's marker is its progress: a ring that fills as the worker reports it. Waiting has no
+           fraction to show, so it spins. -->
+      <svg
+        v-if="item.state === 'current' && item.stage !== 'queued'"
+        viewBox="0 0 20 20"
+        class="size-4 -rotate-90 text-primary"
+        role="progressbar"
+        :aria-valuenow="Math.round(song.fraction * 100)"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-label="stageLabel(item.stage)"
+      >
+        <circle cx="10" cy="10" :r="RADIUS" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
+        <circle
+          cx="10"
+          cy="10"
+          :r="RADIUS"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3"
+          :stroke-dasharray="CIRCUMFERENCE"
+          :stroke-dashoffset="CIRCUMFERENCE * (1 - Math.min(1, Math.max(0, song.fraction)))"
+          class="transition-[stroke-dashoffset] duration-300"
+        />
+      </svg>
+      <span v-else class="inline-flex size-4 items-center justify-center">
+        <i :class="[icon(item), iconColor(item), 'text-sm']" aria-hidden="true" />
+      </span>
     </template>
     <template #content="{ item }">
-      <div class="pb-2">
-        <div class="flex gap-2 items-baseline">
-          <span :class="['text-sm', item.state === 'pending' ? 'text-muted-color' : 'font-medium']">
-            {{ stageLabel(item.stage) }}
-          </span>
-          <span v-if="item.seconds !== undefined" class="text-sm text-muted-color tabular-nums">
-            {{ formatDuration(item.seconds) }}
-          </span>
-          <span v-if="item.state === 'end' && total !== undefined" class="text-sm text-muted-color">
-            {{ t('stageTotal', { time: formatDuration(total) }) }}
-          </span>
+      <div class="pr-1 text-xs leading-tight sm:text-sm" :title="stageLabel(item.stage)">
+        <div :class="item.state === 'pending' ? 'text-muted-color' : 'font-medium'">
+          {{ stepLabel(item.stage) }}
         </div>
-        <template v-if="item.state === 'current'">
-          <div class="text-sm text-muted-color">
-            <span v-if="song.engine">{{ song.engine }} · </span>{{ song.detail }}
-          </div>
-          <ProgressBar
-            v-if="item.stage !== 'queued'"
-            :value="Math.round(song.fraction * 100)"
-            :show-value="false"
-            class="h-1.5 mt-1"
-            :aria-label="stageLabel(item.stage)"
-          />
-        </template>
+        <div v-if="item.seconds !== undefined" class="text-muted-color tabular-nums">
+          {{ formatDuration(item.seconds) }}
+        </div>
       </div>
     </template>
   </Timeline>
+  <div v-if="!song.finished && (song.engine || song.detail)" class="mt-1 mb-3 text-sm text-muted-color">
+    <span v-if="song.engine">{{ song.engine }}</span>
+    <span v-if="song.engine && song.detail"> · </span>{{ song.detail }}
+  </div>
 </template>

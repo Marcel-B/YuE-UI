@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { cancel, shutdownWorker, stopAll } from '../api'
-import { formatTime, stageLabel, t } from '../i18n'
+import { formatDuration, formatTime, stageLabel, t } from '../i18n'
 import SongTimeline from './SongTimeline.vue'
 import type { LogEntry, SongState, WorkerInfo } from '../types'
 
@@ -19,6 +19,16 @@ const emit = defineEmits<{
 }>()
 
 const hasFinished = computed(() => props.songs.some((s) => s.finished))
+
+/** From joining the queue to the end, or null for a song without its stages (a server from before they were kept). */
+function totalTime(song: SongState): string | null {
+  const first = song.stages?.[0]
+  const last = song.stages?.[song.stages.length - 1]
+  if (!first || !last || first === last) {
+    return null
+  }
+  return formatDuration((new Date(last.startedAt).getTime() - new Date(first.startedAt).getTime()) / 1000)
+}
 
 /** Finished songs fold to one line; their steps (and how long each took) open on request. */
 const expanded = ref(new Set<string>())
@@ -81,8 +91,11 @@ watch(
             @click="run(() => cancel(song.id))"
           />
         </div>
-        <div v-if="song.finished" class="flex gap-3 items-center">
+        <div v-if="song.finished" class="flex flex-wrap gap-x-3 items-center">
           <span class="text-sm font-medium">{{ stageLabel(song.stage) }}</span>
+          <span v-if="totalTime(song)" class="text-sm text-muted-color whitespace-nowrap">{{
+            t('stageTotal', { time: totalTime(song)! })
+          }}</span>
           <span class="muted detail">{{ song.message ?? song.detail }}</span>
           <Button
             v-if="song.stages?.length"

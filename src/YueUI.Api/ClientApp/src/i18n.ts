@@ -236,8 +236,17 @@ const messages = {
     stage_failed: 'Fehlgeschlagen',
     stage_cancelled: 'Abgebrochen',
     stageTotal: 'insgesamt {time}',
+    // Short names for the timeline, where five steps share a phone's width.
+    step_queued: 'Warten',
+    step_planning: 'Partitur',
+    step_tokens: 'Tokens',
+    step_synth: 'Synthese',
+    step_decode: 'Audio',
+    step_ready: 'Fertig',
+    step_failed: 'Fehler',
+    step_cancelled: 'Abbruch',
     showSteps: 'Schritte',
-    hideSteps: 'Schritte ausblenden',
+    hideSteps: 'Ausblenden',
 
     library: 'Bibliothek',
     libraryEmpty: 'Noch keine Songs.',
@@ -527,8 +536,16 @@ const messages = {
     stage_failed: 'Failed',
     stage_cancelled: 'Cancelled',
     stageTotal: '{time} in total',
+    step_queued: 'Wait',
+    step_planning: 'Score',
+    step_tokens: 'Tokens',
+    step_synth: 'Synth',
+    step_decode: 'Audio',
+    step_ready: 'Done',
+    step_failed: 'Failed',
+    step_cancelled: 'Stopped',
     showSteps: 'Steps',
-    hideSteps: 'Hide steps',
+    hideSteps: 'Hide',
 
     library: 'Library',
     libraryEmpty: 'No songs yet.',
@@ -622,6 +639,11 @@ export function t(key: MessageKey, params: Record<string, string | number> = {})
 
 export function stageLabel(stage: Stage): string {
   return t(`stage_${stage}`)
+}
+
+/** The short name of a stage in the song timeline; `stageLabel` says the same in full. */
+export function stepLabel(stage: Stage): string {
+  return t(`step_${stage}`)
 }
 
 export function workerLabel(status: WorkerStatus, busy: boolean): string {
