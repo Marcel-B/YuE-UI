@@ -4,7 +4,8 @@ namespace YueUI.Api;
 
 /// <param name="Keywords">Topic, images, story: what the song is about.</param>
 /// <param name="Style">The form's style prompt, so the words fit the mood; optional.</param>
-public sealed record LyricsRequest(string? Keywords, string? Style);
+/// <param name="Language">The language the lyrics are written in; English when left out.</param>
+public sealed record LyricsRequest(string? Keywords, string? Style, LyricsLanguage? Language = null);
 
 /// <summary>
 /// Drafting lyrics with a local language model (LM Studio), see <see cref="LyricsWriter"/>. Like the worker's
@@ -27,7 +28,7 @@ public static class LyricsEndpoints
             }
             try
             {
-                return Results.Accepted(value: writer.Start(request.Keywords, request.Style));
+                return Results.Accepted(value: writer.Start(request.Keywords, request.Style, request.Language ?? LyricsLanguage.English));
             }
             catch (LyricsBusyException exception)
             {

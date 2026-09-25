@@ -155,6 +155,9 @@ export interface RunInfo {
   bytes: number
 }
 
+/** What a lyrics draft is written in (Lyrics/LyricsLanguage.cs). */
+export type LyricsLanguage = 'english' | 'german'
+
 /** The last lyrics draft from the local language model (Worker/WorkerModels.cs); it arrives as `lyrics` events. */
 export interface LyricsState {
   id: string

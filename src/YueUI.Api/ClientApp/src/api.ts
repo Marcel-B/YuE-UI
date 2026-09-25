@@ -3,6 +3,7 @@ import type {
   LogEntry,
   LogicDiagnostic,
   LogicExportInfo,
+  LyricsLanguage,
   LyricsState,
   RunInfo,
   SongState,
@@ -34,11 +35,11 @@ export async function generate(request: GenerateRequest): Promise<void> {
 }
 
 /**
- * Starts English lyrics in YuE2's format from a few keywords, written by the language model in LM Studio; the draft
+ * Starts English or German lyrics in YuE2's format from a few keywords, written by the language model in LM Studio; the draft
  * arrives as a `lyrics` event. Refused (409) while YuE2 generates or another draft is being written.
  */
-export async function draftLyrics(keywords: string, style: string): Promise<LyricsState> {
-  return (await send('/api/lyrics', json('POST', { keywords, style }))).json() as Promise<LyricsState>
+export async function draftLyrics(keywords: string, style: string, language: LyricsLanguage): Promise<LyricsState> {
+  return (await send('/api/lyrics', json('POST', { keywords, style, language }))).json() as Promise<LyricsState>
 }
 
 /** Synthesizes a finished song again from its saved tokens, normally a draft at full quality. */

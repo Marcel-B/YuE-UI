@@ -59,9 +59,13 @@ const messages = {
     lyricsIdea: 'Worum geht es?',
     lyricsIdeaPlaceholder: 'z. B. Nachtzug, Abschied von zu Hause, Hoffnung',
     lyricsIdeaHint:
-      'Stichwörter oder ein Satz – ein Sprachmodell auf dem Mac schreibt daraus einen englischen Songtext.',
+      'Stichwörter oder ein Satz – ein Sprachmodell auf dem Mac schreibt daraus einen Songtext, auf Englisch oder Deutsch.',
     lyricsIdeaMore:
-      'Der Entwurf entsteht in LM Studio auf dem Mac, mit dem Modell aus „Lyrics“ in appsettings.json (Standard: Gemma 4 E4B); LM Studio startet bei Bedarf von selbst. Der Stil fließt mit ein, damit Stimmung und Tempo passen. Sprachmodell und YuE2 passen nicht gleichzeitig in den Speicher: Während YuE2 rechnet, geht es deshalb nicht, ein ruhender Worker wird vorher beendet, und das Modell wird gleich danach wieder entladen. Durch das Laden dauert ein Entwurf etwas. Der Text landet im Songtext-Feld und lässt sich dort weiter bearbeiten.',
+      'Der Entwurf entsteht in LM Studio auf dem Mac, mit dem Modell aus „Lyrics“ in appsettings.json (Standard: Gemma 4 E4B); LM Studio startet bei Bedarf von selbst. Der Stil fließt mit ein, damit Stimmung und Tempo passen. Sprachmodell und YuE2 passen nicht gleichzeitig in den Speicher: Während YuE2 rechnet, geht es deshalb nicht, ein ruhender Worker wird vorher beendet, und das Modell wird gleich danach wieder entladen. Durch das Laden dauert ein Entwurf etwas. Der Text landet im Songtext-Feld und lässt sich dort weiter bearbeiten.\n\nEN oder DE wählt die Sprache des Entwurfs; die Abschnittsmarken wie [Verse] bleiben englisch, weil YuE2 sie so liest. Damit YuE2 deutsch singt, gehört „German“ an den Anfang des Stils (Bausteine → Sprache).',
+    lyricsLanguage: 'Sprache des Entwurfs',
+    lyricsLanguageEnglish: 'EN',
+    lyricsLanguageGerman: 'DE',
+    lyricsDraftedGerman: 'Entwurf eingesetzt. Setz noch „German“ in den Stil, damit YuE2 deutsch singt.',
     draftLyrics: 'Text entwerfen',
     draftingLyrics: 'Schreibt …',
     draftBusy: 'Während YuE2 rechnet, ist kein Platz für das Sprachmodell.',
@@ -310,9 +314,14 @@ const messages = {
       'The lyrics decide what is sung and, through their sections, the form of the song – and with it its length. Common tags: [Intro], [Verse], [Pre-Chorus], [Chorus], [Bridge], [Outro].\n\nExample (“City Lights” from the YuE2 examples):\n[Verse]\nNeon fades along the lane\nFootsteps keep the time of rain\nFold the night and leave it here\nMorning has a sky to clear\n\n[Chorus]\nLet the day come into view\nEvery road begins with you\nHold a little room for light\nWe will sing beyond the night',
     lyricsIdea: 'What is it about?',
     lyricsIdeaPlaceholder: 'e.g. night train, leaving home, hope',
-    lyricsIdeaHint: 'Keywords or a sentence – a language model on the Mac writes English lyrics from them.',
+    lyricsIdeaHint:
+      'Keywords or a sentence – a language model on the Mac writes lyrics from them, in English or German.',
     lyricsIdeaMore:
-      'The draft is written in LM Studio on the Mac, with the model set under “Lyrics” in appsettings.json (default: Gemma 4 E4B); LM Studio starts by itself when needed. The style is passed along so that mood and pace fit. The language model and YuE2 do not fit into memory together: so it cannot run while YuE2 is generating, an idle worker is stopped first, and the model is unloaded right after. Loading it makes a draft take a moment. The lyrics land in the lyrics field, where they can be edited.',
+      'The draft is written in LM Studio on the Mac, with the model set under “Lyrics” in appsettings.json (default: Gemma 4 E4B); LM Studio starts by itself when needed. The style is passed along so that mood and pace fit. The language model and YuE2 do not fit into memory together: so it cannot run while YuE2 is generating, an idle worker is stopped first, and the model is unloaded right after. Loading it makes a draft take a moment. The lyrics land in the lyrics field, where they can be edited.\n\nEN or DE picks the language of the draft; section tags such as [Verse] stay English, since that is how YuE2 reads them. For YuE2 to sing in German, put “German” at the start of the style (Building blocks → Language).',
+    lyricsLanguage: 'Language of the draft',
+    lyricsLanguageEnglish: 'EN',
+    lyricsLanguageGerman: 'DE',
+    lyricsDraftedGerman: 'Draft inserted. Add “German” to the style so that YuE2 sings it in German.',
     draftLyrics: 'Draft lyrics',
     draftingLyrics: 'Writing …',
     draftBusy: 'While YuE2 is generating there is no room for the language model.',
