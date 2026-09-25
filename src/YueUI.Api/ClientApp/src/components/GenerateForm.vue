@@ -22,7 +22,7 @@ import SamplingFields from './SamplingFields.vue'
 import StyleBlocks from './StyleBlocks.vue'
 import { Checkbox } from 'primevue'
 import SelectButton from 'primevue/selectbutton'
-import { InputNumber } from 'primevue'
+import NumberField from './NumberField.vue'
 
 const props = defineProps<{
   /** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
@@ -387,20 +387,11 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
 
         <div>
           <FloatLabel variant="on" class="mt-6">
-            <InputNumber
+            <NumberField
               id="gen-steps"
-              v-model.number="steps"
-              type="number"
+              v-model="steps"
               :min="1"
               :max="form.quality === 'draft' ? 32 : 64"
-              :minFractionDigits="0"
-              :pt="{
-                pcInputText: {
-                  root: {
-                    inputmode: 'decimal',
-                  },
-                },
-              }"
               aria-describedby="gen-steps-help"
             />
             <label for="gen-steps">{{ form.quality === 'draft' ? t('stepsDraft') : t('stepsFull') }}</label>

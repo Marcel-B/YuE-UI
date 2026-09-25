@@ -2,7 +2,7 @@
 import { defaultSampling, type Sampling, type SamplingPhase } from '../form'
 import { locale, t, type MessageKey } from '../i18n'
 import FieldHelp from './FieldHelp.vue'
-import { InputNumber } from 'primevue'
+import NumberField from './NumberField.vue'
 import FloatLabel from 'primevue/floatlabel'
 
 /** The five values of one of the model's sampling settings, each with its default and documentation. */
@@ -16,7 +16,8 @@ interface Field {
   more: MessageKey
   min: number
   max: number
-  step: number
+  /** Decimal places the field keeps; 0 for whole numbers. */
+  digits: number
 }
 
 // The ranges YuE2's Sampling accepts (the API checks them as well); top-k capped at a sensible 1000.
@@ -28,10 +29,10 @@ const fields: Field[] = [
     more: 'temperatureMore',
     min: 0,
     max: 5,
-    step: 0.05,
+    digits: 2,
   },
-  { key: 'topP', label: 'topP', hint: 'topPHint', more: 'topPMore', min: 0.01, max: 1, step: 0.01 },
-  { key: 'topK', label: 'topK', hint: 'topKHint', more: 'topKMore', min: 1, max: 1000, step: 1 },
+  { key: 'topP', label: 'topP', hint: 'topPHint', more: 'topPMore', min: 0.01, max: 1, digits: 2 },
+  { key: 'topK', label: 'topK', hint: 'topKHint', more: 'topKMore', min: 1, max: 1000, digits: 0 },
   {
     key: 'repetitionPenalty',
     label: 'repetitionPenalty',
@@ -39,7 +40,7 @@ const fields: Field[] = [
     more: 'repetitionPenaltyMore',
     min: 0.01,
     max: 5,
-    step: 0.005,
+    digits: 3,
   },
   {
     key: 'penaltyWindow',
@@ -48,7 +49,7 @@ const fields: Field[] = [
     more: 'penaltyWindowMore',
     min: 1,
     max: 100,
-    step: 1,
+    digits: 0,
   },
 ]
 
@@ -58,7 +59,9 @@ function id(field: Field): string {
 
 function hint(field: Field): string {
   // As the number field shows it: 0,95 in German.
-  const value = defaultSampling[props.phase][field.key].toLocaleString(locale.value, { maximumFractionDigits: 3 })
+  const value = defaultSampling[props.phase][field.key].toLocaleString(locale.value, {
+    maximumFractionDigits: field.digits,
+  })
   return `${t(field.hint)} ${t('samplingDefault', { value })}`
 }
 </script>
@@ -67,22 +70,13 @@ function hint(field: Field): string {
   <div class="grid grid-cols-2 gap-3 gap-y-5">
     <div v-for="field in fields" :key="field.key" class="field">
       <FloatLabel variant="on">
-        <InputNumber
+        <NumberField
           :id="id(field)"
-          v-model.number="sampling[field.key]"
-          type="number"
-          inputmode="decimal"
+          v-model="sampling[field.key]"
           :min="field.min"
           :max="field.max"
-          :step="field.step"
+          :fraction-digits="field.digits"
           :disabled="disabled"
-          :pt="{
-            pcInputText: {
-              root: {
-                inputmode: 'decimal',
-              },
-            },
-          }"
           :aria-describedby="`${id(field)}-help`"
         />
         <label :for="id(field)">{{ t(field.label) }}</label>
