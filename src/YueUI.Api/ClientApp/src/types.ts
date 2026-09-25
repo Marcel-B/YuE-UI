@@ -158,6 +158,22 @@ export interface RunInfo {
 /** What a lyrics draft is written in (Lyrics/LyricsLanguage.cs). */
 export type LyricsLanguage = 'english' | 'german'
 
+/** A language model LM Studio offers for drafts (Lyrics/LyricsModels.cs). */
+export interface LyricsModel {
+  id: string
+  name: string
+  /** Size on disk, roughly what it takes in memory; null when the server does not say. */
+  sizeBytes: number | null
+  /** Already loaded in LM Studio, so a draft uses it without loading. */
+  loaded: boolean
+}
+
+/** What the lyrics model picker offers; `default` is the configured model, used when a draft names none. */
+export interface LyricsModels {
+  default: string
+  models: LyricsModel[]
+}
+
 /** The last lyrics draft from the local language model (Worker/WorkerModels.cs); it arrives as `lyrics` events. */
 export interface LyricsState {
   id: string

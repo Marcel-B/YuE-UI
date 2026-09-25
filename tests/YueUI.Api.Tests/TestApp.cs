@@ -280,9 +280,18 @@ public sealed class FakeLmStudio : ILmStudioStarter
                 case "/api/v1/models" when request.Method == HttpMethod.Get:
                     return Json(HttpStatusCode.OK, new
                     {
-                        models = new[]
+                        models = new object[]
                         {
-                            new { key = "google/gemma-4-e4b", loaded_instances = lm.LoadedInstance is { } id ? new[] { new { id } } : [] },
+                            new
+                            {
+                                type = "llm",
+                                key = "google/gemma-4-e4b",
+                                display_name = "Gemma 4 E4B",
+                                size_bytes = 5_000_000_000L,
+                                loaded_instances = lm.LoadedInstance is { } id ? new object[] { new { id } } : [],
+                            },
+                            new { type = "llm", key = "qwen/qwen3-8b", display_name = "Qwen3 8B", size_bytes = 5_500_000_000L, loaded_instances = Array.Empty<object>() },
+                            new { type = "embedding", key = "text-embedding-nomic", display_name = "Nomic Embed", size_bytes = 80_000_000L, loaded_instances = Array.Empty<object>() },
                         },
                     });
                 case "/api/v1/models/load":

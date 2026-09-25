@@ -9,6 +9,8 @@ export interface FormState {
   lyricsIdea: string
   /** The language of the next lyrics draft; not sent with the song, the style's language tag is. */
   lyricsLanguage: LyricsLanguage
+  /** The model for lyrics drafts; empty for the server's configured one, so a changed default reaches the form. */
+  lyricsModel: string
   /** The draft this browser asked for and still waits for; kept so that it lands even after a reload. */
   lyricsDraftId: string
   instrumental: boolean
@@ -78,6 +80,7 @@ export function defaultFormState(): FormState {
     lyrics: '',
     lyricsIdea: '',
     lyricsLanguage: 'english',
+    lyricsModel: '',
     lyricsDraftId: '',
     instrumental: false,
     quality: 'draft',
