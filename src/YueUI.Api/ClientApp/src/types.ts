@@ -155,6 +155,11 @@ export interface RunInfo {
   bytes: number
 }
 
+/** The playlist (PlaylistEndpoints.cs): song ids (`run/songN`) in the order they play. */
+export interface PlaylistInfo {
+  songIds: string[]
+}
+
 /** What a lyrics draft is written in (Lyrics/LyricsLanguage.cs). */
 export type LyricsLanguage = 'english' | 'german'
 

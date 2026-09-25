@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using YueUI.Api.Data;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
@@ -118,6 +119,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
             services.Configure<PushOptions>(options => options.DataPath = Path.Combine(Root, "push.json"));
             services.AddSingleton<IPushSender>(Push);
+            services.Configure<DataOptions>(options => options.Path = Path.Combine(Root, "yueui.db"));
             if (_fakeWorker)
             {
                 services.AddSingleton<IWorkerLauncher>(Launcher);

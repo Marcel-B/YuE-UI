@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using YueUI.Api;
+using YueUI.Api.Data;
 using YueUI.Api.Library;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
@@ -38,6 +39,11 @@ builder.Services.AddSingleton<IPushSender, WebPushSender>();
 builder.Services.AddHttpClient(WebPushSender.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHostedService<PushNotifier>();
 
+// The app's own state (the playlist) in one SQLite file, shared by every browser.
+builder.Services.Configure<DataOptions>(builder.Configuration.GetSection(DataOptions.Section));
+builder.Services.AddSingleton<SqliteDatabase>();
+builder.Services.AddSingleton<SqlitePlaylistStore>();
+
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddProblemDetails();
@@ -63,6 +69,7 @@ api.MapTranscriptionEndpoints();
 api.MapLyricsEndpoints();
 api.MapLogicEndpoints();
 api.MapPushEndpoints();
+api.MapPlaylistEndpoints();
 
 app.MapClientApp();
 

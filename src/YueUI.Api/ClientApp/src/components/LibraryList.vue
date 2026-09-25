@@ -13,6 +13,8 @@ import {
   songZipUrl,
 } from '../api'
 import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
+import { current, libraryTracks, play, playing, trackOf } from '../player'
+import { playlistIds, toggleInPlaylist } from '../playlist'
 import type { RunInfo, SongInfo } from '../types'
 
 const props = defineProps<{
@@ -40,6 +42,23 @@ const confirm = useConfirm()
 const pageSize = 8
 const shown = ref(pageSize)
 const visible = computed(() => props.runs.slice(0, shown.value))
+
+/** The player goes on with the songs below this one, as the library lists them. */
+function playSong(run: RunInfo, song: SongInfo): void {
+  play(trackOf(run, song), libraryTracks(props.runs))
+}
+
+function isPlaying(song: SongInfo): boolean {
+  return current.value?.id === song.id && playing.value
+}
+
+async function togglePlaylist(song: SongInfo): Promise<void> {
+  try {
+    await toggleInPlaylist(song.id)
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  }
+}
 
 async function renderFull(song: SongInfo): Promise<void> {
   try {
@@ -193,6 +212,15 @@ const severityByQuality: Record<string, string> = {
             <ul class="songs">
               <li v-for="song in run.songs" :key="song.id" class="song">
                 <div class="flex gap-3 items-center">
+                  <Button
+                    v-if="song.hasAudio"
+                    :icon="isPlaying(song) ? 'pi pi-pause' : 'pi pi-play'"
+                    rounded
+                    :outlined="current?.id !== song.id"
+                    size="small"
+                    :aria-label="isPlaying(song) ? t('pause') : t('play')"
+                    @click="playSong(run, song)"
+                  />
                   <div>
                     <strong>{{ t('songN', { n: song.index }) }}</strong>
                   </div>
@@ -219,6 +247,16 @@ const severityByQuality: Record<string, string> = {
                     <Button as="a" text v-if="song.hasScore" size="small" :href="scoreUrl(song.id)">{{
                       t('score')
                     }}</Button>
+                    <Button
+                      v-if="song.hasAudio"
+                      :icon="playlistIds.includes(song.id) ? 'pi pi-check-circle' : 'pi pi-plus-circle'"
+                      text
+                      size="small"
+                      rounded
+                      v-tooltip="playlistIds.includes(song.id) ? t('removeFromPlaylist') : t('addToPlaylist')"
+                      :aria-label="playlistIds.includes(song.id) ? t('removeFromPlaylist') : t('addToPlaylist')"
+                      @click="togglePlaylist(song)"
+                    />
                     <Button
                       v-if="song.hasScore"
                       icon="pi pi-file-import"
@@ -265,9 +303,8 @@ const severityByQuality: Record<string, string> = {
                     />
                   </div>
                 </div>
-                <!-- preload="none": a page of five-minute FLACs would otherwise start loading on a phone. -->
-                <audio v-if="song.hasAudio" controls preload="none" :src="audioUrl(song.id)" />
-                <span v-else class="muted">{{ t('noAudio') }}</span>
+                <!-- One player for the whole page (PlayerBar.vue), so the song keeps playing on the other pages. -->
+                <span v-if="!song.hasAudio" class="muted">{{ t('noAudio') }}</span>
                 <details v-if="song.hasScore" class="score" @toggle="toggleScore(song, $event)">
                   <summary>{{ t('showScore') }}</summary>
                   <pre>{{ scores[song.id] ?? '…' }}</pre>
@@ -372,11 +409,6 @@ const severityByQuality: Record<string, string> = {
 .badge.full {
   background: var(--accent-soft);
   color: var(--accent);
-}
-
-audio {
-  width: 100%;
-  height: 2.5rem;
 }
 
 .more {
