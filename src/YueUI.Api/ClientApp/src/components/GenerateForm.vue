@@ -16,6 +16,7 @@ import {
   type SamplingPhase,
 } from '../form'
 import { formatDuration, t } from '../i18n'
+import { hasTag } from '../styleTags'
 import type { LyricsState } from '../types'
 import FieldHelp from './FieldHelp.vue'
 import SamplingFields from './SamplingFields.vue'
@@ -89,7 +90,9 @@ function take(draft: LyricsState | null): void {
   form.value.lyricsDraftId = ''
   if (draft.stage === 'done' && draft.lyrics) {
     form.value.lyrics = draft.lyrics
-    draftMessage.value = { text: t('lyricsDrafted'), error: false }
+    // YuE2 pronounces by the style's language tag; German words sung as English are the likeliest surprise.
+    const untagged = form.value.lyricsLanguage === 'german' && !hasTag(form.value.style, 'German')
+    draftMessage.value = { text: t(untagged ? 'lyricsDraftedGerman' : 'lyricsDrafted'), error: false }
   } else {
     draftMessage.value = { text: t('errorGeneric', { message: draft.message ?? '' }), error: true }
   }
@@ -117,7 +120,7 @@ async function draft(): Promise<void> {
   starting.value = true
   draftMessage.value = null
   try {
-    const started = await draftLyrics(form.value.lyricsIdea.trim(), form.value.style.trim())
+    const started = await draftLyrics(form.value.lyricsIdea.trim(), form.value.style.trim(), form.value.lyricsLanguage)
     form.value.lyricsDraftId = started.id
     // A quick failure (LM Studio missing) can arrive as an event before this answer.
     take(props.lyricsDraft)
@@ -171,6 +174,11 @@ const cotItems = [
     label: t('cotOff'),
   },
 ]
+const lyricsLanguageOptions = [
+  { value: 'english', label: t('lyricsLanguageEnglish') },
+  { value: 'german', label: t('lyricsLanguageGerman') },
+]
+
 const qualityOptions = [
   { value: 'draft', label: t('qualityDraft') },
   {
@@ -257,6 +265,15 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
         />
         <label for="gen-lyrics-idea">{{ t('lyricsIdea') }}</label>
       </FloatLabel>
+      <SelectButton
+        v-model="form.lyricsLanguage"
+        option-value="value"
+        option-label="label"
+        :options="lyricsLanguageOptions"
+        :allow-empty="false"
+        :aria-label="t('lyricsLanguage')"
+        class="shrink-0"
+      />
       <Button
         type="button"
         icon="pi pi-sparkles"

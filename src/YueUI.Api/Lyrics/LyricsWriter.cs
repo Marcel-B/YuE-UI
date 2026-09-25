@@ -13,7 +13,7 @@ public sealed class LyricsUnavailableException(string message) : Exception(messa
 public sealed class LyricsBusyException(string message) : Exception(message);
 
 /// <summary>
-/// Drafts English lyrics in YuE2's format from a few keywords, with a language model in LM Studio (or any
+/// Drafts English or German lyrics in YuE2's format from a few keywords, with a language model in LM Studio (or any
 /// OpenAI-compatible server).
 /// </summary>
 /// <remarks>
@@ -33,12 +33,13 @@ public sealed partial class LyricsWriter(
     public const string HttpClientName = "lyrics";
 
     /// <summary>What YuE2 sings well, from its documentation and the YuE v1 prompt guide.</summary>
-    internal const string SystemPrompt = """
+    internal static string SystemPrompt(LyricsLanguage language) => $"""
         You write song lyrics for YuE2, a model that turns lyrics and a style description into a sung song.
-        Write in English. Answer with the lyrics only: no title, no explanations, no Markdown.
+        {LanguageRule(language)} Answer with the lyrics only: no title, no explanations, no Markdown.
 
         Format:
         - Every section starts with its tag on a line of its own: [Verse], [Pre-Chorus], [Chorus], [Bridge] or [Outro].
+        - Keep these tags in English whatever the language of the lyrics; YuE2 reads the song's form from them.
         - Start with [Verse]. Do not use [Intro]; YuE2 handles it poorly.
         - One sung line per line. Exactly one empty line between sections.
         - No stage directions, no parentheses, no speaker names, no line numbers.
@@ -51,6 +52,17 @@ public sealed partial class LyricsWriter(
 
         Form: [Verse], [Chorus], [Verse], [Chorus], [Bridge], [Chorus] unless the request suggests another.
         """;
+
+    /// <remarks>
+    /// German gets its own hints: small models tend to pad lines with long compounds that do not fit a melody, and
+    /// to fall back into English phrases.
+    /// </remarks>
+    private static string LanguageRule(LyricsLanguage language) => language switch
+    {
+        LyricsLanguage.German => "Write in German, every sung line, with natural German word order and correct umlauts (ä, ö, ü, ß); " +
+            "no English phrases. Prefer short words to long compounds, and rhymes that sound natural in German.",
+        _ => "Write in English.",
+    };
 
     /// <summary>Room for system prompt, keywords and style; the system prompt alone is about 300 tokens.</summary>
     private const int PromptTokens = 1024;
@@ -65,7 +77,7 @@ public sealed partial class LyricsWriter(
     /// <see cref="LyricsState"/>), so a phone that locks meanwhile still gets it.
     /// </summary>
     /// <exception cref="LyricsBusyException">Another draft is in progress, or YuE2 is generating.</exception>
-    public LyricsState Start(string keywords, string? style)
+    public LyricsState Start(string keywords, string? style, LyricsLanguage language = LyricsLanguage.English)
     {
         if (!_gate.Wait(0))
         {
@@ -79,16 +91,16 @@ public sealed partial class LyricsWriter(
         }
         var state = new LyricsState { Id = Guid.NewGuid().ToString("N")[..12], UpdatedAt = time.GetUtcNow() };
         worker.UpdateLyrics(state);
-        _ = Task.Run(() => RunAsync(state, keywords, style));
+        _ = Task.Run(() => RunAsync(state, keywords, style, language));
         return state;
     }
 
-    private async Task RunAsync(LyricsState state, string keywords, string? style)
+    private async Task RunAsync(LyricsState state, string keywords, string? style, LyricsLanguage language)
     {
         LyricsState result;
         try
         {
-            result = state with { Stage = "done", Lyrics = await WriteAsync(keywords, style, CancellationToken.None) };
+            result = state with { Stage = "done", Lyrics = await WriteAsync(keywords, style, language, CancellationToken.None) };
         }
         catch (LyricsUnavailableException exception)
         {
@@ -108,7 +120,7 @@ public sealed partial class LyricsWriter(
     }
 
     /// <exception cref="LyricsUnavailableException">LM Studio could not be reached or refused.</exception>
-    private async Task<string> WriteAsync(string keywords, string? style, CancellationToken cancellationToken)
+    private async Task<string> WriteAsync(string keywords, string? style, LyricsLanguage language, CancellationToken cancellationToken)
     {
         // Set once this call has loaded the model, so that it is unloaded again whatever happens next.
         string? unload = null;
@@ -129,7 +141,7 @@ public sealed partial class LyricsWriter(
             await EnsureServerAsync(http, cancellationToken);
             var (instance, loadedHere) = await LoadAsync(http, settings, cancellationToken);
             unload = loadedHere ? instance : null;
-            return await CompleteAsync(http, settings, instance, keywords, style, logger, cancellationToken);
+            return await CompleteAsync(http, settings, instance, keywords, style, language, logger, cancellationToken);
         }
         finally
         {
@@ -234,13 +246,14 @@ public sealed partial class LyricsWriter(
     }
 
     private static async Task<string> CompleteAsync(
-        HttpClient http, LyricsOptions settings, string model, string keywords, string? style, ILogger logger, CancellationToken cancellationToken)
+        HttpClient http, LyricsOptions settings, string model, string keywords, string? style, LyricsLanguage language, ILogger logger,
+        CancellationToken cancellationToken)
     {
         var request = new JsonObject
         {
             ["model"] = model,
             ["messages"] = new JsonArray(
-                new JsonObject { ["role"] = "system", ["content"] = SystemPrompt },
+                new JsonObject { ["role"] = "system", ["content"] = SystemPrompt(language) },
                 new JsonObject { ["role"] = "user", ["content"] = UserPrompt(keywords, style) }),
             ["temperature"] = settings.Temperature,
             // Thinking models reason before the lyrics, and at length: Gemma 4 26B counts every line's syllables,

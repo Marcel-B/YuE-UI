@@ -29,13 +29,34 @@ public sealed class LyricsEndpointTests : IDisposable
         Assert.Equal(8192 - 1024, (int?)completion["max_tokens"]);
         var messages = completion["messages"]!.AsArray();
         Assert.Contains("[Verse]", (string?)messages[0]!["content"], StringComparison.Ordinal);
-        Assert.Contains("English", (string?)messages[0]!["content"], StringComparison.Ordinal);
+        Assert.Contains("Write in English", (string?)messages[0]!["content"], StringComparison.Ordinal);
         var user = (string)messages[1]!["content"]!;
         Assert.Contains("night train, leaving home", user, StringComparison.Ordinal);
         Assert.Contains("melancholic folk", user, StringComparison.Ordinal);
 
         Assert.Equal("/api/v1/models/unload", _app.LmStudio.Requests[^1].Path);
         Assert.Equal("google/gemma-4-e4b:1", (string?)_app.LmStudio.Requests[^1].Body!["instance_id"]);
+    }
+
+    [Fact]
+    public async Task German_lyrics_are_asked_for_in_German_with_the_tags_kept_in_English()
+    {
+        var draft = await Finished(new { keywords = "Nachtzug, Abschied", style = "German, synthwave", language = "german" });
+
+        Assert.Equal("done", draft.Stage);
+        var system = (string)Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!["messages"]![0]!["content"]!;
+        Assert.Contains("Write in German", system, StringComparison.Ordinal);
+        Assert.DoesNotContain("Write in English", system, StringComparison.Ordinal);
+        Assert.Contains("Keep these tags in English", system, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_unknown_language_is_refused()
+    {
+        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer", language = "klingon" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(_app.LmStudio.Requests);
     }
 
     [Fact]
