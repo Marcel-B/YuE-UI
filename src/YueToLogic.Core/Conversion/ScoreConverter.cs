@@ -31,12 +31,6 @@ public sealed record ConversionOptions
     public ArrangementOptions Arrangement { get; set; } = new();
 
     /// <summary>
-    /// Fits the tempo to the length of a recording of this score, so the two do not drift apart; <c>null</c>
-    /// keeps the tempo the score names. The host measures the audio and passes its length.
-    /// </summary>
-    public TempoFitOptions? FitTempo { get; set; }
-
-    /// <summary>
     /// MIDI channel per track (1-16), keyed by track name (<c>Vocal</c>, <c>Bass</c>, ...; case-insensitive).
     /// A track without an entry gets the next free channel, drums channel 10. Set this to drive external gear
     /// that listens on a fixed channel.
@@ -85,14 +79,6 @@ public sealed class ScoreConverter(IAbcScoreParser parser, IScoreArranger arrang
         var arranged = arranger.Arrange(parsed.Score, options.Arrangement);
         var score = arranged.Score;
 
-        // After the arrangement, so a count-in is already in place and can be left out of the comparison,
-        // and before rendering, so MIDI file, JSON and any Logic project all carry the fitted tempo.
-        var fitted = new DiagnosticBag();
-        if (options.FitTempo is { } fit)
-        {
-            score = TempoFitter.Fit(score, fit, fitted);
-        }
-
         var midi = renderer.Render(
             score,
             new MidiRenderOptions
@@ -101,7 +87,7 @@ public sealed class ScoreConverter(IAbcScoreParser parser, IScoreArranger arrang
                 Channels = options.MidiChannels,
                 Programs = options.MidiPrograms,
             });
-        return new ConversionResult(true, score, midi, [.. parsed.Diagnostics, .. arranged.Diagnostics, .. fitted.ToList()]);
+        return new ConversionResult(true, score, midi, [.. parsed.Diagnostics, .. arranged.Diagnostics]);
     }
 
     public async Task<ConversionResult> ConvertAsync(

@@ -592,7 +592,7 @@ public sealed partial class LogicProjectWriter : ILogicProjectWriter
         {
             diagnostics.Warning(
                 DiagnosticCodes.AudioLengthMismatch,
-                Invariant($"The audio lasts {audio.DurationSeconds:0.0} s but the score {music:0.0} s; is it the audio.flac from the same YuE run? '--fit-tempo' adjusts the tempo when the difference is a drift."));
+                Invariant($"The audio lasts {audio.DurationSeconds:0.0} s but the score {music:0.0} s; is it the audio.flac from the same YuE run?"));
         }
     }
 
