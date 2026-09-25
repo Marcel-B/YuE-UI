@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { cancel, shutdownWorker, stopAll } from '../api'
 import { formatTime, stageLabel, t } from '../i18n'
+import SongTimeline from './SongTimeline.vue'
 import type { LogEntry, SongState, WorkerInfo } from '../types'
 
 defineExpose({ run, stopAll, shutdownWorker })
@@ -18,6 +19,16 @@ const emit = defineEmits<{
 }>()
 
 const hasFinished = computed(() => props.songs.some((s) => s.finished))
+
+/** Finished songs fold to one line; their steps (and how long each took) open on request. */
+const expanded = ref(new Set<string>())
+function toggleSteps(id: string): void {
+  const next = new Set(expanded.value)
+  if (!next.delete(id)) {
+    next.add(id)
+  }
+  expanded.value = next
+}
 
 async function run(action: () => Promise<void>): Promise<void> {
   try {
@@ -70,17 +81,18 @@ watch(
             @click="run(() => cancel(song.id))"
           />
         </div>
-        <div class="flex gap-3 items-center">
+        <div v-if="song.finished" class="flex gap-3 items-center">
           <span class="text-sm font-medium">{{ stageLabel(song.stage) }}</span>
-          <span v-if="song.engine && !song.finished">{{ song.engine }} </span>
           <span class="muted detail">{{ song.message ?? song.detail }}</span>
+          <Button
+            v-if="song.stages?.length"
+            :label="expanded.has(song.id) ? t('hideSteps') : t('showSteps')"
+            text
+            size="small"
+            @click="toggleSteps(song.id)"
+          />
         </div>
-        <progress
-          v-if="!song.finished"
-          :value="song.stage === 'queued' ? undefined : song.fraction"
-          max="1"
-          :aria-label="stageLabel(song.stage)"
-        />
+        <SongTimeline v-if="!song.finished || expanded.has(song.id)" :song="song" />
       </li>
     </ul>
 
