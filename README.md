@@ -41,6 +41,14 @@ Ein eigener HTTPS-Port (8443), weil `tailscale serve` auf 443 schon einen andere
 
 Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ wie eine App ablegen.
 
+## Seiten, Player und Playlist
+
+Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, Warteschlange, Transkriptionen), **Titel** (die Bibliothek) und **Playlist**; auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
+
+Abgespielt wird in einem Player am unteren Rand, der beim Seitenwechsel weiterläuft. Ein Song aus der Bibliothek spielt danach die folgenden Songs der Bibliothek, einer aus der Playlist die folgenden der Playlist. Titel und Vor/Zurück erscheinen auch auf dem Sperrbildschirm.
+
+Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn wieder heraus. Auf der Playlist-Seite lässt sich die Reihenfolge ändern. Die Playlist liegt auf dem Server in `~/Library/Application Support/YuE UI/yueui.db` (SQLite), Handy und Mac sehen also dieselbe. Gelöschte Songs fallen von selbst heraus.
+
 ## Benachrichtigungen
 
 Die Glocke oben rechts meldet per Web Push, wenn ein Song fertig ist oder fehlschlägt, eine Transkription endet oder ein Songtext-Entwurf steht, auch bei gesperrtem Handy. Abgebrochene Songs bleiben still. Auf iPhone und iPad geht das nur in der App auf dem Home-Bildschirm (ab iOS 16.4) und nur über HTTPS, also über `tailscale serve`; im normalen Safari-Tab erklärt die Glocke das. Beim Einschalten kommt eine Test-Nachricht. Jedes Gerät schaltet für sich ein, die Texte kommen in der Sprache, die dort eingestellt ist.
@@ -99,6 +107,7 @@ yue-to-logic-pro verlangt keinen Schlüssel. Läuft es hinter einem Proxy, muss 
 | `Logic:BaseUrl` (`Logic__BaseUrl`) | – | Server von yue-to-logic-pro ohne `/api`, z. B. `https://music.idsrv.info`; leer schaltet den Logic-Export ab |
 | `Logic:SplitSections` (`Logic__SplitSections`) | `false` | eine Region je Songabschnitt statt einer je Spur |
 | `Push:DataPath` (`Push__DataPath`) | `~/Library/Application Support/YuE UI/push.json` | VAPID-Schlüssel und Abonnements für Benachrichtigungen |
+| `Data:Path` (`Data__Path`) | `~/Library/Application Support/YuE UI/yueui.db` | SQLite-Datenbank von YuE UI (Playlist) |
 | `Push:Subject` (`Push__Subject`) | `https://github.com/Marcel-B/YuE-UI` | Kontaktadresse (`mailto:` oder `https:`) für die Push-Dienste; Apple lehnt Adressen wie `mailto:ich@localhost` ab |
 
 ## API
@@ -130,6 +139,8 @@ yue-to-logic-pro verlangt keinen Schlüssel. Läuft es hinter einem Proxy, muss 
 | `GET` | `/api/storage` | `{ freeBytes, totalBytes }` des Datenträgers der Bibliothek |
 | `GET` | `/api/lyrics/models` | Modelle für Textentwürfe: `{ default, models: [{ id, name, sizeBytes, loaded }] }`; startet den Server von LM Studio bei Bedarf, `503`, wenn er nicht erreichbar ist |
 | `POST` | `/api/lyrics` | Songtext entwerfen: `{ keywords, style?, language?, model? }` (ohne `model` das eingestellte); antwortet `202`, der Entwurf kommt als `lyrics`-Event (`writing`, dann `done` mit `lyrics` oder `failed` mit `message`); `409`, solange YuE2 rechnet oder schon ein Entwurf entsteht |
+| `GET` | `/api/playlist` | `{ songIds }`: Songs der Playlist in Reihenfolge (`run/songN`), gelöschte weggelassen |
+| `PUT` | `/api/playlist` | `{ songIds }`: Playlist ersetzen; `400` für einen Song, den es nicht gibt |
 | `GET` | `/api/push` | `{ publicKey }`: VAPID-Schlüssel für `pushManager.subscribe` |
 | `POST` | `/api/push/subscriptions` | Browser benachrichtigen: `PushSubscription.toJSON()` plus `language` (`de`/`en`) |
 | `DELETE` | `/api/push/subscriptions` | `{ endpoint }`: Abonnement entfernen |
@@ -141,8 +152,9 @@ OpenAPI unter `/api/openapi`.
 
 Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder löschen.
 
-- [ ] Menü im Header
-- [ ] Playlists, auf einer eigenen Seite
+- [x] Menü im Header
+- [x] Playlist, auf einer eigenen Seite
+- [ ] Mehrere Playlists (die Tabelle `playlists` ist schon da)
 - [ ] PrimeVue `Timeline` für die Schritte eines Songs nutzen
 - [ ] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
 - [ ] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)

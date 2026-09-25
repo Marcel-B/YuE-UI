@@ -5,9 +5,14 @@ import GenerateForm from './components/GenerateForm.vue'
 import LibraryList from './components/LibraryList.vue'
 import NotificationButton from './components/NotificationButton.vue'
 import QueueList from './components/QueueList.vue'
+import PlayerBar from './components/PlayerBar.vue'
+import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import { loadFormState, saveFormState } from './form'
-import { formatBytes, locale, setLocale, t, workerLabel } from './i18n'
+import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
+import { current } from './player'
+import { loadPlaylist, playlistIds } from './playlist'
+import { navigate, view, type View } from './view'
 import type {
   LogEntry,
   LyricsState,
@@ -69,8 +74,10 @@ const unsubscribe = subscribe({
     log.value = snapshot.log
     transcriptions.value = snapshot.transcriptions
     lyricsDraft.value = snapshot.lyrics
-    // The stream (re)opened: whatever was written meanwhile is in the library now.
+    // The stream (re)opened: whatever was written meanwhile is in the library now, the playlist may have changed on
+    // another device.
     void loadLibrary()
+    loadPlaylist().catch((caught) => show(caught instanceof Error ? caught.message : String(caught), true))
   },
   song: upsert,
   worker(info) {
@@ -99,6 +106,30 @@ const unsubscribe = subscribe({
   },
 })
 onBeforeUnmount(unsubscribe)
+
+// ---- Pages -------------------------------------------------------------------------------------------
+
+const pages: { view: View; label: MessageKey; icon: string }[] = [
+  { view: 'create', label: 'menuCreate', icon: 'pi pi-sparkles' },
+  { view: 'songs', label: 'menuSongs', icon: 'pi pi-list' },
+  { view: 'playlist', label: 'menuPlaylist', icon: 'pi pi-play-circle' },
+]
+
+/** The badge counts what the page holds that is worth a look: songs in the works, songs in the playlist. */
+const menu = computed(() =>
+  pages.map((page) => ({
+    key: page.view,
+    label: t(page.label),
+    icon: page.icon,
+    badge:
+      page.view === 'create'
+        ? busyIds.value.size || undefined
+        : page.view === 'playlist'
+          ? playlistIds.value.length || undefined
+          : undefined,
+    command: () => navigate(page.view),
+  })),
+)
 
 // ---- Library ----------------------------------------------------------------------------------------
 
@@ -160,19 +191,18 @@ function show(text: string, error = false): void {
   noticeTimer = setTimeout(() => (notice.value = null), 6000)
 }
 
-const formSection = useTemplateRef<HTMLElement>('formSection')
 const generateForm = useTemplateRef<InstanceType<typeof GenerateForm>>('generateForm')
 const queueList = useTemplateRef<InstanceType<typeof QueueList>>('queueList')
 function useTemplate(run: RunInfo): void {
   form.value = { ...form.value, title: run.title, style: run.style, lyrics: run.lyrics }
-  formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  navigate('create')
   show(t('templateLoaded', { title: run.title || t('untitled') }))
 }
 
 /** A transcribed melody as the score of the next song: SheetSage2 writes it without chords, for planning "melody". */
 function useScore(abc: string, name: string): void {
   form.value = { ...form.value, abc, cot: 'melody' }
-  formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  navigate('create')
   show(t('scoreApplied', { name }))
 }
 
@@ -192,7 +222,7 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
     cot,
     seed: song.seed === null ? form.value.seed : String(song.seed),
   }
-  formSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  navigate('create')
   show(
     t('songScoreApplied', {
       title: run.title || t('untitled'),
@@ -205,21 +235,32 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
 
 <template>
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
-  <header class="top">
-    <div>
-      <h1>YuE UI</h1>
-      <p class="muted">{{ t('subtitle') }}</p>
-    </div>
-    <div class="status">
-      <span :class="['pill', worker.busy ? 'busy' : worker.status]">{{ workerLabel(worker.status, worker.busy) }}</span>
+  <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
+    <template #start>
+      <span class="brand">YuE UI</span>
+    </template>
+    <template #item="{ item, props }">
+      <a
+        v-bind="props.action"
+        :class="['flex items-center gap-2', { 'text-primary font-semibold': item.key === view }]"
+      >
+        <span :class="item.icon" />
+        <span>{{ item.label }}</span>
+        <Badge v-if="item.badge" :value="item.badge" size="small" />
+      </a>
+    </template>
+    <template #end>
       <div class="flex items-center gap-2">
+        <span :class="['pill', worker.busy ? 'busy' : worker.status]">{{
+          workerLabel(worker.status, worker.busy)
+        }}</span>
         <NotificationButton @notice="show" />
         <button type="button" class="link" @click="setLocale(locale === 'de' ? 'en' : 'de')">
           {{ t('language') }}
         </button>
       </div>
-    </div>
-  </header>
+    </template>
+  </Menubar>
 
   <div class="banners">
     <p v-if="!connected" class="banner warning">{{ t('disconnected') }}</p>
@@ -228,7 +269,8 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
     <p v-if="notice" :class="['banner', notice.error ? 'danger' : 'info']" role="status">{{ notice.text }}</p>
   </div>
 
-  <main class="grid gap-4 grid-cols-1 md:grid-cols-2">
+  <!-- v-show rather than v-if: a page keeps what was typed or uploaded on it while another one is open. -->
+  <main v-show="view === 'create'" class="grid gap-4 grid-cols-1 md:grid-cols-2">
     <Card>
       <template #title>
         <h2>
@@ -251,7 +293,6 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
         />
       </template>
     </Card>
-    <!-- <div ref="formSection"></div> -->
     <div>
       <Card>
         <template #title>
@@ -287,8 +328,10 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
         </template>
       </Card>
     </div>
+  </main>
 
-    <Card class="md:col-span-2">
+  <main v-show="view === 'songs'">
+    <Card>
       <template #title>
         <div class="flex justify-between items-center">
           <h2>{{ t('library') }}</h2>
@@ -319,32 +362,29 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
       </template>
     </Card>
   </main>
+
+  <main v-show="view === 'playlist'">
+    <Card>
+      <template #title>
+        <h2>{{ t('playlist') }}</h2>
+      </template>
+      <template #content>
+        <PlaylistView :runs="runs" @error="show($event, true)" />
+      </template>
+    </Card>
+  </main>
+
+  <!-- Outside the pages, so switching between them does not stop the song. The spacer keeps it off the page's end. -->
+  <div v-if="current" class="h-28" />
+  <PlayerBar />
 </template>
 
 <style scoped>
-.top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.6rem;
+.brand {
+  margin-right: 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 700;
   letter-spacing: -0.01em;
-}
-
-.top p {
-  margin: 0;
-}
-
-.status {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.35rem;
 }
 
 .pill {

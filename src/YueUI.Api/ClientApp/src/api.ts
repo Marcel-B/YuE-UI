@@ -6,6 +6,7 @@ import type {
   LyricsLanguage,
   LyricsModels,
   LyricsState,
+  PlaylistInfo,
   RunInfo,
   SongState,
   StatusSnapshot,
@@ -83,6 +84,16 @@ export async function deleteSong(songId: string): Promise<void> {
 /** Deletes the run's folder with all its songs; refused while the worker is on one of them. */
 export async function deleteRun(runId: string): Promise<void> {
   await send(`/api/runs/${runId}`, { method: 'DELETE' })
+}
+
+/** The playlist's song ids in order; songs deleted since are left out. */
+export async function getPlaylist(): Promise<PlaylistInfo> {
+  return (await send('/api/playlist')).json() as Promise<PlaylistInfo>
+}
+
+/** Replaces the whole playlist; answers with what was stored (each song once). */
+export async function putPlaylist(songIds: string[]): Promise<PlaylistInfo> {
+  return (await send('/api/playlist', json('PUT', { songIds }))).json() as Promise<PlaylistInfo>
 }
 
 /** Free and total space of the volume the songs are written to. */
