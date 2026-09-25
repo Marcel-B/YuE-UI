@@ -12,17 +12,18 @@ public sealed class LyricsOptions
     public string BaseUrl { get; set; } = "http://127.0.0.1:1234";
 
     /// <summary>
-    /// The model's id as <c>GET /v1/models</c> lists it. The small Gemma 4 E4B by default: the 26B models (about
-    /// 15 GB) plus the apps usually open ran a 24 GB Mac deep into swap until it froze.
+    /// The model's id as <c>GET /v1/models</c> lists it. Gemma 4 26B A4B QAT by default. It takes about 15 GB:
+    /// together with the apps usually open it ran a 24 GB Mac deep into swap until it froze, so close what you can
+    /// before a draft, or switch to the small <c>google/gemma-4-e4b</c>.
     /// </summary>
-    public string Model { get; set; } = "google/gemma-4-e4b";
+    public string Model { get; set; } = "google/gemma-4-26b-a4b-qat";
 
     /// <summary>
     /// Tokens of context the model is loaded with, and so what prompt, reasoning and lyrics share. Prompt and lyrics
     /// need about 1500, a thinking model's reasoning several thousand more. LM Studio's own default can be the
     /// model's maximum (262144 for Gemma 4), whose cache alone would not fit into memory.
     /// </summary>
-    public int ContextLength { get; set; } = 8192;
+    public int ContextLength { get; set; } = 30000;
 
     /// <summary>Only if "Require Authentication" is switched on in LM Studio's server settings.</summary>
     public string? ApiToken { get; set; }
