@@ -23,7 +23,7 @@ public sealed class LyricsOptions
     /// need about 1500, a thinking model's reasoning several thousand more. LM Studio's own default can be the
     /// model's maximum (262144 for Gemma 4), whose cache alone would not fit into memory.
     /// </summary>
-    public int ContextLength { get; set; } = 8192;
+    public int ContextLength { get; set; } = 30000;
 
     /// <summary>Only if "Require Authentication" is switched on in LM Studio's server settings.</summary>
     public string? ApiToken { get; set; }
