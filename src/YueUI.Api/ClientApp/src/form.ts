@@ -132,16 +132,32 @@ export function loadFormState(): FormState {
       const form = JSON.parse(stored) as Partial<FormState>
       // Nested, so a form kept before a value was added still gets it.
       return {
-        ...defaults,
-        ...form,
-        abcSampling: { ...defaults.abcSampling, ...form.abcSampling },
-        semanticSampling: { ...defaults.semanticSampling, ...form.semanticSampling },
+        ...keepValid(defaults, form),
+        abcSampling: keepValid(defaults.abcSampling, form.abcSampling),
+        semanticSampling: keepValid(defaults.semanticSampling, form.semanticSampling),
       }
     }
   } catch {
     // Unreadable or blocked storage: start fresh.
   }
   return defaultFormState()
+}
+
+/**
+ * The stored values that still have the default's type, the defaults for the rest. PrimeVue's InputNumber, used
+ * before NumberField, wrote null for an emptied field, and a missing number would reach the API as null.
+ */
+function keepValid<T extends object>(defaults: T, stored: Partial<T> | undefined): T {
+  const result = { ...defaults }
+  for (const key of Object.keys(defaults) as (keyof T)[]) {
+    const value = stored?.[key]
+    const valid =
+      typeof value === typeof defaults[key] && value !== null && (typeof value !== 'number' || Number.isFinite(value))
+    if (valid) {
+      result[key] = value as T[keyof T]
+    }
+  }
+  return result
 }
 
 export function saveFormState(form: FormState): void {
