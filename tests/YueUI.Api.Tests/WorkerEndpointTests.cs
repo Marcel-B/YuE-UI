@@ -222,6 +222,45 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_song_keeps_its_stages_in_order_with_their_start()
+    {
+        await StartSong();
+        var path = _app.AudioPath(Run, "song1");
+        _app.Worker.Emit(new { @event = "stage", path, stage = "planning", detail = "" });
+        _app.Worker.Emit(new { @event = "stage", path, stage = "tokens", detail = "writing" });
+        // Same stage again with a new detail: no new step.
+        _app.Worker.Emit(new { @event = "stage", path, stage = "tokens", detail = "writing more" });
+        _app.Worker.Emit(new { @event = "failed", path, message = "out of memory" });
+
+        var status = await _app.WaitForStatus(_client, s => s.Songs.Any(song => song.Finished));
+
+        var song = Assert.Single(status.Songs);
+        Assert.Equal(["queued", "planning", "tokens", "failed"], song.Stages.Select(s => s.Stage));
+        Assert.True(song.Stages.Zip(song.Stages.Skip(1)).All(pair => pair.First.StartedAt <= pair.Second.StartedAt));
+        Assert.False(song.Render);
+    }
+
+    [Fact]
+    public async Task A_rendered_song_is_marked_as_a_render()
+    {
+        _app.AddSong(Run, "song2", files: "semantic.npy");
+        await _client.PostAsJsonAsync($"/api/songs/{Run}/song2/render", new { quality = "full" });
+        await _app.Worker.NextCommand();
+        _app.Worker.Emit(new { @event = "ready" });
+        _app.Worker.Emit(new
+        {
+            @event = "started",
+            job = Run,
+            title = "Neon Night",
+            songs = new[] { new { index = 2, seed = 831002, path = _app.AudioPath(Run, "song2"), priority = 1 } },
+        });
+
+        var status = await _app.WaitForStatus(_client, s => s.Songs.Count == 1);
+
+        Assert.True(Assert.Single(status.Songs).Render);
+    }
+
+    [Fact]
     public async Task Cancel_addresses_the_song_by_its_audio_path()
     {
         await StartSong();

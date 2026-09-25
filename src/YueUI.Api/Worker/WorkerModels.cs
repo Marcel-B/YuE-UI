@@ -49,12 +49,27 @@ public sealed record SongState
 
     public DateTimeOffset UpdatedAt { get; init; }
 
+    /// <summary>
+    /// The stages this song went through, each with the time it began, oldest first; the last one is <see cref="Stage"/>.
+    /// The worker only says when a stage begins, so this is where the interface gets how long each one took.
+    /// </summary>
+    public IReadOnlyList<StageTime> Stages { get; init; } = [];
+
+    /// <summary>A render from saved tokens: it has no planning or composing ahead of it.</summary>
+    public bool Render { get; init; }
+
     public bool Finished => Stage is "ready" or "failed" or "cancelled";
+
+    /// <summary>Moves on to <paramref name="stage"/>; the worker repeats a stage's event when only its detail changes.</summary>
+    public SongState Entering(string stage, DateTimeOffset at) =>
+        stage == Stage ? this : this with { Stage = stage, Stages = [.. Stages, new StageTime(stage, at)] };
 
     /// <summary>The worker addresses songs by this path (cancel).</summary>
     [JsonIgnore]
     public string AudioPath { get; init; } = "";
 }
+
+public sealed record StageTime(string Stage, DateTimeOffset StartedAt);
 
 public sealed record LogEntry(DateTimeOffset Time, string Level, string Message);
 
