@@ -128,6 +128,10 @@ public sealed partial class SongLibrary(YuePaths paths)
             ? title
             : TitleFromName(run);
 
+    /// <summary>The length of the song's audio as the worker measured it, or null before it is synthesized.</summary>
+    public double? SecondsOf(string songDirectory) =>
+        ReadJson(Path.Combine(songDirectory, "result.json")) is { } result ? Number(result["audio_seconds"]) : null;
+
     private RunInfo ReadRun(DirectoryInfo run)
     {
         var songs = new List<SongInfo>();

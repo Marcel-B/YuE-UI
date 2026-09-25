@@ -121,7 +121,7 @@ public static partial class LibraryEndpoints
     }
 
     /// <summary>The title without characters a file system or a Content-Disposition header dislikes.</summary>
-    private static string FileName(string title, string run)
+    internal static string FileName(string title, string run)
     {
         var name = Unsafe().Replace(title, "").Trim();
         return name.Length > 0 ? name : run;

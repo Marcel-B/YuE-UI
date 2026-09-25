@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
-import { audioUrl, deleteRun, deleteSong, render, runZipUrl, scoreUrl, songScore, songZipUrl } from '../api'
+import {
+  audioUrl,
+  deleteRun,
+  deleteSong,
+  downloadLogicProject,
+  render,
+  runZipUrl,
+  scoreUrl,
+  songScore,
+  songZipUrl,
+} from '../api'
 import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
 import type { RunInfo, SongInfo } from '../types'
 
@@ -11,6 +21,8 @@ const props = defineProps<{
   error: string | null
   /** Songs the worker is working on; they cannot be rendered again meanwhile. */
   busyIds: Set<string>
+  /** A yue-to-logic-pro server is configured, so songs can be opened in Logic Pro. */
+  logicExport: boolean
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +31,7 @@ const emit = defineEmits<{
   useScore: [run: RunInfo, song: SongInfo, abc: string]
   /** Something was deleted; carries the run's title for the notice. */
   deleted: [title: string]
+  notice: [message: string]
   error: [message: string]
 }>()
 
@@ -33,6 +46,23 @@ async function renderFull(song: SongInfo): Promise<void> {
     await render(song.id, 'full')
   } catch (caught) {
     emit('error', caught instanceof Error ? caught.message : String(caught))
+  }
+}
+
+/** Songs whose Logic project is being built; uploading a long FLAC and building take a while. */
+const exporting = ref(new Set<string>())
+
+async function openInLogic(song: SongInfo): Promise<void> {
+  exporting.value.add(song.id)
+  try {
+    const warnings = await downloadLogicProject(song.id)
+    if (warnings.length > 0) {
+      emit('notice', t('logicWarnings', { messages: warnings.map((w) => w.message).join(' ') }))
+    }
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  } finally {
+    exporting.value.delete(song.id)
   }
 }
 
@@ -198,6 +228,18 @@ const severityByQuality: Record<string, string> = {
                       v-tooltip="t('useScore')"
                       :aria-label="t('useScore')"
                       @click="useScore(run, song)"
+                    />
+                    <Button
+                      v-if="logicExport && song.hasAudio && song.hasScore"
+                      icon="pi pi-file-export"
+                      text
+                      size="small"
+                      rounded
+                      v-tooltip="t('openInLogic')"
+                      :aria-label="t('openInLogic')"
+                      :loading="exporting.has(song.id)"
+                      :disabled="exporting.has(song.id)"
+                      @click="openInLogic(song)"
                     />
                     <Button
                       v-if="song.hasAudio || song.hasScore"

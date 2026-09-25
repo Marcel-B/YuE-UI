@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using YueUI.Api;
 using YueUI.Api.Library;
+using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
 using YueUI.Api.Worker;
@@ -26,6 +27,9 @@ builder.Services.Configure<LyricsOptions>(builder.Configuration.GetSection(Lyric
 builder.Services.AddSingleton<ILmStudioStarter, LmsCli>();
 builder.Services.AddSingleton<LyricsWriter>();
 builder.Services.AddHttpClient(LyricsWriter.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
+// Logic Pro projects from yue-to-logic-pro; uploading a long FLAC to it and building the project take minutes.
+builder.Services.Configure<LogicOptions>(builder.Configuration.GetSection(LogicOptions.Section));
+builder.Services.AddHttpClient(LogicEndpoints.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
 
 // Web Push: notifies subscribed browsers (the app on a phone's home screen) when something finishes.
 builder.Services.Configure<PushOptions>(builder.Configuration.GetSection(PushOptions.Section));
@@ -57,6 +61,7 @@ api.MapWorkerEndpoints();
 api.MapLibraryEndpoints();
 api.MapTranscriptionEndpoints();
 api.MapLyricsEndpoints();
+api.MapLogicEndpoints();
 api.MapPushEndpoints();
 
 app.MapClientApp();
