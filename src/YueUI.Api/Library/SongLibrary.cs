@@ -34,6 +34,29 @@ public sealed record SongInfo(
     long Bytes);
 
 /// <summary>
+/// What a song was generated with, from its <c>request.json</c>, in the terms of <see cref="GenerateRequest"/>, so the
+/// web form can take it over as a new song. Null where the file does not say (YuE Studio's own songs, older workers);
+/// the form keeps its default there.
+/// </summary>
+/// <param name="Title">The request's title, else the run's.</param>
+/// <param name="Seed">This song's seed; the songs of a batch have consecutive ones.</param>
+public sealed record SongRequest(
+    string Title,
+    string Style,
+    string Lyrics,
+    bool? Instrumental,
+    string? Quality,
+    string? Cot,
+    long? Seed,
+    string? Engines,
+    int? DraftSteps,
+    int? MaxTokens,
+    string? Abc,
+    int? FullSteps,
+    SamplingOverrides? AbcSampling,
+    SamplingOverrides? SemanticSampling);
+
+/// <summary>
 /// Reads the songs the worker (this server's or YuE Studio's) wrote to <see cref="YuePaths.OutputDir"/>:
 /// one folder per run, one <c>songN</c> folder per song with <c>audio.flac</c>, <c>score.abc</c>,
 /// <c>request.json</c> (the prompt) and <c>result.json</c> (title, quality, length).
@@ -128,6 +151,41 @@ public sealed partial class SongLibrary(YuePaths paths)
             ? title
             : TitleFromName(run);
 
+    /// <summary>The song's <c>request.json</c>, or null for an unknown song or one without (readable) request.</summary>
+    public SongRequest? ReadRequest(string run, string song)
+    {
+        if (SongDirectory(run, song) is not { } directory || ReadJson(Path.Combine(directory, "request.json")) is not { } request)
+        {
+            return null;
+        }
+        // The worker's own names; the extension's fields (full_steps, the sampling) are there when the app sent them.
+        return new SongRequest(
+            Text(request["title"]) is { Length: > 0 } title ? title : TitleOf(run, directory),
+            Text(request["style"]) ?? "",
+            Text(request["lyrics"]) ?? "",
+            Flag(request["instrumental"]),
+            Text(request["quality"]),
+            Text(request["cot"]),
+            (long?)Number(request["seed"]),
+            Text(request["engines"]),
+            (int?)Number(request["draft_steps"]),
+            (int?)Number(request["max_tokens"]),
+            Text(request["abc"]) is { Length: > 0 } abc ? abc : null,
+            (int?)Number(request["full_steps"]),
+            Sampling(request["abc_sampling"]),
+            Sampling(request["semantic_sampling"]));
+    }
+
+    private static SamplingOverrides? Sampling(JsonNode? node) =>
+        node is JsonObject values
+            ? new SamplingOverrides(
+                Number(values["temperature"]),
+                Number(values["top_p"]),
+                (int?)Number(values["top_k"]),
+                Number(values["repetition_penalty"]),
+                (int?)Number(values["penalty_window"]))
+            : null;
+
     private RunInfo ReadRun(DirectoryInfo run)
     {
         var songs = new List<SongInfo>();
@@ -210,6 +268,9 @@ public sealed partial class SongLibrary(YuePaths paths)
 
     private static string? Text(JsonNode? node) =>
         node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+
+    private static bool? Flag(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue<bool>(out var flag) ? flag : null;
 
     private static double? Number(JsonNode? node) =>
         node is JsonValue value && value.TryGetValue<double>(out var number) ? number : null;

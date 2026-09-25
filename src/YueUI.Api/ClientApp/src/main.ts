@@ -17,6 +17,7 @@ import Divider from 'primevue/divider'
 import Fieldset from 'primevue/fieldset'
 import Tooltip from 'primevue/tooltip'
 import Menubar from 'primevue/menubar'
+import Menu from 'primevue/menu'
 import Tag from 'primevue/tag'
 import FloatLabel from 'primevue/floatlabel'
 import Textarea from 'primevue/textarea'
@@ -53,6 +54,7 @@ app
   .component('Fieldset', Fieldset)
   .component('Divider', Divider)
   .component('Menubar', Menubar)
+  .component('Menu', Menu)
   .component('FloatLabel', FloatLabel)
   .component('Tag', Tag)
   .component('ConfirmDialog', ConfirmDialog)

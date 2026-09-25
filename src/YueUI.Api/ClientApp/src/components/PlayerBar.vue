@@ -3,8 +3,13 @@ import { computed, onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import { t } from '../i18n'
 import { attach, close, current, hasNext, hasPrevious, next, playing, previous } from '../player'
 import { playlistIds, toggleInPlaylist } from '../playlist'
+import { showSong, songHref } from '../view'
+import SongMenu from './SongMenu.vue'
 
-const emit = defineEmits<{ error: [message: string] }>()
+/** The playing song has a score, as far as the library knows. */
+defineProps<{ hasScore: boolean }>()
+
+const emit = defineEmits<{ error: [message: string]; useScore: [songId: string]; newSong: [songId: string] }>()
 
 const inPlaylist = computed(() => !!current.value && playlistIds.value.includes(current.value.id))
 
@@ -36,7 +41,14 @@ function ended(): void {
   <div v-show="current" class="player" role="region" :aria-label="t('play')">
     <div class="flex items-center gap-2">
       <div class="min-w-0 flex-1">
-        <div class="truncate font-semibold">{{ current?.title }}</div>
+        <a
+          v-if="current"
+          :href="songHref(current.id)"
+          class="block truncate font-semibold text-color no-underline hover:underline"
+          :title="t('showSong')"
+          @click.prevent="showSong(current.id)"
+          >{{ current.title }}</a
+        >
         <div class="truncate text-sm text-muted-color">{{ current?.detail }}</div>
       </div>
       <Button
@@ -57,6 +69,13 @@ function ended(): void {
         @click="previous"
       />
       <Button icon="pi pi-step-forward" text rounded :disabled="!hasNext" :aria-label="t('nextTrack')" @click="next" />
+      <SongMenu
+        v-if="current"
+        :song-id="current.id"
+        :has-score="hasScore"
+        @use-score="emit('useScore', $event)"
+        @new-song="emit('newSong', $event)"
+      />
       <Button icon="pi pi-times" text rounded severity="secondary" :aria-label="t('closePlayer')" @click="close" />
     </div>
     <audio ref="audio" controls preload="none" @play="playing = true" @pause="playing = false" @ended="ended" />

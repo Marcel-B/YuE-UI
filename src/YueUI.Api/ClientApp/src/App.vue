@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
-import { getLogicExport, getStorage, listLibrary, subscribe } from './api'
+import { getLogicExport, getStorage, listLibrary, songRequest, songScore, subscribe } from './api'
 import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
 import LibraryList from './components/LibraryList.vue'
@@ -9,7 +9,7 @@ import QueueList from './components/QueueList.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
-import { loadFormState, saveFormState } from './form'
+import { fromSongRequest, loadFormState, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
 import { current } from './player'
 import { loadPlaylist, playlistIds } from './playlist'
@@ -144,6 +144,11 @@ const menu = computed(() =>
 const runs = ref<RunInfo[]>([])
 const libraryLoading = ref(false)
 const libraryError = ref<string | null>(null)
+/** Every listed song with its run, for what the player, playlist and queue know only by id. */
+const librarySongs = computed(
+  () => new Map(runs.value.flatMap((run) => run.songs.map((song) => [song.id, { run, song }] as const))),
+)
+const listedIds = computed(() => new Set(librarySongs.value.keys()))
 const storage = ref<StorageInfo | null>(null)
 /** What all runs take, so it is clear what deleting would gain. */
 const storageLabel = computed(() =>
@@ -239,6 +244,43 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
     }),
   )
 }
+
+/** A song the player or playlist names by id; one deleted meanwhile is gone from the library as well. */
+function listedSong(songId: string): { run: RunInfo; song: SongInfo } | null {
+  const found = librarySongs.value.get(songId)
+  if (!found) {
+    show(t('songGone'), true)
+  }
+  return found ?? null
+}
+
+async function useSongScoreById(songId: string): Promise<void> {
+  const found = listedSong(songId)
+  if (!found) {
+    return
+  }
+  try {
+    useSongScore(found.run, found.song, await songScore(songId))
+  } catch (caught) {
+    show(caught instanceof Error ? caught.message : String(caught), true)
+  }
+}
+
+/** The song made again: everything it was generated with, from its request.json, the seed and a score included. */
+async function useAsNewSong(songId: string): Promise<void> {
+  const found = listedSong(songId)
+  if (!found) {
+    return
+  }
+  try {
+    form.value = fromSongRequest(form.value, await songRequest(songId))
+    fieldErrors.value = {}
+    navigate('create')
+    show(t('newSongApplied', { title: form.value.title || t('untitled'), song: t('songN', { n: found.song.index }) }))
+  } catch (caught) {
+    show(caught instanceof Error ? caught.message : String(caught), true)
+  }
+}
 </script>
 
 <template>
@@ -330,6 +372,7 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
         <QueueList
           ref="queueList"
           :songs="queue"
+          :listed="listedIds"
           :worker="worker"
           :log="log"
           @hide-finished="hideFinished"
@@ -389,14 +432,19 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
         <h2>{{ t('playlist') }}</h2>
       </template>
       <template #content>
-        <PlaylistView :runs="runs" @error="show($event, true)" />
+        <PlaylistView :runs="runs" @use-score="useSongScoreById" @new-song="useAsNewSong" @error="show($event, true)" />
       </template>
     </Card>
   </main>
 
   <!-- Outside the pages, so switching between them does not stop the song. The spacer keeps it off the page's end. -->
   <div v-if="current" class="h-28" />
-  <PlayerBar @error="show($event, true)" />
+  <PlayerBar
+    :has-score="!!current && !!librarySongs.get(current.id)?.song.hasScore"
+    @use-score="useSongScoreById"
+    @new-song="useAsNewSong"
+    @error="show($event, true)"
+  />
 </template>
 
 <style scoped>

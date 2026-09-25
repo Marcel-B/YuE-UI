@@ -1,4 +1,4 @@
-import type { Cot, Engines, GenerateRequest, LyricsLanguage, Quality, SamplingOverrides } from './types'
+import type { Cot, Engines, GenerateRequest, LyricsLanguage, Quality, SamplingOverrides, SongRequest } from './types'
 
 /** The web form as the browser keeps it; `seed` stays text so an empty field means "random". */
 export interface FormState {
@@ -193,6 +193,40 @@ export function toGenerateRequest(form: FormState): GenerateRequest {
     abcSampling: samplingOverrides('abcSampling', form.abcSampling),
     semanticSampling: samplingOverrides('semanticSampling', form.semanticSampling),
   }
+}
+
+/**
+ * The form set to what a song was made with, to make it again with changes: its seed and score included, one song
+ * (the seed is that song's). What the song's request does not say goes back to its default; the lyrics draft's
+ * settings are the form's own and stay.
+ */
+export function fromSongRequest(form: FormState, request: SongRequest): FormState {
+  const defaults = defaultFormState()
+  const seconds = request.maxTokens === null ? maxSongSeconds : request.maxTokens / tokensPerSecond
+  return {
+    ...form,
+    title: request.title,
+    style: request.style,
+    lyrics: request.lyrics,
+    instrumental: request.instrumental ?? defaults.instrumental,
+    quality: request.quality ?? defaults.quality,
+    batch: 1,
+    cot: request.cot ?? defaults.cot,
+    seed: request.seed === null ? '' : String(request.seed),
+    draftSteps: request.draftSteps ?? defaults.draftSteps,
+    engines: request.engines ?? '',
+    // The form offers fixed lengths; the next one up still fits the song.
+    maxSeconds: lengthChoices.find((choice) => choice >= seconds) ?? lengthChoices[lengthChoices.length - 1]!,
+    abc: request.abc ?? '',
+    fullSteps: request.fullSteps ?? defaults.fullSteps,
+    abcSampling: { ...defaultSampling.abcSampling, ...definedOnly(request.abcSampling) },
+    semanticSampling: { ...defaultSampling.semanticSampling, ...definedOnly(request.semanticSampling) },
+  }
+}
+
+/** A null in the JSON must not replace a default. */
+function definedOnly(overrides: SamplingOverrides | null): SamplingOverrides {
+  return Object.fromEntries(Object.entries(overrides ?? {}).filter(([, value]) => typeof value === 'number'))
 }
 
 /** YuE2's examples/score.abc: the melody and chords for its "City Lights" lyrics (quoted in i18n's lyricsMore). */
