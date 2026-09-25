@@ -21,6 +21,7 @@ import Tag from 'primevue/tag'
 import FloatLabel from 'primevue/floatlabel'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Dialog from 'primevue/dialog'
 import ConfirmationService from 'primevue/confirmationservice'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
@@ -56,6 +57,7 @@ app
   .component('FloatLabel', FloatLabel)
   .component('Tag', Tag)
   .component('ConfirmDialog', ConfirmDialog)
+  .component('Dialog', Dialog)
   .component('Tabs', Tabs)
   .component('TabList', TabList)
   .component('Tab', Tab)

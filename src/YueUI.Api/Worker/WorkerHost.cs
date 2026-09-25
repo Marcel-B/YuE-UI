@@ -176,6 +176,25 @@ public sealed class WorkerHost(
     /// <summary>Tells the browsers that songs were deleted, so that every open library reloads.</summary>
     public void LibraryChanged() => Publish("library", new { });
 
+    /// <summary>The queue shows the run's songs by their new title too; then every browser reloads the library.</summary>
+    public void RunRenamed(string run, string title)
+    {
+        List<SongState> renamed;
+        lock (_gate)
+        {
+            renamed = [.. _songs.Values.Where(s => s.Run == run).Select(s => s with { Title = title })];
+            foreach (var song in renamed)
+            {
+                _songs[song.Id] = song;
+            }
+        }
+        foreach (var song in renamed)
+        {
+            Publish("song", song);
+        }
+        LibraryChanged();
+    }
+
     /// <summary>Keeps the lyrics draft for the snapshot of browsers that connect later, and sends it to the others.</summary>
     public void UpdateLyrics(LyricsState lyrics)
     {
@@ -465,8 +484,9 @@ public sealed class WorkerHost(
 
     private void Started(JsonObject message)
     {
-        var title = Text(message["title"]) ?? "";
         var run = Text(message["job"]) ?? "";
+        // A render of a run renamed in this app would otherwise announce it by its old name.
+        var title = library.RenamedTitle(run) ?? Text(message["title"]) ?? "";
         var started = new List<SongState>();
         foreach (var node in message["songs"]?.AsArray() ?? [])
         {

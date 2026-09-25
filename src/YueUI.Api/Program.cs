@@ -43,6 +43,7 @@ builder.Services.AddHostedService<PushNotifier>();
 builder.Services.Configure<DataOptions>(builder.Configuration.GetSection(DataOptions.Section));
 builder.Services.AddSingleton<SqliteDatabase>();
 builder.Services.AddSingleton<SqlitePlaylistStore>();
+builder.Services.AddSingleton<SqliteRunTitleStore>();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));

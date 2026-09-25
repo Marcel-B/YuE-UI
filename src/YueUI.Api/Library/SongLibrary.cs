@@ -2,16 +2,21 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Microsoft.Data.Sqlite;
+using YueUI.Api.Data;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Library;
 
 /// <param name="Id">The run folder's name, e.g. <c>20260921-165850-Neon-Night-Struggle</c>.</param>
+/// <param name="Title">The title given in this app if there is one, else the worker's.</param>
+/// <param name="OriginalTitle">The worker's title, which the folder is named after; what an emptied title returns to.</param>
 /// <param name="Style">The style prompt, from the first song's <c>request.json</c>; all songs of a run share it.</param>
 /// <param name="Bytes">What the whole run folder takes on disk.</param>
 public sealed record RunInfo(
     string Id,
     string Title,
+    string OriginalTitle,
     DateTimeOffset? CreatedAt,
     string Style,
     string Lyrics,
@@ -39,7 +44,7 @@ public sealed record SongInfo(
 /// <c>request.json</c> (the prompt) and <c>result.json</c> (title, quality, length).
 /// </summary>
 /// <remarks>Only names matching the worker's own patterns are accepted, which also keeps request paths inside the library.</remarks>
-public sealed partial class SongLibrary(YuePaths paths)
+public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titles)
 {
     public string OutputDir => paths.OutputDir;
 
@@ -50,12 +55,13 @@ public sealed partial class SongLibrary(YuePaths paths)
         {
             return [];
         }
+        var renamed = Read(titles.All) ?? new Dictionary<string, string>();
         return
         [
             .. root.EnumerateDirectories()
                 .Where(d => RunName().IsMatch(d.Name))
                 .OrderByDescending(d => d.Name, StringComparer.Ordinal)
-                .Select(ReadRun)
+                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name)))
                 // A run still tokenizing has no song folders yet; the queue shows it.
                 .Where(r => r.Songs.Count > 0),
         ];
@@ -96,6 +102,7 @@ public sealed partial class SongLibrary(YuePaths paths)
         if (!SongFolders(runDirectory).Any())
         {
             runDirectory.Delete(recursive: true);
+            Forget(run);
         }
         return true;
     }
@@ -109,8 +116,31 @@ public sealed partial class SongLibrary(YuePaths paths)
             return false;
         }
         Directory.Delete(Path.Combine(paths.OutputDir, run), recursive: true);
+        Forget(run);
         return true;
     }
+
+    /// <summary>Gives the run a title of its own, or with an empty one returns it to the worker's.</summary>
+    /// <returns>False for a name the worker would not write or a run that does not exist.</returns>
+    public bool Rename(string run, string title)
+    {
+        if (SongDirectories(run) is null)
+        {
+            return false;
+        }
+        if (title.Length == 0)
+        {
+            titles.Remove(run);
+        }
+        else
+        {
+            titles.Set(run, title);
+        }
+        return true;
+    }
+
+    /// <summary>The title given to the run in this app, or null (also when the database cannot be read).</summary>
+    public string? RenamedTitle(string run) => RunName().IsMatch(run) ? Read(() => titles.Get(run)) : null;
 
     /// <summary>
     /// Maps a path the worker reports (<c>…/run/songN/audio.flac</c> or the song folder) to <c>run/songN</c>.
@@ -124,11 +154,41 @@ public sealed partial class SongLibrary(YuePaths paths)
 
     /// <summary>The run's title for file names: from its songs, else from the folder name's slug.</summary>
     public string TitleOf(string run, string songDirectory) =>
-        ReadJson(Path.Combine(songDirectory, "result.json")) is { } result && Text(result["title"]) is { Length: > 0 } title
+        RenamedTitle(run) is { } renamed
+            ? renamed
+            : ReadJson(Path.Combine(songDirectory, "result.json")) is { } result && Text(result["title"]) is { Length: > 0 } title
             ? title
             : TitleFromName(run);
 
-    private RunInfo ReadRun(DirectoryInfo run)
+    /// <summary>
+    /// The songs are YuE Studio's and stay listed without this app's database (a data folder that is not writable,
+    /// a locked file); they only lose the titles given here.
+    /// </summary>
+    private static T? Read<T>(Func<T?> read) where T : class
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception exception) when (exception is SqliteException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A later run could not reuse the name (it carries the second it started), but the row is of no use now.</summary>
+    private void Forget(string run)
+    {
+        try
+        {
+            titles.Remove(run);
+        }
+        catch (Exception exception) when (exception is SqliteException or IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private RunInfo ReadRun(DirectoryInfo run, string? renamed)
     {
         var songs = new List<SongInfo>();
         string title = "", style = "", lyrics = "";
@@ -160,7 +220,8 @@ public sealed partial class SongLibrary(YuePaths paths)
                 Size(folder)));
         }
 
-        return new RunInfo(run.Name, title.Length > 0 ? title : TitleFromName(run.Name), CreatedAt(run.Name), style, lyrics, songs, Size(run));
+        var original = title.Length > 0 ? title : TitleFromName(run.Name);
+        return new RunInfo(run.Name, renamed ?? original, original, CreatedAt(run.Name), style, lyrics, songs, Size(run));
     }
 
     /// <summary>The folder's files, all levels down; a file the worker deletes meanwhile counts as nothing.</summary>

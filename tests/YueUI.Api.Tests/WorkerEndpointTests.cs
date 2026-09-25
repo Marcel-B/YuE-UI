@@ -261,6 +261,27 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task Renaming_a_run_renames_its_songs_in_the_queue_and_in_later_renders()
+    {
+        _app.AddSong(Run, "song1");
+        await StartSong();
+
+        await _client.PutAsJsonAsync($"/api/runs/{Run}/title", new { title = "Neonnächte" });
+
+        var status = await _app.WaitForStatus(_client, s => s.Songs.All(song => song.Title == "Neonnächte"));
+        Assert.Single(status.Songs);
+        _app.Worker.Emit(new
+        {
+            @event = "started",
+            job = Run,
+            title = "Neon Night",
+            songs = new[] { new { index = 2, seed = 831002, path = _app.AudioPath(Run, "song2"), priority = 1 } },
+        });
+        status = await _app.WaitForStatus(_client, s => s.Songs.Count == 2);
+        Assert.All(status.Songs, song => Assert.Equal("Neonnächte", song.Title));
+    }
+
+    [Fact]
     public async Task Cancel_addresses_the_song_by_its_audio_path()
     {
         await StartSong();
