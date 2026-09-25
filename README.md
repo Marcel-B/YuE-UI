@@ -75,7 +75,7 @@ LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet
 
 ## Als Logic-Projekt laden
 
-Steht unter `Logic:BaseUrl` ein Server von [yue-to-logic-pro](https://github.com/Marcel-B/yue-to-logic-pro), zeigt die Bibliothek bei jedem Song mit Audio und Partitur einen Knopf **Als Logic-Projekt laden**. YuE UI schickt `audio.flac` und `score.abc` direkt von Server zu Server dorthin; der Browser muss die FLAC also nicht erst herunter- und wieder hochladen. Zurück kommt ein ZIP mit dem `.logicx`-Projekt: Audio auf der ersten Spur, Gesang, Instrument und Akkorde als MIDI, Tempo, Takt und Abschnitte aus der Partitur. Das Tempo wird an die gemessene Länge der Aufnahme angepasst (`Logic:FitTempo`), damit MIDI und Audio nicht auseinanderlaufen. Hinweise von yue-to-logic-pro zeigt die Oberfläche nach dem Download an; lehnt es einen Song ab (etwa eine Partitur, die es nicht lesen kann), steht der Grund in der Fehlermeldung.
+Steht unter `Logic:BaseUrl` ein Server von [yue-to-logic-pro](https://github.com/Marcel-B/yue-to-logic-pro), zeigt die Bibliothek bei jedem Song mit Audio und Partitur einen Knopf **Als Logic-Projekt laden**. YuE UI schickt `audio.flac` und `score.abc` direkt von Server zu Server dorthin; der Browser muss die FLAC also nicht erst herunter- und wieder hochladen. Zurück kommt ein ZIP mit dem `.logicx`-Projekt: Audio auf der ersten Spur, Gesang, Instrument und Akkorde als MIDI, Tempo, Takt und Abschnitte aus der Partitur. Hinweise von yue-to-logic-pro zeigt die Oberfläche nach dem Download an; lehnt es einen Song ab (etwa eine Partitur, die es nicht lesen kann), steht der Grund in der Fehlermeldung.
 
 yue-to-logic-pro verlangt keinen Schlüssel. Läuft es hinter einem Proxy, muss der Uploads in FLAC-Größe durchlassen (bei Nginx Proxy Manager `client_max_body_size 300m;`). Ohne `Logic:BaseUrl` gibt es den Knopf nicht.
 
@@ -95,7 +95,6 @@ yue-to-logic-pro verlangt keinen Schlüssel. Läuft es hinter einem Proxy, muss 
 | `Lyrics:ApiToken` (`Lyrics__ApiToken`) | – | nur nötig, wenn in LM Studio „Require Authentication“ an ist |
 | `Lyrics:Lms` (`Lyrics__Lms`) | `~/.lmstudio/bin/lms` | Kommandozeilenwerkzeug, mit dem YuE UI den Server von LM Studio startet |
 | `Logic:BaseUrl` (`Logic__BaseUrl`) | – | Server von yue-to-logic-pro ohne `/api`, z. B. `https://music.idsrv.info`; leer schaltet den Logic-Export ab |
-| `Logic:FitTempo` (`Logic__FitTempo`) | `true` | Tempo an die Länge der Aufnahme anpassen |
 | `Logic:SplitSections` (`Logic__SplitSections`) | `false` | eine Region je Songabschnitt statt einer je Spur |
 | `Push:DataPath` (`Push__DataPath`) | `~/Library/Application Support/YuE UI/push.json` | VAPID-Schlüssel und Abonnements für Benachrichtigungen |
 | `Push:Subject` (`Push__Subject`) | `https://github.com/Marcel-B/YuE-UI` | Kontaktadresse (`mailto:` oder `https:`) für die Push-Dienste; Apple lehnt Adressen wie `mailto:ich@localhost` ab |
