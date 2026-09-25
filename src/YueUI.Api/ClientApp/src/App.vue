@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { getLogicExport, getStorage, listLibrary, subscribe } from './api'
+import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
 import LibraryList from './components/LibraryList.vue'
 import NotificationButton from './components/NotificationButton.vue'
@@ -27,6 +28,8 @@ import type {
 const logCapacity = 300
 const form = ref(loadFormState())
 watch(form, (value) => saveFormState(value), { deep: true })
+/** The API's complaints about single fields, shown by the song's fields and the advanced parameters alike. */
+const fieldErrors = ref<Record<string, string[]>>({})
 
 // ---- Live state of the worker, from the event stream ----------------------------------------------
 
@@ -111,22 +114,27 @@ onBeforeUnmount(unsubscribe)
 
 const pages: { view: View; label: MessageKey; icon: string }[] = [
   { view: 'create', label: 'menuCreate', icon: 'pi pi-sparkles' },
+  { view: 'transcribe', label: 'menuTranscribe', icon: 'pi pi-microphone' },
   { view: 'songs', label: 'menuSongs', icon: 'pi pi-list' },
   { view: 'playlist', label: 'menuPlaylist', icon: 'pi pi-play-circle' },
 ]
 
-/** The badge counts what the page holds that is worth a look: songs in the works, songs in the playlist. */
+/**
+ * The badge counts what the page holds that is worth a look: songs and transcriptions in the works, songs in the
+ * playlist.
+ */
+const badges = computed<Partial<Record<View, number>>>(() => ({
+  create: busyIds.value.size,
+  transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
+  playlist: playlistIds.value.length,
+}))
+
 const menu = computed(() =>
   pages.map((page) => ({
     key: page.view,
     label: t(page.label),
     icon: page.icon,
-    badge:
-      page.view === 'create'
-        ? busyIds.value.size || undefined
-        : page.view === 'playlist'
-          ? playlistIds.value.length || undefined
-          : undefined,
+    badge: badges.value[page.view] || undefined,
     command: () => navigate(page.view),
   })),
 )
@@ -269,9 +277,13 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
     <p v-if="notice" :class="['banner', notice.error ? 'danger' : 'info']" role="status">{{ notice.text }}</p>
   </div>
 
-  <!-- v-show rather than v-if: a page keeps what was typed or uploaded on it while another one is open. -->
-  <main v-show="view === 'create'" class="grid gap-4 grid-cols-1 md:grid-cols-2">
-    <Card>
+  <!--
+    v-show rather than v-if: a page keeps what was typed or uploaded on it while another one is open.
+    On wide screens the advanced parameters sit left of the song's fields and the queue spans both columns below; on a
+    phone everything is one column, the song's fields first.
+  -->
+  <main v-show="view === 'create'" class="grid gap-4 grid-cols-1 md:grid-cols-2 items-start">
+    <Card class="md:col-start-2 md:row-start-1">
       <template #title>
         <h2>
           <div class="flex justify-between">
@@ -287,47 +299,55 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
         <GenerateForm
           ref="generateForm"
           v-model="form"
-          :extensions="worker.extensions"
+          v-model:errors="fieldErrors"
           :busy="worker.busy"
           :lyrics-draft="lyricsDraft"
         />
       </template>
     </Card>
-    <div>
-      <Card>
-        <template #title>
-          <div class="flex flex-wrap justify-between">
-            <h2>{{ t('queue') }}</h2>
-            <Button
-              icon="pi pi-stop-filled"
-              text
-              rounded
-              v-if="worker.busy"
-              @click="queueList?.run(queueList?.stopAll)"
-            />
-          </div>
-        </template>
-        <template #content>
-          <QueueList
-            ref="queueList"
-            :songs="queue"
-            :worker="worker"
-            :log="log"
-            @hide-finished="hideFinished"
-            @error="show($event, true)"
-          />
-        </template>
-      </Card>
 
-      <Card class="mt-4">
-        <template #title>
-          <h2>{{ t('transcriptions') }}</h2>
-        </template>
-        <template #content>
-          <TranscribePanel :transcriptions="transcriptions" @use-score="useScore" @error="show($event, true)" />
-        </template>
-      </Card>
-    </div>
+    <AdvancedParameters
+      v-model="form"
+      v-model:errors="fieldErrors"
+      :extensions="worker.extensions"
+      class="md:col-start-1 md:row-start-1"
+    />
+
+    <Card class="md:col-span-2">
+      <template #title>
+        <div class="flex flex-wrap justify-between">
+          <h2>{{ t('queue') }}</h2>
+          <Button
+            icon="pi pi-stop-filled"
+            text
+            rounded
+            v-if="worker.busy"
+            @click="queueList?.run(queueList?.stopAll)"
+          />
+        </div>
+      </template>
+      <template #content>
+        <QueueList
+          ref="queueList"
+          :songs="queue"
+          :worker="worker"
+          :log="log"
+          @hide-finished="hideFinished"
+          @error="show($event, true)"
+        />
+      </template>
+    </Card>
+  </main>
+
+  <main v-show="view === 'transcribe'">
+    <Card>
+      <template #title>
+        <h2>{{ t('transcription') }}</h2>
+      </template>
+      <template #content>
+        <TranscribePanel :transcriptions="transcriptions" @use-score="useScore" @error="show($event, true)" />
+      </template>
+    </Card>
   </main>
 
   <main v-show="view === 'songs'">

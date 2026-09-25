@@ -43,7 +43,7 @@ Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ 
 
 ## Seiten, Player und Playlist
 
-Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, Warteschlange, Transkriptionen), **Titel** (die Bibliothek) und **Playlist**; auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
+Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter, Warteschlange), **Transkription** (SheetSage2), **Titel** (die Bibliothek) und **Playlist**; auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
 
 In der Warteschlange zeigt jeder Song seine Schritte als Zeitleiste: Warten, Planen, Komponieren, Synthetisieren und Audio rendern, mit der Dauer jedes erledigten Schritts und dem Fortschritt des laufenden. Ein neu gerendeter Entwurf beginnt gleich beim Synthetisieren. Fertige Songs klappen auf eine Zeile zusammen; **Schritte** öffnet die Zeitleiste wieder, samt Gesamtdauer.
 
