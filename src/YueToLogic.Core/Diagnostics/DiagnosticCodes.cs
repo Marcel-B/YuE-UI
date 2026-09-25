@@ -30,9 +30,8 @@ public static class DiagnosticCodes
     // Arrangement
     public const string UnknownVoice = "YTL030";
 
-    // Tempo
-    public const string TempoFitted = "YTL060";
-    public const string TempoNotFitted = "YTL061";
+    // YTL060 and YTL061 belonged to the tempo fit, which was removed because it rarely matched the recording;
+    // they stay unused so that old output is not misread.
 
     // Logic Pro project
     public const string InvalidAudio = "YTL050";

@@ -886,7 +886,6 @@ public class ArrangementTests
                 Mono = new MonoOptions { Legato = true },
                 CountIn = new CountInOptions { Bars = 2, Click = false },
             },
-            FitTempo = new TempoFitOptions { AudioSeconds = 352.68, MaxDeviation = 0.02 },
         };
 
         var json = JsonSerializer.Serialize(options, YueToLogicJsonContext.Default.ConversionOptions);
@@ -904,7 +903,6 @@ public class ArrangementTests
         Assert.Equal(options.Arrangement.Groove, restored.Arrangement.Groove);
         Assert.Equal(options.Arrangement.Mono, restored.Arrangement.Mono);
         Assert.Equal(options.Arrangement.CountIn, restored.Arrangement.CountIn);
-        Assert.Equal(options.FitTempo, restored.FitTempo);
         Assert.Equal(-1, restored.Arrangement.DefaultOctaveShift);
     }
 }
