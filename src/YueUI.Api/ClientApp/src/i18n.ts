@@ -235,6 +235,9 @@ const messages = {
     stage_ready: 'Fertig',
     stage_failed: 'Fehlgeschlagen',
     stage_cancelled: 'Abgebrochen',
+    stageTotal: 'insgesamt {time}',
+    showSteps: 'Schritte',
+    hideSteps: 'Schritte ausblenden',
 
     library: 'Bibliothek',
     libraryEmpty: 'Noch keine Songs.',
@@ -522,6 +525,9 @@ const messages = {
     stage_ready: 'Done',
     stage_failed: 'Failed',
     stage_cancelled: 'Cancelled',
+    stageTotal: '{time} in total',
+    showSteps: 'Steps',
+    hideSteps: 'Hide steps',
 
     library: 'Library',
     libraryEmpty: 'No songs yet.',

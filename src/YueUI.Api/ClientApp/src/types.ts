@@ -35,7 +35,16 @@ export interface SongState {
   quality: Quality | null
   message: string | null
   updatedAt: string
+  /** The stages so far, each with when it began, oldest first; the last one is `stage`. */
+  stages: StageTime[]
+  /** A render from saved tokens: no planning or composing ahead of it. */
+  render: boolean
   finished: boolean
+}
+
+export interface StageTime {
+  stage: Stage
+  startedAt: string
 }
 
 export interface LogEntry {

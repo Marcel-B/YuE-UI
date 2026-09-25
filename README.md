@@ -45,6 +45,8 @@ Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ 
 
 Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, Warteschlange, Transkriptionen), **Titel** (die Bibliothek) und **Playlist**; auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
 
+In der Warteschlange zeigt jeder Song seine Schritte als Zeitleiste: Warten, Planen, Komponieren, Synthetisieren und Audio rendern, mit der Dauer jedes erledigten Schritts und dem Fortschritt des laufenden. Ein neu gerendeter Entwurf beginnt gleich beim Synthetisieren. Fertige Songs klappen auf eine Zeile zusammen; **Schritte** öffnet die Zeitleiste wieder, samt Gesamtdauer.
+
 Abgespielt wird in einem Player am unteren Rand, der beim Seitenwechsel weiterläuft. Ein Song aus der Bibliothek spielt danach die folgenden Songs der Bibliothek, einer aus der Playlist die folgenden der Playlist. Titel und Vor/Zurück erscheinen auch auf dem Sperrbildschirm.
 
 Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn wieder heraus. Auf der Playlist-Seite lässt sich die Reihenfolge ändern. Die Playlist liegt auf dem Server in `~/Library/Application Support/YuE UI/yueui.db` (SQLite), Handy und Mac sehen also dieselbe. Gelöschte Songs fallen von selbst heraus.
@@ -155,6 +157,6 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Menü im Header
 - [x] Playlist, auf einer eigenen Seite
 - [ ] Mehrere Playlists (die Tabelle `playlists` ist schon da)
-- [ ] PrimeVue `Timeline` für die Schritte eines Songs nutzen
+- [x] PrimeVue `Timeline` für die Schritte eines Songs nutzen
 - [ ] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
 - [ ] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)

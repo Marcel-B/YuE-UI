@@ -40,6 +40,8 @@ public sealed class WorkerHost(
     private readonly Dictionary<string, SongState> _songs = [];
     private readonly Dictionary<string, TranscriptionState> _transcriptions = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
+    /// <summary>Songs a render was asked for and that have not started yet; the worker's started event does not say.</summary>
+    private readonly HashSet<string> _renders = [];
     private readonly LinkedList<LogEntry> _log = [];
     private readonly List<Channel<ServerEvent>> _subscribers = [];
     private IWorkerConnection? _connection;
@@ -81,6 +83,10 @@ public sealed class WorkerHost(
     public Task RenderAsync(string songDirectory, string quality, string? engines, CancellationToken cancellationToken)
     {
         var command = new JsonObject { ["cmd"] = "render", ["path"] = songDirectory, ["quality"] = quality };
+        lock (_gate)
+        {
+            _renders.Add(library.IdFor(songDirectory));
+        }
         if (engines is not null)
         {
             command["engines"] = engines;
@@ -278,9 +284,11 @@ public sealed class WorkerHost(
             }
             _connection = null;
             _status = WorkerStatus.Stopped;
+            _renders.Clear();
             foreach (var song in _songs.Values.Where(s => !s.Finished).ToList())
             {
-                var updated = song with { Stage = "failed", Message = "The worker stopped.", UpdatedAt = time.GetUtcNow() };
+                var now = time.GetUtcNow();
+                var updated = song.Entering("failed", now) with { Message = "The worker stopped.", UpdatedAt = now };
                 _songs[song.Id] = updated;
                 failed.Add(updated);
             }
@@ -351,9 +359,8 @@ public sealed class WorkerHost(
                 Started(message);
                 break;
             case "stage":
-                Update(message, song => song with
+                Update(message, song => song.Entering(Text(message["stage"]) ?? song.Stage, time.GetUtcNow()) with
                 {
-                    Stage = Text(message["stage"]) ?? song.Stage,
                     Detail = Text(message["detail"]) ?? "",
                     Engine = Text(message["engine"]) ?? song.Engine,
                     // A new stage starts from zero; the worker's progress events follow.
@@ -377,7 +384,7 @@ public sealed class WorkerHost(
                 Publish("library", new { });
                 break;
             case "failed":
-                Update(message, song => song with { Stage = "failed", Message = Text(message["message"]) });
+                Update(message, song => song.Entering("failed", time.GetUtcNow()) with { Message = Text(message["message"]) });
                 AddLog("error", $"{library.IdFor(Text(message["path"]) ?? "")}: {Text(message["message"])}");
                 break;
             case "idle":
@@ -467,23 +474,29 @@ public sealed class WorkerHost(
             {
                 continue;
             }
+            var now = time.GetUtcNow();
             started.Add(new SongState
             {
                 Id = library.IdFor(path),
+                Stages = [new StageTime("queued", now)],
                 Run = run,
                 Title = title,
                 Index = (int)(Number(entry["index"]) ?? 1),
                 Seed = (long?)Number(entry["seed"]),
                 AudioPath = path,
-                UpdatedAt = time.GetUtcNow(),
+                UpdatedAt = now,
             });
         }
 
         lock (_gate)
         {
-            foreach (var song in started)
+            for (var i = 0; i < started.Count; i++)
             {
-                _songs[song.Id] = song;
+                if (_renders.Remove(started[i].Id))
+                {
+                    started[i] = started[i] with { Render = true };
+                }
+                _songs[started[i].Id] = started[i];
             }
             PruneFinishedLocked();
         }
