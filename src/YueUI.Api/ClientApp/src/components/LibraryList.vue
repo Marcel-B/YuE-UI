@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import {
   audioUrl,
@@ -17,6 +17,7 @@ import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
 import { current, libraryTracks, play, playing, trackOf } from '../player'
 import { playlistIds, toggleInPlaylist } from '../playlist'
 import type { RunInfo, SongInfo } from '../types'
+import { focusedSong, focusRequest, view } from '../view'
 
 const props = defineProps<{
   runs: RunInfo[]
@@ -43,6 +44,36 @@ const confirm = useConfirm()
 const pageSize = 8
 const shown = ref(pageSize)
 const visible = computed(() => props.runs.slice(0, shown.value))
+
+function anchor(songId: string): string {
+  return `song-${songId}`
+}
+
+/**
+ * A song's address (`#/songs/<run>/songN`) scrolls to it, once per request: a library reload must not pull the page
+ * back. A song not listed yet (just finished, or the library still loading) is tried again with the next load.
+ */
+let scrolledFor = -1
+watch(
+  [focusRequest, () => props.runs, view],
+  async () => {
+    const id = focusedSong.value
+    if (!id || view.value !== 'songs' || scrolledFor === focusRequest.value) {
+      return
+    }
+    const index = props.runs.findIndex((run) => run.songs.some((song) => song.id === id))
+    if (index < 0) {
+      return
+    }
+    scrolledFor = focusRequest.value
+    if (index >= shown.value) {
+      shown.value = Math.ceil((index + 1) / pageSize) * pageSize
+    }
+    await nextTick()
+    document.getElementById(anchor(id))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  },
+  { immediate: true },
+)
 
 /** The player goes on with the songs below this one, as the library lists them. */
 function playSong(run: RunInfo, song: SongInfo): void {
@@ -247,7 +278,12 @@ const severityByQuality: Record<string, string> = {
             </div>
 
             <ul class="songs">
-              <li v-for="song in run.songs" :key="song.id" class="song">
+              <li
+                v-for="song in run.songs"
+                :id="anchor(song.id)"
+                :key="song.id"
+                :class="['song', { 'focused bg-emphasis': focusedSong === song.id }]"
+              >
                 <div class="flex gap-3 items-center">
                   <Button
                     v-if="song.hasAudio"
@@ -456,6 +492,12 @@ const severityByQuality: Record<string, string> = {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+}
+
+.focused {
+  margin: -0.5rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-small);
 }
 
 .seed {

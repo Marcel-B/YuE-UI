@@ -4,10 +4,12 @@ import { formatDuration, t } from '../i18n'
 import { current, play, playing, trackOf, type Track } from '../player'
 import { playlistIds, savePlaylist } from '../playlist'
 import type { RunInfo, SongInfo } from '../types'
+import { showSong, songHref } from '../view'
+import SongMenu from './SongMenu.vue'
 
 const props = defineProps<{ runs: RunInfo[] }>()
 
-const emit = defineEmits<{ error: [message: string] }>()
+const emit = defineEmits<{ error: [message: string]; useScore: [songId: string]; newSong: [songId: string] }>()
 
 interface Entry {
   song: SongInfo
@@ -79,7 +81,13 @@ function remove(entry: Entry): void {
             @click="playEntry(entry)"
           />
           <div class="min-w-0 flex-1">
-            <div class="truncate font-semibold">{{ entry.track.title }}</div>
+            <a
+              :href="songHref(entry.song.id)"
+              class="block truncate font-semibold text-color no-underline hover:underline"
+              :title="t('showSong')"
+              @click.prevent="showSong(entry.song.id)"
+              >{{ entry.track.title }}</a
+            >
             <div class="muted text-sm">
               {{ entry.track.detail
               }}<template v-if="entry.song.seconds"> · {{ formatDuration(entry.song.seconds) }}</template>
@@ -104,6 +112,12 @@ function remove(entry: Entry): void {
             :disabled="index === entries.length - 1"
             :aria-label="t('moveDown')"
             @click="move(index, 1)"
+          />
+          <SongMenu
+            :song-id="entry.song.id"
+            :has-score="entry.song.hasScore"
+            @use-score="emit('useScore', $event)"
+            @new-song="emit('newSong', $event)"
           />
           <Button
             icon="pi pi-minus-circle"

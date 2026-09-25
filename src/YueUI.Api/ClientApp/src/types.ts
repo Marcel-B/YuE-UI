@@ -153,6 +153,27 @@ export interface SongInfo {
   bytes: number
 }
 
+/**
+ * What a song was generated with, from its request.json (Library/SongLibrary.cs); null where the file does not say,
+ * e.g. for a song YuE Studio made.
+ */
+export interface SongRequest {
+  title: string
+  style: string
+  lyrics: string
+  instrumental: boolean | null
+  quality: Quality | null
+  cot: Cot | null
+  seed: number | null
+  engines: Engines | null
+  draftSteps: number | null
+  maxTokens: number | null
+  abc: string | null
+  fullSteps: number | null
+  abcSampling: SamplingOverrides | null
+  semanticSampling: SamplingOverrides | null
+}
+
 export interface RunInfo {
   /** The run folder's name; stays when the run is renamed. */
   id: string

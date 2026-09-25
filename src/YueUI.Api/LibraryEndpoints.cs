@@ -28,6 +28,9 @@ public static partial class LibraryEndpoints
             SongFile(library, run, song, "audio.flac", "audio/flac", "flac", download == true));
         api.MapGet("/songs/{run}/{song}/score", (string run, string song, SongLibrary library) =>
             SongFile(library, run, song, "score.abc", "text/vnd.abc; charset=utf-8", "abc", download: true));
+        // What the song was made with, for "as a new song" in the web form.
+        api.MapGet("/songs/{run}/{song}/request", (string run, string song, SongLibrary library) =>
+            library.ReadRequest(run, song) is { } request ? Results.Ok(request) : Results.NotFound());
         api.MapGet("/songs/{run}/{song}/zip", (string run, string song, SongLibrary library) =>
             library.SongDirectory(run, song) is { } directory
                 ? Zip($"{FileName(library.TitleOf(run, directory), run)}-{song}.zip", SongEntries(library, run, directory))
