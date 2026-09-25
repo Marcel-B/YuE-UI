@@ -271,6 +271,7 @@ const messages = {
     deleted: '„{title}“ ist gelöscht.',
 
     menuCreate: 'Erstellen',
+    menuTranscribe: 'Transkription',
     menuSongs: 'Titel',
     menuPlaylist: 'Playlist',
     menu: 'Menü',
@@ -558,6 +559,7 @@ const messages = {
     deleted: '“{title}” has been deleted.',
 
     menuCreate: 'Create',
+    menuTranscribe: 'Transcription',
     menuSongs: 'Songs',
     menuPlaylist: 'Playlist',
     menu: 'Menu',
