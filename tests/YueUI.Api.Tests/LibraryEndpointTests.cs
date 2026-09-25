@@ -39,6 +39,51 @@ public sealed class LibraryEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_songs_request_is_read_in_the_forms_terms()
+    {
+        var directory = _app.AddSong("20260921-165850-Neon-Night", "song2");
+        File.WriteAllText(Path.Combine(directory, "request.json"), """
+            {"style": "Dark synthwave", "lyrics": "[verse]\nLa la", "title": "Neon Night", "quality": "full", "cot": "melody",
+             "seed": 43, "instrumental": false, "engines": "gpu", "draft_steps": 12, "max_tokens": 3000, "abc": "X:1\n",
+             "full_steps": 48, "abc_sampling": {"temperature": 0.9, "top_k": 50}, "id": "song2"}
+            """);
+
+        var request = (await _client.GetFromJsonAsync<SongRequest>("/api/songs/20260921-165850-Neon-Night/song2/request", TestApp.Json))!;
+
+        Assert.Equal("Neon Night", request.Title);
+        Assert.Equal("[verse]\nLa la", request.Lyrics);
+        Assert.Equal("full", request.Quality);
+        Assert.Equal("melody", request.Cot);
+        Assert.Equal(43, request.Seed);
+        Assert.False(request.Instrumental);
+        Assert.Equal("gpu", request.Engines);
+        Assert.Equal(12, request.DraftSteps);
+        Assert.Equal(3000, request.MaxTokens);
+        Assert.Equal("X:1\n", request.Abc);
+        Assert.Equal(48, request.FullSteps);
+        Assert.Equal(new SamplingOverrides(Temperature: 0.9, TopK: 50), request.AbcSampling);
+        Assert.Null(request.SemanticSampling);
+    }
+
+    [Fact]
+    public async Task A_request_without_the_optional_fields_leaves_them_null()
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1", title: "Neon Night");
+
+        var request = (await _client.GetFromJsonAsync<SongRequest>("/api/songs/20260921-165850-Neon-Night/song1/request", TestApp.Json))!;
+
+        // No title in the file: the run's, from result.json.
+        Assert.Equal("Neon Night", request.Title);
+        Assert.Equal("Dark synthwave", request.Style);
+        Assert.Equal(42, request.Seed);
+        Assert.Null(request.Quality);
+        Assert.Null(request.Abc);
+        Assert.Null(request.MaxTokens);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/songs/20260921-165850-Neon-Night/song9/request")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/songs/..%2F..%2Fetc/song1/request")).StatusCode);
+    }
+
+    [Fact]
     public async Task A_missing_library_folder_is_an_empty_library()
     {
         Directory.Delete(_app.OutputDir, recursive: true);

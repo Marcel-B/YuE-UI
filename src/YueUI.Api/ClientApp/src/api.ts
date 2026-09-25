@@ -8,6 +8,7 @@ import type {
   LyricsState,
   PlaylistInfo,
   RunInfo,
+  SongRequest,
   SongState,
   StatusSnapshot,
   StorageInfo,
@@ -112,6 +113,11 @@ export function scoreUrl(songId: string): string {
 /** The song's score.abc as text, to show it or to use it for the next song. */
 export async function songScore(songId: string): Promise<string> {
   return (await send(`/api/songs/${songId}/score`)).text()
+}
+
+/** What the song was generated with, to make it again with changes. */
+export async function songRequest(songId: string): Promise<SongRequest> {
+  return (await send(`/api/songs/${songId}/request`)).json() as Promise<SongRequest>
 }
 
 /** The song's audio.flac and score.abc in one archive. */

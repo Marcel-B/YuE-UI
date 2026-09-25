@@ -3,6 +3,7 @@ import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { cancel, shutdownWorker, stopAll } from '../api'
 import { formatDuration, formatTime, stageLabel, t } from '../i18n'
 import SongTimeline from './SongTimeline.vue'
+import { showSong, songHref } from '../view'
 import type { LogEntry, SongState, WorkerInfo } from '../types'
 
 defineExpose({ run, stopAll, shutdownWorker })
@@ -11,6 +12,8 @@ const props = defineProps<{
   songs: SongState[]
   worker: WorkerInfo
   log: LogEntry[]
+  /** Songs the library lists; those have a place on the songs page to jump to. */
+  listed: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -80,7 +83,15 @@ watch(
     <ul v-else>
       <li v-for="song in songs" :key="song.id" :class="['song', song.stage]">
         <div class="flex gap-3 items-center">
-          <strong class="name">{{ song.title || song.run }}</strong>
+          <a
+            v-if="listed.has(song.id)"
+            :href="songHref(song.id)"
+            class="name font-bold text-color no-underline hover:underline"
+            :title="t('showSong')"
+            @click.prevent="showSong(song.id)"
+            >{{ song.title || song.run }}</a
+          >
+          <strong v-else class="name">{{ song.title || song.run }}</strong>
           <span class="muted">{{ t('songN', { n: song.index }) }}</span>
           <Button
             v-if="!song.finished"
