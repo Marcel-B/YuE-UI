@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { getLogicExport, getStorage, listLibrary, subscribe } from './api'
 import GenerateForm from './components/GenerateForm.vue'
 import LibraryList from './components/LibraryList.vue'
+import NotificationButton from './components/NotificationButton.vue'
 import QueueList from './components/QueueList.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import { loadFormState, saveFormState } from './form'
@@ -211,7 +212,12 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
     </div>
     <div class="status">
       <span :class="['pill', worker.busy ? 'busy' : worker.status]">{{ workerLabel(worker.status, worker.busy) }}</span>
-      <button type="button" class="link" @click="setLocale(locale === 'de' ? 'en' : 'de')">{{ t('language') }}</button>
+      <div class="flex items-center gap-2">
+        <NotificationButton @notice="show" />
+        <button type="button" class="link" @click="setLocale(locale === 'de' ? 'en' : 'de')">
+          {{ t('language') }}
+        </button>
+      </div>
     </div>
   </header>
 

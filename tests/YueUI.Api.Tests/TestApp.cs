@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
+using YueUI.Api.Push;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Tests;
@@ -49,6 +50,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
     /// <summary>Where the fake yue-to-logic-pro is expected; set to null before the first request to switch the export off.</summary>
     public string? LogicBaseUrl { get; set; } = "http://logic.test/";
+
+    public FakePushSender Push { get; } = new();
 
     public FakeWorker Worker => Launcher.Current ?? throw new InvalidOperationException("No worker was started.");
 
@@ -112,6 +115,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddHttpClient(LyricsWriter.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLmStudio.Handler(LmStudio));
             services.Configure<LogicOptions>(options => options.BaseUrl = LogicBaseUrl);
             services.AddHttpClient(LogicEndpoints.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLogic.Handler(Logic));
+
+            services.Configure<PushOptions>(options => options.DataPath = Path.Combine(Root, "push.json"));
+            services.AddSingleton<IPushSender>(Push);
             if (_fakeWorker)
             {
                 services.AddSingleton<IWorkerLauncher>(Launcher);
@@ -365,4 +371,26 @@ public sealed class FakeLogic
             return response;
         }
     }
+}
+
+/// <summary>Records what would have gone to the push services; <see cref="Result"/> decides their answer.</summary>
+public sealed class FakePushSender : IPushSender
+{
+    private readonly Channel<(PushSubscriptionEntry Subscription, JsonObject Payload)> _sent = Channel.CreateUnbounded<(PushSubscriptionEntry, JsonObject)>();
+
+    public PushResult Result { get; set; } = PushResult.Delivered;
+
+    public Task<PushResult> SendAsync(PushSubscriptionEntry subscription, string payload, CancellationToken cancellationToken)
+    {
+        _sent.Writer.TryWrite((subscription, JsonNode.Parse(payload)!.AsObject()));
+        return Task.FromResult(Result);
+    }
+
+    public async Task<(PushSubscriptionEntry Subscription, JsonObject Payload)> Next()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        return await _sent.Reader.ReadAsync(timeout.Token);
+    }
+
+    public bool TryNext(out (PushSubscriptionEntry Subscription, JsonObject Payload) sent) => _sent.Reader.TryRead(out sent);
 }
