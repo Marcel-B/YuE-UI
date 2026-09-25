@@ -15,6 +15,16 @@ const messages = {
     studioRunning:
       'YuE Studio ist geöffnet und hat einen eigenen Worker. Beide gleichzeitig rechnen zu lassen kann den Speicher sprengen – am besten die App beenden.',
     workerError: 'Der Worker meldet: {message}',
+    notificationsOn: 'Benachrichtigungen an – antippen zum Ausschalten',
+    notificationsOff: 'Benachrichtigen, wenn etwas fertig ist',
+    notificationsEnabled: 'Benachrichtigungen sind an. Eine Test-Nachricht ist unterwegs.',
+    notificationsDisabled: 'Benachrichtigungen sind aus.',
+    notificationsInstall:
+      'Auf iPhone und iPad gibt es Benachrichtigungen nur für die App auf dem Home-Bildschirm: Teilen → „Zum Home-Bildschirm“, dann von dort öffnen.',
+    notificationsBlocked:
+      'Benachrichtigungen sind für diese Seite blockiert. Das lässt sich nur in den Einstellungen des Systems oder Browsers wieder erlauben.',
+    notificationsUnsupported: 'Dieser Browser kann keine Benachrichtigungen empfangen.',
+    notificationsFailed: 'Benachrichtigungen ließen sich nicht einrichten: {message}',
 
     newSong: 'Neuer Song',
     moreInfo: 'Mehr dazu',
@@ -269,6 +279,16 @@ const messages = {
     studioRunning:
       'YuE Studio is open and has a worker of its own. Letting both generate at once can run out of memory – better quit the app.',
     workerError: 'The worker reports: {message}',
+    notificationsOn: 'Notifications on – tap to switch off',
+    notificationsOff: 'Notify me when something finishes',
+    notificationsEnabled: 'Notifications are on. A test notification is on its way.',
+    notificationsDisabled: 'Notifications are off.',
+    notificationsInstall:
+      'On iPhone and iPad, only the app on the home screen gets notifications: Share → “Add to Home Screen”, then open it from there.',
+    notificationsBlocked:
+      'Notifications are blocked for this site. Only the system or browser settings can allow them again.',
+    notificationsUnsupported: 'This browser cannot receive notifications.',
+    notificationsFailed: 'Notifications could not be set up: {message}',
 
     newSong: 'New song',
     moreInfo: 'More',

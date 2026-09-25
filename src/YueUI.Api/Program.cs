@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using YueUI.Api;
 using YueUI.Api.Library;
 using YueUI.Api.Lyrics;
+using YueUI.Api.Push;
 using YueUI.Api.Worker;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -26,6 +27,13 @@ builder.Services.AddSingleton<ILmStudioStarter, LmsCli>();
 builder.Services.AddSingleton<LyricsWriter>();
 builder.Services.AddHttpClient(LyricsWriter.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
 
+// Web Push: notifies subscribed browsers (the app on a phone's home screen) when something finishes.
+builder.Services.Configure<PushOptions>(builder.Configuration.GetSection(PushOptions.Section));
+builder.Services.AddSingleton<PushStore>();
+builder.Services.AddSingleton<IPushSender, WebPushSender>();
+builder.Services.AddHttpClient(WebPushSender.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHostedService<PushNotifier>();
+
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddProblemDetails();
@@ -49,6 +57,7 @@ api.MapWorkerEndpoints();
 api.MapLibraryEndpoints();
 api.MapTranscriptionEndpoints();
 api.MapLyricsEndpoints();
+api.MapPushEndpoints();
 
 app.MapClientApp();
 

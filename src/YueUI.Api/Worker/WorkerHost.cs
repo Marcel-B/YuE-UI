@@ -60,10 +60,14 @@ public sealed class WorkerHost(
     }
 
     /// <summary>A snapshot and every change after it, with nothing lost in between. Dispose to unsubscribe.</summary>
-    public Subscription Subscribe()
+    /// <param name="checkStudio">
+    /// False for subscribers that do not show whether YuE Studio runs (push notifications): the snapshot then carries
+    /// the last known answer instead of scanning the process table, whose result would be kept for the next browser.
+    /// </param>
+    public Subscription Subscribe(bool checkStudio = true)
     {
         var channel = Channel.CreateBounded<ServerEvent>(new BoundedChannelOptions(SubscriberCapacity) { SingleReader = true });
-        var studioRunning = StudioRunning();
+        var studioRunning = checkStudio ? StudioRunning() : _studioRunning;
         lock (_gate)
         {
             _subscribers.Add(channel);
