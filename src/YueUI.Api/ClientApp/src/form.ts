@@ -1,4 +1,4 @@
-import type { Cot, Engines, GenerateRequest, Quality, SamplingOverrides } from './types'
+import type { Cot, Engines, GenerateRequest, LyricsLanguage, Quality, SamplingOverrides } from './types'
 
 /** The web form as the browser keeps it; `seed` stays text so an empty field means "random". */
 export interface FormState {
@@ -7,6 +7,8 @@ export interface FormState {
   lyrics: string
   /** Keywords for a lyrics draft; not sent with the song. */
   lyricsIdea: string
+  /** The language of the next lyrics draft; not sent with the song, the style's language tag is. */
+  lyricsLanguage: LyricsLanguage
   /** The draft this browser asked for and still waits for; kept so that it lands even after a reload. */
   lyricsDraftId: string
   instrumental: boolean
@@ -75,6 +77,7 @@ export function defaultFormState(): FormState {
     style: '',
     lyrics: '',
     lyricsIdea: '',
+    lyricsLanguage: 'english',
     lyricsDraftId: '',
     instrumental: false,
     quality: 'draft',
