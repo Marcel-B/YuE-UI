@@ -132,6 +132,25 @@ export function transcriptionZipUrl(id: string): string {
   return `${apiBase}/api/transcriptions/${encodeURIComponent(id)}/zip`
 }
 
+/** This server's VAPID public key (base64url), the `applicationServerKey` for subscribing to its pushes. */
+export async function pushKey(): Promise<string> {
+  return ((await (await send('/api/push')).json()) as { publicKey: string }).publicKey
+}
+
+/** Asks the server to notify this browser, in the given language, when songs, transcriptions and lyrics finish. */
+export async function savePushSubscription(subscription: PushSubscription, language: string): Promise<void> {
+  await send('/api/push/subscriptions', json('POST', { ...subscription.toJSON(), language }))
+}
+
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  await send('/api/push/subscriptions', json('DELETE', { endpoint }))
+}
+
+/** Sends a notification to this browser only, to check the whole way to the phone. */
+export async function testPush(endpoint: string): Promise<void> {
+  await send('/api/push/test', json('POST', { endpoint }))
+}
+
 export interface EventHandlers {
   snapshot(snapshot: StatusSnapshot): void
   song(song: SongState): void
