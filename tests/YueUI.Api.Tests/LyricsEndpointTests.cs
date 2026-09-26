@@ -64,6 +64,59 @@ public sealed class LyricsEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task The_picker_says_which_models_can_read_a_photo()
+    {
+        var list = (await _client.GetFromJsonAsync<JsonObject>("/api/lyrics/models"))!["models"]!.AsArray();
+
+        Assert.Equal([true, false], list.Select(m => (bool?)m!["vision"]));
+    }
+
+    /// <summary>A 1×1 JPEG's worth of base64; the server only checks the form, LM Studio reads the picture.</summary>
+    private const string Photo = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8=";
+
+    [Fact]
+    public async Task A_photo_goes_to_the_model_as_an_image_beside_the_keywords()
+    {
+        var draft = await Finished(new { keywords = "summer", style = "Pop", image = Photo });
+
+        Assert.Equal("done", draft.Stage);
+        var completion = Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!;
+        var content = completion["messages"]![1]!["content"]!.AsArray();
+        Assert.Equal("text", (string?)content[0]!["type"]);
+        var text = (string)content[0]!["text"]!;
+        Assert.Contains("photo", text, StringComparison.Ordinal);
+        Assert.Contains("summer", text, StringComparison.Ordinal);
+        Assert.Contains("Pop", text, StringComparison.Ordinal);
+        Assert.Equal("image_url", (string?)content[1]!["type"]);
+        Assert.Equal(Photo, (string?)content[1]!["image_url"]!["url"]);
+        Assert.Equal(8192 - 1024 - 1536, (int?)completion["max_tokens"]);
+    }
+
+    [Fact]
+    public async Task A_photo_needs_no_keywords()
+    {
+        var draft = await Finished(new { image = Photo });
+
+        Assert.Equal("done", draft.Stage);
+        var text = (string)Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!["messages"]![1]!["content"]![0]!["text"]!;
+        Assert.DoesNotContain("Focus on", text, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("https://example.com/photo.jpg")]
+    [InlineData("data:image/gif;base64,R0lGODlh")]
+    [InlineData("data:image/jpeg;base64,not base64!")]
+    [InlineData("data:image/jpeg;base64,")]
+    public async Task Anything_but_a_photo_as_a_data_url_is_refused(string image)
+    {
+        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer", image });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("image", (await response.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject().Select(e => e.Key));
+        Assert.Empty(_app.LmStudio.Requests);
+    }
+
+    [Fact]
     public async Task Listing_models_starts_LM_Studio_and_says_when_it_cannot()
     {
         _app.LmStudio.Running = false;

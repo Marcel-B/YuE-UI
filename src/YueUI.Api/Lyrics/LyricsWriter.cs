@@ -67,6 +67,12 @@ public sealed partial class LyricsWriter(
     /// <summary>Room for system prompt, keywords and style; the system prompt alone is about 300 tokens.</summary>
     private const int PromptTokens = 1024;
 
+    /// <summary>
+    /// What a photo adds to the prompt: Gemma 4 turns an image into up to 1120 tokens, depending on the budget the
+    /// server picks; the browser sends it at most 1024 pixels wide.
+    /// </summary>
+    private const int ImageTokens = 1536;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>A draft is in progress, so the lyrics model may be in memory: no song should start now.</summary>
@@ -77,8 +83,9 @@ public sealed partial class LyricsWriter(
     /// <see cref="LyricsState"/>), so a phone that locks meanwhile still gets it.
     /// </summary>
     /// <param name="model">A model id from <see cref="ListModelsAsync"/>; null for <see cref="LyricsOptions.Model"/>.</param>
+    /// <param name="image">A photo as a <c>data:image/…;base64,</c> URL for a model that can see; the lyrics are about it.</param>
     /// <exception cref="LyricsBusyException">Another draft is in progress, or YuE2 is generating.</exception>
-    public LyricsState Start(string keywords, string? style, LyricsLanguage language = LyricsLanguage.English, string? model = null)
+    public LyricsState Start(string? keywords, string? style, LyricsLanguage language = LyricsLanguage.English, string? model = null, string? image = null)
     {
         if (!_gate.Wait(0))
         {
@@ -92,16 +99,20 @@ public sealed partial class LyricsWriter(
         }
         var state = new LyricsState { Id = Guid.NewGuid().ToString("N")[..12], UpdatedAt = time.GetUtcNow() };
         worker.UpdateLyrics(state);
-        _ = Task.Run(() => RunAsync(state, keywords, style, language, string.IsNullOrWhiteSpace(model) ? options.Value.Model : model.Trim()));
+        var brief = new Brief(keywords?.Trim() ?? "", style, language, image);
+        _ = Task.Run(() => RunAsync(state, brief, string.IsNullOrWhiteSpace(model) ? options.Value.Model : model.Trim()));
         return state;
     }
 
-    private async Task RunAsync(LyricsState state, string keywords, string? style, LyricsLanguage language, string model)
+    /// <summary>What the song is to be about, as the form sent it.</summary>
+    private sealed record Brief(string Keywords, string? Style, LyricsLanguage Language, string? Image);
+
+    private async Task RunAsync(LyricsState state, Brief brief, string model)
     {
         LyricsState result;
         try
         {
-            result = state with { Stage = "done", Lyrics = await WriteAsync(model, keywords, style, language, CancellationToken.None) };
+            result = state with { Stage = "done", Lyrics = await WriteAsync(model, brief, CancellationToken.None) };
         }
         catch (LyricsUnavailableException exception)
         {
@@ -121,7 +132,7 @@ public sealed partial class LyricsWriter(
     }
 
     /// <exception cref="LyricsUnavailableException">LM Studio could not be reached or refused.</exception>
-    private async Task<string> WriteAsync(string model, string keywords, string? style, LyricsLanguage language, CancellationToken cancellationToken)
+    private async Task<string> WriteAsync(string model, Brief brief, CancellationToken cancellationToken)
     {
         // Set once this call has loaded the model, so that it is unloaded again whatever happens next.
         string? unload = null;
@@ -137,7 +148,7 @@ public sealed partial class LyricsWriter(
             await EnsureServerAsync(http, cancellationToken);
             var (instance, loadedHere, context) = await LoadAsync(http, model, settings, cancellationToken);
             unload = loadedHere ? instance : null;
-            return await CompleteAsync(http, settings, instance, context, keywords, style, language, logger, cancellationToken);
+            return await CompleteAsync(http, settings, instance, context, brief, logger, cancellationToken);
         }
         finally
         {
@@ -254,7 +265,7 @@ public sealed partial class LyricsWriter(
         // The configured model stays choosable even when LM Studio does not list it, e.g. while it is still downloading.
         if (!models.Any(m => m.Id == settings.Model))
         {
-            models.Insert(0, new LyricsModel(settings.Model, settings.Model, null, false));
+            models.Insert(0, new LyricsModel(settings.Model, settings.Model, null, false, null));
         }
         return new LyricsModels(settings.Model, models);
     }
@@ -279,7 +290,8 @@ public sealed partial class LyricsWriter(
                     m["key"]!.ToString(),
                     m["display_name"]?.ToString() is { Length: > 0 } name ? name : m["key"]!.ToString(),
                     (m["size_bytes"] as JsonValue)?.TryGetValue<long>(out var size) == true ? size : null,
-                    (m["loaded_instances"] as JsonArray)?.Count > 0))];
+                    (m["loaded_instances"] as JsonArray)?.Count > 0,
+                    (m["capabilities"]?["vision"] as JsonValue)?.TryGetValue<bool>(out var vision) == true ? vision : null))];
         }
         catch (HttpRequestException)
         {
@@ -298,7 +310,7 @@ public sealed partial class LyricsWriter(
                 .Select(m => m["id"]?.ToString())
                 .OfType<string>()
                 .Where(id => !id.Contains("embed", StringComparison.OrdinalIgnoreCase))
-                .Select(id => new LyricsModel(id, id, null, false))];
+                .Select(id => new LyricsModel(id, id, null, false, null))];
         }
         catch (HttpRequestException)
         {
@@ -371,21 +383,27 @@ public sealed partial class LyricsWriter(
     }
 
     private static async Task<string> CompleteAsync(
-        HttpClient http, LyricsOptions settings, string model, int context, string keywords, string? style, LyricsLanguage language, ILogger logger,
-        CancellationToken cancellationToken)
+        HttpClient http, LyricsOptions settings, string model, int context, Brief brief, ILogger logger, CancellationToken cancellationToken)
     {
+        var text = UserPrompt(brief.Keywords, brief.Style, brief.Image is not null);
+        // The OpenAI form for images, which LM Studio passes to a vision model; a model without vision refuses it.
+        JsonNode prompt = brief.Image is null
+            ? text
+            : new JsonArray(
+                new JsonObject { ["type"] = "text", ["text"] = text },
+                new JsonObject { ["type"] = "image_url", ["image_url"] = new JsonObject { ["url"] = brief.Image } });
         var request = new JsonObject
         {
             ["model"] = model,
             ["messages"] = new JsonArray(
-                new JsonObject { ["role"] = "system", ["content"] = SystemPrompt(language) },
-                new JsonObject { ["role"] = "user", ["content"] = UserPrompt(keywords, style) }),
+                new JsonObject { ["role"] = "system", ["content"] = SystemPrompt(brief.Language) },
+                new JsonObject { ["role"] = "user", ["content"] = prompt }),
             ["temperature"] = settings.Temperature,
             // Thinking models reason before the lyrics, and at length: Gemma 4 26B counts every line's syllables,
             // well over 4000 tokens. So the answer gets the whole context it was loaded with except the prompt,
             // which may be less than configured (see LoadAsync).
             // LM Studio's reasoning "off" is no way out for Gemma 4: it thinks anyway, unmarked in the answer.
-            ["max_tokens"] = Math.Max(1024, context - PromptTokens),
+            ["max_tokens"] = Math.Max(1024, context - PromptTokens - (brief.Image is null ? 0 : ImageTokens)),
             ["stream"] = false,
             // LM Studio's own field: unload after this many idle seconds, should the model be loaded just in time.
             ["ttl"] = settings.IdleTtlSeconds,
@@ -451,10 +469,22 @@ public sealed partial class LyricsWriter(
 
     private static string Truncate(string text, int length) => text.Length <= length ? text : text[..length] + " …";
 
-    internal static string UserPrompt(string keywords, string? style) =>
-        string.IsNullOrWhiteSpace(style)
-            ? $"Write lyrics about: {keywords.Trim()}"
-            : $"Write lyrics about: {keywords.Trim()}\nThe song's style (for mood and pacing, do not mention it): {style.Trim()}";
+    /// <remarks>
+    /// A photo is the song's subject; keywords given with it steer what the lyrics take from it. The photo is not to be
+    /// described line by line: a song about a picture tells what it feels like, not what is where.
+    /// </remarks>
+    internal static string UserPrompt(string keywords, string? style, bool image = false)
+    {
+        var about = (image, keywords.Trim()) switch
+        {
+            (false, var words) => $"Write lyrics about: {words}",
+            (true, "") => "Write lyrics inspired by this photo: its mood, its place and the story it could tell. Do not describe it line by line.",
+            (true, var words) => $"Write lyrics inspired by this photo: its mood, its place and the story it could tell. Do not describe it line by line.\nFocus on: {words}",
+        };
+        return string.IsNullOrWhiteSpace(style)
+            ? about
+            : $"{about}\nThe song's style (for mood and pacing, do not mention it): {style.Trim()}";
+    }
 
     /// <summary>What models add around the lyrics despite the instructions: reasoning, code fences, bold tags.</summary>
     internal static string Clean(string text)

@@ -207,6 +207,8 @@ export interface LyricsModel {
   sizeBytes: number | null
   /** Already loaded in LM Studio, so a draft uses it without loading. */
   loaded: boolean
+  /** Can read a photo, as LM Studio says; null when the server does not say. */
+  vision: boolean | null
 }
 
 /** What the lyrics model picker offers; `default` is the configured model, used when a draft names none. */
