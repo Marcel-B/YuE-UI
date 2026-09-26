@@ -111,6 +111,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             {
                 options.Model = "google/gemma-4-e4b";
                 options.ContextLength = 8192;
+                options.MinContextLength = 2048;
             });
             // A new handler each time: the factory disposes the ones it rotates out.
             services.AddHttpClient(LyricsWriter.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLmStudio.Handler(LmStudio));
@@ -244,8 +245,14 @@ public sealed class FakeLmStudio : ILmStudioStarter
     /// <summary>An instance the user loaded in LM Studio themselves.</summary>
     public string? LoadedInstance { get; set; }
 
+    /// <summary>Another model the user left loaded in LM Studio; unloading it clears this.</summary>
+    public string? OtherLoadedInstance { get; set; }
+
     /// <summary>LM Studio's guardrails refusing the load, with this message.</summary>
     public string? LoadRefusal { get; set; }
+
+    /// <summary>Limits <see cref="LoadRefusal"/> to loads it holds for, given the context asked for.</summary>
+    public Func<int, bool>? RefusesContext { get; set; }
 
     public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
 
@@ -292,12 +299,19 @@ public sealed class FakeLmStudio : ILmStudioStarter
                                 size_bytes = 5_000_000_000L,
                                 loaded_instances = lm.LoadedInstance is { } id ? new object[] { new { id } } : [],
                             },
-                            new { type = "llm", key = "qwen/qwen3-8b", display_name = "Qwen3 8B", size_bytes = 5_500_000_000L, loaded_instances = Array.Empty<object>() },
+                            new
+                            {
+                                type = "llm",
+                                key = "qwen/qwen3-8b",
+                                display_name = "Qwen3 8B",
+                                size_bytes = 5_500_000_000L,
+                                loaded_instances = lm.OtherLoadedInstance is { } other ? new object[] { new { id = other } } : [],
+                            },
                             new { type = "embedding", key = "text-embedding-nomic", display_name = "Nomic Embed", size_bytes = 80_000_000L, loaded_instances = Array.Empty<object>() },
                         },
                     });
                 case "/api/v1/models/load":
-                    return lm.LoadRefusal is { } refusal
+                    return lm.LoadRefusal is { } refusal && lm.RefusesContext?.Invoke((int)body!["context_length"]!) != false
                         ? Json(HttpStatusCode.InternalServerError, new { error = new { type = "model_load_failed", message = refusal } })
                         : Json(HttpStatusCode.OK, new
                         {
@@ -316,6 +330,10 @@ public sealed class FakeLmStudio : ILmStudioStarter
                         ? Json(HttpStatusCode.OK, lm.RawAnswer ?? new { choices = new[] { new { message = new { role = "assistant", content = lm.Answer } } } })
                         : Json(lm.Status, new { error = new { message = "Model not found" } });
                 case "/api/v1/models/unload":
+                    if ((string?)body?["instance_id"] == lm.OtherLoadedInstance)
+                    {
+                        lm.OtherLoadedInstance = null;
+                    }
                     return Json(HttpStatusCode.OK, new { instance_id = (string?)body?["instance_id"] });
                 default:
                     return new HttpResponseMessage(HttpStatusCode.NotFound);
