@@ -16,6 +16,10 @@ import type {
   TranscriptionList,
   TranscriptionState,
   TranscriptionTask,
+  ReferenceVoice,
+  VersionRequest,
+  VersionState,
+  VoiceInfo,
   WorkerInfo,
 } from './types'
 
@@ -274,6 +278,47 @@ export async function testPush(endpoint: string): Promise<void> {
   await send('/api/push/test', json('POST', { endpoint }))
 }
 
+/** Whether reference voices can be managed and songs sung with them; the interface hides both otherwise. */
+export async function getVoiceInfo(): Promise<VoiceInfo> {
+  return (await send('/api/voice')).json() as Promise<VoiceInfo>
+}
+
+/** The reference voices ChangeMyVoice keeps. */
+export async function listVoices(): Promise<ReferenceVoice[]> {
+  return (await send('/api/voices')).json() as Promise<ReferenceVoice[]>
+}
+
+/** Stores a recording as a reference voice; the service keeps its first 25 seconds. */
+export async function addVoice(label: string, file: File): Promise<ReferenceVoice> {
+  const form = new FormData()
+  form.append('label', label)
+  form.append('file', file)
+  return (await send('/api/voices', { method: 'POST', body: form })).json() as Promise<ReferenceVoice>
+}
+
+/** Refused (409) while a job of the service still waits for the voice. */
+export async function deleteVoice(id: string): Promise<void> {
+  await send(`/api/voices/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function voiceAudioUrl(id: string): string {
+  return `${apiBase}/api/voices/${encodeURIComponent(id)}/audio`
+}
+
+/** Queues the song to be sung with a reference voice; its progress arrives as `version` events. */
+export async function addVersion(songId: string, request: VersionRequest): Promise<VersionState> {
+  return (await send(`/api/songs/${songId}/versions`, json('POST', request))).json() as Promise<VersionState>
+}
+
+/** Stops a version in the works, or removes a finished one with its audio. */
+export async function deleteVersion(songId: string, versionId: string): Promise<void> {
+  await send(`/api/songs/${songId}/versions/${versionId}`, { method: 'DELETE' })
+}
+
+export function versionAudioUrl(songId: string, versionId: string, download = false): string {
+  return `${apiBase}/api/songs/${songId}/versions/${versionId}/audio${download ? '?download=true' : ''}`
+}
+
 export interface EventHandlers {
   snapshot(snapshot: StatusSnapshot): void
   song(song: SongState): void
@@ -283,6 +328,7 @@ export interface EventHandlers {
   library(): void
   transcription(transcription: TranscriptionState): void
   lyrics(lyrics: LyricsState): void
+  version(version: VersionState): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */
   connection(open: boolean): void
 }
@@ -303,6 +349,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on('library', () => handlers.library())
   on<TranscriptionState>('transcription', handlers.transcription)
   on<LyricsState>('lyrics', handlers.lyrics)
+  on<VersionState>('version', handlers.version)
   source.onerror = () => handlers.connection(false)
   return () => source.close()
 }

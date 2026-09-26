@@ -12,7 +12,7 @@ defineProps<{ hasScore: boolean }>()
 
 const emit = defineEmits<{ error: [message: string]; useScore: [songId: string]; newSong: [songId: string] }>()
 
-const inPlaylist = computed(() => !!current.value && playlistIds.value.includes(current.value.id))
+const inPlaylist = computed(() => !!current.value && playlistIds.value.includes(current.value.songId))
 
 const audio = useTemplateRef<HTMLAudioElement>('audio')
 watch(audio, (element) => attach(element), { immediate: true })
@@ -24,7 +24,7 @@ async function togglePlaylist(): Promise<void> {
     return
   }
   try {
-    await toggleInPlaylist(current.value.id)
+    await toggleInPlaylist(current.value.songId)
   } catch (caught) {
     emit('error', caught instanceof Error ? caught.message : String(caught))
   }
@@ -35,7 +35,7 @@ async function rateCurrent(rating: number | null | undefined): Promise<void> {
     return
   }
   try {
-    await rate(current.value.id, rating ?? null)
+    await rate(current.value.songId, rating ?? null)
   } catch (caught) {
     emit('error', caught instanceof Error ? caught.message : String(caught))
   }
@@ -55,16 +55,16 @@ function ended(): void {
       <div class="min-w-0 flex-1">
         <a
           v-if="current"
-          :href="songHref(current.id)"
+          :href="songHref(current.songId)"
           class="block truncate font-semibold text-color no-underline hover:underline"
           :title="t('showSong')"
-          @click.prevent="showSong(current.id)"
+          @click.prevent="showSong(current.songId)"
           >{{ current.title }} <span class="text-sm font-normal text-muted-color">· {{ current.detail }}</span></a
         >
         <!-- Rated while it plays, when the song is best judged. The line below the title has room for the stars. -->
         <Rating
           v-if="current"
-          :model-value="ratingOf(current.id)"
+          :model-value="ratingOf(current.songId)"
           :aria-label="t('rating')"
           class="mt-1"
           @update:model-value="rateCurrent"
@@ -90,7 +90,7 @@ function ended(): void {
       <Button icon="pi pi-step-forward" text rounded :disabled="!hasNext" :aria-label="t('nextTrack')" @click="next" />
       <SongMenu
         v-if="current"
-        :song-id="current.id"
+        :song-id="current.songId"
         :has-score="hasScore"
         @use-score="emit('useScore', $event)"
         @new-song="emit('newSong', $event)"

@@ -6,6 +6,7 @@ using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
 using YueUI.Api.Share;
+using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -49,6 +50,18 @@ builder.Services.AddSingleton<SqliteDatabase>();
 builder.Services.AddSingleton<SqlitePlaylistStore>();
 builder.Services.AddSingleton<SqliteRunTitleStore>();
 builder.Services.AddSingleton<SqliteSongRatingStore>();
+builder.Services.AddSingleton<SqliteVersionStore>();
+
+// Songs sung with a reference voice: StemMyWav separates, ChangeMyVoice converts, ffmpeg mixes. A slow separation
+// model takes three times as long as the song and answers only when it is done.
+builder.Services.Configure<VoiceOptions>(builder.Configuration.GetSection(VoiceOptions.Section));
+builder.Services.AddSingleton<VoiceClient>();
+builder.Services.AddSingleton<StemClient>();
+builder.Services.AddSingleton<IAudioMixer, FfmpegMixer>();
+builder.Services.AddHttpClient(VoiceClient.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
+builder.Services.AddHttpClient(StemClient.HttpClientName, client => client.Timeout = TimeSpan.FromHours(2));
+builder.Services.AddSingleton<VoiceConverter>();
+builder.Services.AddHostedService(services => services.GetRequiredService<VoiceConverter>());
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
@@ -76,6 +89,7 @@ api.MapLyricsEndpoints();
 api.MapLogicEndpoints();
 api.MapPushEndpoints();
 api.MapPlaylistEndpoints();
+api.MapVoiceEndpoints();
 
 app.MapClientApp();
 

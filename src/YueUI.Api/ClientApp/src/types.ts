@@ -59,6 +59,8 @@ export interface StatusSnapshot {
   log: LogEntry[]
   transcriptions: TranscriptionState[]
   lyrics: LyricsState | null
+  /** Songs being sung with another voice, and the last one that finished. */
+  versions: VersionState[]
 }
 
 /** melody-full: the Vocal and Ins melodies; melody-vocal: only the sung one. */
@@ -153,6 +155,8 @@ export interface SongInfo {
   bytes: number
   /** One to five stars given in this app, null while not rated. */
   rating: number | null
+  /** The song sung with other voices, oldest first. */
+  versions: VersionState[]
 }
 
 /**
@@ -251,4 +255,54 @@ export interface LogicDiagnostic {
 export interface StorageInfo {
   freeBytes: number
   totalBytes: number
+}
+
+/** Whether voices can be managed (ChangeMyVoice) and songs sung with them (StemMyWav as well); VoiceEndpoints.cs. */
+export interface VoiceInfo {
+  voicesConfigured: boolean
+  conversionConfigured: boolean
+}
+
+/** A reference voice ChangeMyVoice keeps (Voices/VoiceModels.cs). */
+export interface ReferenceVoice {
+  id: string
+  label: string
+  /** How long the stored recording is; the service keeps at most 25 seconds. */
+  seconds: number
+  createdAt: string | null
+}
+
+export type VersionStage = 'queued' | 'separating' | 'converting' | 'mixing' | 'done' | 'failed' | 'cancelled'
+
+/** A song sung with another voice (Voices/VoiceModels.cs); live changes arrive as `version` events. */
+export interface VersionState {
+  id: string
+  /** `run/songN` */
+  songId: string
+  title: string
+  voiceId: string
+  voiceLabel: string
+  semiToneShift: number
+  strength: number
+  diffusionSteps: number
+  keepReverb: boolean
+  stage: VersionStage
+  /** Progress of the conversion, 0–1, estimated from the time the voice service expects. */
+  fraction: number
+  message: string | null
+  createdAt: string
+  updatedAt: string
+  finished: boolean
+}
+
+/** What a version is made with (VersionRequest in Voices/VoiceModels.cs). */
+export interface VersionRequest {
+  voiceId: string
+  /** −24 to 24; under the song's accompaniment only whole octaves stay in key. */
+  semiToneShift: number
+  /** How much of the reference's timbre comes through, 0–1. */
+  strength: number
+  diffusionSteps: number
+  /** Mixes the original's reverb back in. */
+  keepReverb: boolean
 }

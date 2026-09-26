@@ -58,8 +58,13 @@ public static class LyricsEndpoints
             }
         });
 
-        api.MapPost("/lyrics", (LyricsRequest request, LyricsWriter writer) =>
+        api.MapPost("/lyrics", (LyricsRequest request, LyricsWriter writer, Voices.VoiceConverter voices) =>
         {
+            // The lyrics model would not fit beside a separation or Seed-VC either.
+            if (voices.IsConverting)
+            {
+                return Results.Problem(title: "A song is being sung with another voice; draft the lyrics once that is done.", statusCode: StatusCodes.Status409Conflict);
+            }
             if (request.Image is { } image && !IsImage(image))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>

@@ -15,6 +15,7 @@ namespace YueUI.Api.Data;
 /// is there so that more can follow without moving the songs.
 /// Version 2: titles given to runs in this app (<see cref="SqliteRunTitleStore"/>).
 /// Version 3: song ratings, one to five stars (<see cref="SqliteSongRatingStore"/>).
+/// Version 4: songs sung with another voice (<see cref="SqliteVersionStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -30,6 +31,9 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
     private bool _ready;
 
     public string Path { get; } = options.Value.ResolvedPath;
+
+    /// <summary>The folder the file is in, where the app keeps its other files too.</summary>
+    public string Directory => System.IO.Path.GetDirectoryName(Path) ?? ".";
 
     /// <summary>An open connection with foreign keys enforced, on a file whose schema is current.</summary>
     public SqliteConnection Open()
@@ -67,7 +71,7 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
             }
             if (System.IO.Path.GetDirectoryName(Path) is { Length: > 0 } directory)
             {
-                Directory.CreateDirectory(directory);
+                System.IO.Directory.CreateDirectory(directory);
             }
             using var connection = new SqliteConnection(_connectionString);
             connection.Open();
@@ -120,6 +124,31 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5)
                     );
                     PRAGMA user_version = 3;
+                    """);
+            }
+            if (current < 4)
+            {
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE song_versions (
+                        id TEXT PRIMARY KEY,
+                        song_id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        voice_id TEXT NOT NULL,
+                        voice_label TEXT NOT NULL,
+                        semi_tone_shift INTEGER NOT NULL,
+                        strength REAL NOT NULL,
+                        diffusion_steps INTEGER NOT NULL,
+                        keep_reverb INTEGER NOT NULL,
+                        stage TEXT NOT NULL,
+                        message TEXT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX ix_song_versions_song ON song_versions (song_id);
+                    PRAGMA user_version = 4;
                     """);
             }
             _ready = true;
