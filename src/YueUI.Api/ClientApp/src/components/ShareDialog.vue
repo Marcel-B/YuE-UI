@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import Dialog from 'primevue/dialog'
 import { saveBlob } from '../api'
 import { t } from '../i18n'
 import { shareNow, shareState } from '../share'

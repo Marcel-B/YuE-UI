@@ -1,20 +1,15 @@
 import { createApp } from 'vue'
 import PrimeVue from 'primevue/config'
-import Aura from '@primeuix/themes/aura'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
-// Shadows the browser's global DataView (the ArrayBuffer view) in this module; without the import the registration
-// below silently picks up that constructor, and rendering fails with "Constructor DataView requires 'new'".
-import DataView from 'primevue/dataview'
 import App from './App.vue'
 import { locale } from './i18n'
+import Aura from './theme'
 import './style.css'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
-import ProgressBar from 'primevue/progressbar'
 import SelectButton from 'primevue/selectbutton'
 import Divider from 'primevue/divider'
-import Fieldset from 'primevue/fieldset'
 import Tooltip from 'primevue/tooltip'
 import Menubar from 'primevue/menubar'
 import Menu from 'primevue/menu'
@@ -22,7 +17,6 @@ import Tag from 'primevue/tag'
 import FloatLabel from 'primevue/floatlabel'
 import Textarea from 'primevue/textarea'
 import ConfirmDialog from 'primevue/confirmdialog'
-import Dialog from 'primevue/dialog'
 import ConfirmationService from 'primevue/confirmationservice'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
@@ -50,20 +44,16 @@ app.use(ConfirmationService)
 app
   .component('Button', Button)
   .component('Card', Card)
-  .component('DataView', DataView)
   .component('Select', Select)
   .component('InputText', InputText)
   .component('Textarea', Textarea)
-  .component('ProgressBar', ProgressBar)
   .component('SelectButton', SelectButton)
-  .component('Fieldset', Fieldset)
   .component('Divider', Divider)
   .component('Menubar', Menubar)
   .component('Menu', Menu)
   .component('FloatLabel', FloatLabel)
   .component('Tag', Tag)
   .component('ConfirmDialog', ConfirmDialog)
-  .component('Dialog', Dialog)
   .component('Tabs', Tabs)
   .component('TabList', TabList)
   .component('Tab', Tab)

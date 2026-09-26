@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { getLogicExport, getStorage, listLibrary, songRequest, songScore, subscribe } from './api'
 import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
-import LibraryList from './components/LibraryList.vue'
 import NotificationButton from './components/NotificationButton.vue'
 import QueueList from './components/QueueList.vue'
 import PlayerBar from './components/PlayerBar.vue'
-import ShareDialog from './components/ShareDialog.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
@@ -15,6 +13,7 @@ import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from 
 import { current, retitle } from './player'
 import { loadPlaylist, playlistIds } from './playlist'
 import { setRatings } from './ratings'
+import { shareState } from './share'
 import { navigate, view, type View } from './view'
 import type {
   LogEntry,
@@ -26,6 +25,11 @@ import type {
   TranscriptionState,
   WorkerInfo,
 } from './types'
+
+// Loaded after the first paint: the library brings DataView with its Paginator and InputNumber, Fieldset and
+// Dialog, a good part of PrimeVue that the create page does not need; sharing needs its dialog only when used.
+const LibraryList = defineAsyncComponent(() => import('./components/LibraryList.vue'))
+const ShareDialog = defineAsyncComponent(() => import('./components/ShareDialog.vue'))
 
 const logCapacity = 300
 const form = ref(loadFormState())
@@ -287,7 +291,7 @@ async function useAsNewSong(songId: string): Promise<void> {
 
 <template>
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
-  <ShareDialog />
+  <ShareDialog v-if="shareState" />
   <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
     <template #start>
       <span class="brand">YuE UI</span>

@@ -9,7 +9,7 @@ import { hasTag } from '../styleTags'
 import type { LyricsModels, LyricsState } from '../types'
 import FieldHelp from './FieldHelp.vue'
 import StyleBlocks from './StyleBlocks.vue'
-import { Checkbox } from 'primevue'
+import Checkbox from 'primevue/checkbox'
 import SelectButton from 'primevue/selectbutton'
 
 const props = defineProps<{

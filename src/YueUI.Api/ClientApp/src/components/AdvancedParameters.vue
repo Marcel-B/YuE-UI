@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Panel } from 'primevue'
+import Panel from 'primevue/panel'
 import {
   advancedChanged,
   defaultSampling,

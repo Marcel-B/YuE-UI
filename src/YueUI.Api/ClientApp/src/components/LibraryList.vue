@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import DataView from 'primevue/dataview'
+import Dialog from 'primevue/dialog'
+import Fieldset from 'primevue/fieldset'
 import { useConfirm } from 'primevue/useconfirm'
 import {
   audioUrl,
