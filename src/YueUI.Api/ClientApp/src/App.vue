@@ -56,7 +56,12 @@ const connected = ref(true)
 const hidden = ref(new Set<string>())
 
 const queue = computed(() => songs.value.filter((s) => !(s.finished && hidden.value.has(s.id))))
-const busyIds = computed(() => new Set(songs.value.filter((s) => !s.finished).map((s) => s.id)))
+// Kept as the same Set while the busy songs stay the same: a progress event replaces a song, and a new Set would
+// re-render the whole library with every one.
+const busyIds = computed<Set<string>>((previous) => {
+  const next = new Set(songs.value.filter((s) => !s.finished).map((s) => s.id))
+  return previous && previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next
+})
 
 function upsert(song: SongState): void {
   const index = songs.value.findIndex((s) => s.id === song.id)

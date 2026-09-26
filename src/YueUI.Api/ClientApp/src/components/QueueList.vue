@@ -122,7 +122,8 @@ watch(
 
     <details class="log" @toggle="logOpen = ($event.target as HTMLDetailsElement).open">
       <summary>{{ t('log') }}</summary>
-      <div ref="logBox" class="text-sm">
+      <!-- Only while open: the worker's stderr can bring several lines a second, and each one shifts all the lines. -->
+      <div v-if="logOpen" ref="logBox" class="text-sm">
         <p v-if="log.length === 0" class="muted">{{ t('logEmpty') }}</p>
         <div v-for="(entry, i) in log" :key="i" :class="['entry', entry.level]">
           <span class="muted">{{ formatTime(entry.time) }}</span> {{ entry.message }}
