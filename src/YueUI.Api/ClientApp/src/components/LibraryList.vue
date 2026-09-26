@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import {
   audioUrl,
@@ -42,8 +42,25 @@ const emit = defineEmits<{
 const confirm = useConfirm()
 
 const pageSize = 8
-const shown = ref(pageSize)
-const visible = computed(() => props.runs.slice(0, shown.value))
+/** Index of the first run on the current page (DataView's `first`). */
+const first = ref(0)
+const list = ref<HTMLElement | null>(null)
+
+// A deletion can empty the last page; go back to the last one that still has runs.
+watch(
+  () => props.runs.length,
+  (length) => {
+    if (first.value >= length && length > 0) {
+      first.value = Math.floor((length - 1) / pageSize) * pageSize
+    }
+  },
+)
+
+/** The paginator sits below the list, so a new page starts at its top rather than wherever the old one ended. */
+function pageChanged(value: number): void {
+  first.value = value
+  list.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 function anchor(songId: string): string {
   return `song-${songId}`
@@ -66,9 +83,7 @@ watch(
       return
     }
     scrolledFor = focusRequest.value
-    if (index >= shown.value) {
-      shown.value = Math.ceil((index + 1) / pageSize) * pageSize
-    }
+    first.value = Math.floor(index / pageSize) * pageSize
     await nextTick()
     document.getElementById(anchor(id))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   },
@@ -220,12 +235,23 @@ const severityByQuality: Record<string, string> = {
 </script>
 
 <template>
-  <section>
+  <section ref="list">
     <p v-if="error" class="danger">{{ t('libraryError', { message: error }) }}</p>
     <p v-else-if="!loading && runs.length === 0" class="muted">{{ t('libraryEmpty') }}</p>
-    <DataView :value="visible">
+    <DataView
+      :value="runs"
+      data-key="id"
+      paginator
+      :rows="pageSize"
+      :first="first"
+      :page-link-size="3"
+      :always-show-paginator="false"
+      @update:first="pageChanged"
+    >
+      <!-- The paragraph above already says the library is empty; without this slot DataView adds its own text. -->
+      <template #empty />
       <template #list="slotProps">
-        <div v-for="(run, index) in slotProps.items" :key="index">
+        <div v-for="run in slotProps.items" :key="run.id">
           <Fieldset :legend="run.title || t('untitled')">
             <div class="flex justify-between items-center">
               <div>
@@ -387,11 +413,6 @@ const severityByQuality: Record<string, string> = {
           </Fieldset>
         </div>
       </template>
-      <template #footer>
-        <Button v-if="runs.length > shown" @click="shown += pageSize">
-          {{ t('showMore') }}
-        </Button>
-      </template>
     </DataView>
     <Dialog
       :visible="renaming !== null"
@@ -514,9 +535,5 @@ const severityByQuality: Record<string, string> = {
 .badge.full {
   background: var(--accent-soft);
   color: var(--accent);
-}
-
-.more {
-  align-self: center;
 }
 </style>
