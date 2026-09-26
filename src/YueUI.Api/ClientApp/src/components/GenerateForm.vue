@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
-import { ApiError, draftLyrics, generate, getLyricsModels } from '../api'
+import { ApiError, draftLyrics, generate, getLyricsModels, reviseLyrics } from '../api'
 import { defaultFormState, toGenerateRequest, type FormState } from '../form'
 import { formatBytes, t } from '../i18n'
 import { photoDataUrl } from '../photo'
@@ -60,6 +60,19 @@ function take(draft: LyricsState | null): void {
     return
   }
   form.value.lyricsDraftId = ''
+  const before = revisingFrom.value
+  revisingFrom.value = null
+  if (before !== null) {
+    if (draft.stage === 'done' && draft.lyrics) {
+      form.value.lyrics = draft.lyrics
+      undo.value = { before, after: draft.lyrics }
+      instruction.value = ''
+      reviseMessage.value = { text: t('lyricsRevised'), error: false }
+    } else {
+      reviseMessage.value = { text: t('errorGeneric', { message: draft.message ?? '' }), error: true }
+    }
+    return
+  }
   if (draft.stage === 'done' && draft.lyrics) {
     form.value.lyrics = draft.lyrics
     // YuE2 pronounces by the style's language tag; German words sung as English are the likeliest surprise.
@@ -70,7 +83,56 @@ function take(draft: LyricsState | null): void {
   }
 }
 
+/**
+ * The lyrics as they were before the revision on its way; null for a new draft. Only in memory: after a reload the
+ * revision still lands in the field, like a draft, just without the way back.
+ */
+const revisingFrom = ref<string | null>(null)
+/** What to change, e.g. "make the chorus catchier". */
+const instruction = ref('')
+const reviseMessage = ref<{ text: string; error: boolean } | null>(null)
+/** The text before the last revision, offered back while the field still holds what the revision wrote. */
+const undo = ref<{ before: string; after: string } | null>(null)
+const canUndo = computed(() => undo.value !== null && undo.value.after === form.value.lyrics)
+
 watch(() => props.lyricsDraft, take, { immediate: true })
+
+/** Changes the lyrics in the field as instructed, rather than rolling a whole new draft. */
+async function revise(): Promise<void> {
+  const text = instruction.value.trim()
+  if (!text || drafting.value || props.busy) {
+    return
+  }
+  starting.value = true
+  reviseMessage.value = null
+  draftMessage.value = null
+  revisingFrom.value = form.value.lyrics
+  try {
+    const started = await reviseLyrics(
+      form.value.lyrics,
+      text,
+      form.value.lyricsIdea.trim(),
+      form.value.style.trim(),
+      form.value.lyricsLanguage,
+      form.value.lyricsModel || null,
+    )
+    form.value.lyricsDraftId = started.id
+    take(props.lyricsDraft)
+  } catch (caught) {
+    revisingFrom.value = null
+    reviseMessage.value = { text: errorText(caught), error: true }
+  } finally {
+    starting.value = false
+  }
+}
+
+function undoRevision(): void {
+  if (undo.value) {
+    form.value.lyrics = undo.value.before
+    undo.value = null
+    reviseMessage.value = null
+  }
+}
 
 /** A draft replaces the lyrics field; lyrics someone wrote by hand should not vanish without a question. */
 function askDraft(): void {
@@ -91,6 +153,8 @@ function askDraft(): void {
 async function draft(): Promise<void> {
   starting.value = true
   draftMessage.value = null
+  reviseMessage.value = null
+  revisingFrom.value = null
   try {
     const started = await draftLyrics(
       form.value.lyricsIdea.trim(),
@@ -345,6 +409,35 @@ const batchOptions = [
       <FieldHelp id="gen-lyrics-help" :hint="t('lyricsHint')" :more="t('lyricsMore')" />
       <small v-if="fieldErrors.lyrics" class="danger">{{ fieldErrors.lyrics.join(' ') }}</small>
     </FloatLabel>
+    <!-- Enter here revises; it must not submit the form and start a song. -->
+    <div v-if="form.lyrics.trim() !== '' && !form.instrumental" class="mt-2 flex items-center gap-2">
+      <InputText
+        v-model="instruction"
+        type="text"
+        maxlength="1000"
+        enterkeyhint="send"
+        :placeholder="t('revisePlaceholder')"
+        :aria-label="t('revise')"
+        :disabled="drafting"
+        class="min-w-0 flex-1"
+        @keydown.enter.prevent="revise"
+      />
+      <Button
+        type="button"
+        icon="pi pi-sync"
+        text
+        size="large"
+        :loading="drafting"
+        :disabled="drafting || busy || instruction.trim() === ''"
+        :aria-label="t('revise')"
+        v-tooltip.bottom="busy ? t('draftBusy') : t('revise')"
+        @click="revise"
+      />
+    </div>
+    <div v-if="reviseMessage" class="flex flex-wrap items-center gap-x-2" role="status">
+      <small :class="reviseMessage.error ? 'danger' : 'muted'">{{ reviseMessage.text }}</small>
+      <Button v-if="canUndo" type="button" :label="t('undoRevision')" text size="small" @click="undoRevision" />
+    </div>
 
     <div class="flex items-center gap-2 mt-6">
       <Checkbox id="instrumental" binary v-model="form.instrumental" aria-describedby="gen-instrumental-help" />

@@ -117,6 +117,59 @@ public sealed class LyricsEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_revision_sends_the_lyrics_and_the_instruction_and_keeps_the_rest()
+    {
+        const string lyrics = "[Verse]\nOld line one\n\n[Chorus]\nOld chorus";
+        var draft = await Finished(new
+        {
+            lyrics,
+            instruction = "make the chorus catchier",
+            keywords = "night train",
+            style = "Pop",
+            language = "german",
+        });
+
+        Assert.Equal("done", draft.Stage);
+        Assert.Equal("[Verse]\nLine one\n\n[Chorus]\nLine two", draft.Lyrics);
+        var completion = Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!;
+        var messages = completion["messages"]!.AsArray();
+        Assert.Contains("Write in German", (string?)messages[0]!["content"], StringComparison.Ordinal);
+        var user = (string)messages[1]!["content"]!;
+        Assert.Contains(lyrics, user, StringComparison.Ordinal);
+        Assert.Contains("What to change: make the chorus catchier", user, StringComparison.Ordinal);
+        Assert.Contains("keep every other line word for word", user, StringComparison.Ordinal);
+        Assert.Contains("night train", user, StringComparison.Ordinal);
+        Assert.Contains("Pop", user, StringComparison.Ordinal);
+        Assert.Equal(8192 - 1024 - (lyrics.Length / 3 + 1), (int?)completion["max_tokens"]);
+        Assert.Equal("/api/v1/models/unload", _app.LmStudio.Requests[^1].Path);
+    }
+
+    [Theory]
+    [InlineData("[Verse]\nLa", "", "instruction")]
+    [InlineData("", "make it sadder", "lyrics")]
+    [InlineData(null, "make it sadder", "lyrics")]
+    [InlineData("[Verse]\nLa", null, "instruction")]
+    public async Task A_revision_needs_lyrics_and_an_instruction(string? lyrics, string? instruction, string field)
+    {
+        var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer", lyrics, instruction });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(field, (await response.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject().Select(e => e.Key));
+        Assert.Empty(_app.LmStudio.Requests);
+    }
+
+    [Fact]
+    public async Task A_revision_takes_no_photo_and_no_overlong_lyrics()
+    {
+        var photo = await _client.PostAsJsonAsync("/api/lyrics", new { lyrics = "[Verse]\nLa", instruction = "sadder", image = Photo });
+        var overlong = await _client.PostAsJsonAsync("/api/lyrics", new { lyrics = new string('a', LyricsEndpoints.MaxLyricsLength + 1), instruction = "sadder" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, photo.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, overlong.StatusCode);
+        Assert.Empty(_app.LmStudio.Requests);
+    }
+
+    [Fact]
     public async Task Listing_models_starts_LM_Studio_and_says_when_it_cannot()
     {
         _app.LmStudio.Running = false;

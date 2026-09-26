@@ -1,4 +1,5 @@
 using YueUI.Api.Lyrics;
+using YueUI.Api.Worker;
 
 namespace YueUI.Api;
 
@@ -9,7 +10,18 @@ namespace YueUI.Api;
 /// <param name="Image">
 /// A photo the song is about, as a <c>data:image/jpeg;base64,…</c> URL (PNG and WebP too); the model must be able to see.
 /// </param>
-public sealed record LyricsRequest(string? Keywords, string? Style, LyricsLanguage? Language = null, string? Model = null, string? Image = null);
+/// <param name="Lyrics">
+/// Lyrics to revise instead of writing new ones, typically the last draft; <paramref name="Instruction"/> says how.
+/// </param>
+/// <param name="Instruction">What to change in <paramref name="Lyrics"/>, e.g. "make the chorus catchier".</param>
+public sealed record LyricsRequest(
+    string? Keywords,
+    string? Style,
+    LyricsLanguage? Language = null,
+    string? Model = null,
+    string? Image = null,
+    string? Lyrics = null,
+    string? Instruction = null);
 
 /// <summary>
 /// Drafting lyrics with a local language model (LM Studio), see <see cref="LyricsWriter"/>. Like the worker's
@@ -21,6 +33,9 @@ public static class LyricsEndpoints
 
     /// <summary>LM Studio's keys are publisher/name, far shorter; this only bounds what is passed on.</summary>
     public const int MaxModelLength = 200;
+
+    /// <summary>A song YuE2 can sing is far shorter (its token limit ends it after a few minutes).</summary>
+    public const int MaxLyricsLength = 10_000;
 
     /// <summary>
     /// The browser scales a photo down to 1024 pixels before sending, some 200 KB; this leaves room for a PNG
@@ -52,6 +67,10 @@ public static class LyricsEndpoints
                     ["image"] = [$"A JPEG, PNG or WebP photo as a base64 data URL, up to {MaxImageLength / 1024 / 1024} MB."],
                 });
             }
+            if (request.Lyrics is not null || request.Instruction is not null)
+            {
+                return Revise(request, writer);
+            }
             if ((string.IsNullOrWhiteSpace(request.Keywords) && request.Image is null) || request.Keywords?.Length > MaxKeywordsLength)
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -59,24 +78,69 @@ public static class LyricsEndpoints
                     ["keywords"] = [$"What the song is about, up to {MaxKeywordsLength} characters; optional with a photo."],
                 });
             }
-            // Unknown ids are left to LM Studio, which refuses them with its own message.
-            if (request.Model is { } model && (model.Length > MaxModelLength || model.Any(char.IsControl)))
+            if (InvalidModel(request.Model) is { } invalid)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["model"] = [$"A model id as GET /api/lyrics/models lists it, up to {MaxModelLength} characters."],
-                });
+                return invalid;
             }
-            try
-            {
-                return Results.Accepted(value: writer.Start(request.Keywords, request.Style, request.Language ?? LyricsLanguage.English, request.Model, request.Image));
-            }
-            catch (LyricsBusyException exception)
-            {
-                return Results.Problem(title: exception.Message, statusCode: StatusCodes.Status409Conflict);
-            }
+            return Start(() => writer.Start(request.Keywords, request.Style, request.Language ?? LyricsLanguage.English, request.Model, request.Image));
         });
         return api;
+    }
+
+    /// <summary>
+    /// A revision works on the lyrics as they are rather than drafting anew; the keywords, if sent, tell the model what
+    /// the song is about. A photo would add nothing the lyrics do not already carry, and cost a vision model.
+    /// </summary>
+    private static IResult Revise(LyricsRequest request, LyricsWriter writer)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(request.Lyrics) || request.Lyrics.Length > MaxLyricsLength)
+        {
+            errors["lyrics"] = [$"The lyrics to revise, up to {MaxLyricsLength} characters."];
+        }
+        if (string.IsNullOrWhiteSpace(request.Instruction) || request.Instruction.Length > MaxKeywordsLength)
+        {
+            errors["instruction"] = [$"What to change in the lyrics, up to {MaxKeywordsLength} characters."];
+        }
+        if (request.Keywords?.Length > MaxKeywordsLength)
+        {
+            errors["keywords"] = [$"What the song is about, up to {MaxKeywordsLength} characters."];
+        }
+        if (request.Image is not null)
+        {
+            errors["image"] = ["A revision works on the lyrics alone; send the photo with a new draft."];
+        }
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+        if (InvalidModel(request.Model) is { } invalid)
+        {
+            return invalid;
+        }
+        var revision = new LyricsRevision(request.Lyrics!, request.Instruction!);
+        return Start(() => writer.Start(request.Keywords, request.Style, request.Language ?? LyricsLanguage.English, request.Model, revision: revision));
+    }
+
+    /// <summary>Unknown ids are left to LM Studio, which refuses them with its own message.</summary>
+    private static IResult? InvalidModel(string? model) =>
+        model is not null && (model.Length > MaxModelLength || model.Any(char.IsControl))
+            ? Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["model"] = [$"A model id as GET /api/lyrics/models lists it, up to {MaxModelLength} characters."],
+            })
+            : null;
+
+    private static IResult Start(Func<LyricsState> start)
+    {
+        try
+        {
+            return Results.Accepted(value: start());
+        }
+        catch (LyricsBusyException exception)
+        {
+            return Results.Problem(title: exception.Message, statusCode: StatusCodes.Status409Conflict);
+        }
     }
 
     /// <summary>Checked here so that LM Studio is not loaded for a request it cannot read.</summary>

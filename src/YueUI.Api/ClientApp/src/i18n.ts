@@ -93,6 +93,10 @@ const messages = {
     replaceLyrics: 'Songtext ersetzen',
     replace: 'Ersetzen',
     lyricsDrafted: 'Entwurf eingesetzt – am besten einmal durchlesen.',
+    revise: 'Text überarbeiten',
+    revisePlaceholder: 'Was ändern? z. B. Refrain eingängiger',
+    lyricsRevised: 'Text überarbeitet.',
+    undoRevision: 'Rückgängig',
     instrumental: 'Instrumental',
     instrumentalHint: 'Ohne Gesang: vom Text zählen nur noch die Abschnittsmarken.',
     instrumentalMore:
@@ -440,6 +444,10 @@ const messages = {
     replaceLyrics: 'Replace lyrics',
     replace: 'Replace',
     lyricsDrafted: 'Draft inserted – worth a read-through.',
+    revise: 'Revise lyrics',
+    revisePlaceholder: 'What to change? e.g. a catchier chorus',
+    lyricsRevised: 'Lyrics revised.',
+    undoRevision: 'Undo',
     instrumental: 'Instrumental',
     instrumentalHint: 'No vocals: only the section tags of the lyrics still count.',
     instrumentalMore:

@@ -84,8 +84,15 @@ public sealed partial class LyricsWriter(
     /// </summary>
     /// <param name="model">A model id from <see cref="ListModelsAsync"/>; null for <see cref="LyricsOptions.Model"/>.</param>
     /// <param name="image">A photo as a <c>data:image/…;base64,</c> URL for a model that can see; the lyrics are about it.</param>
+    /// <param name="revision">Lyrics to change as instructed, instead of new ones.</param>
     /// <exception cref="LyricsBusyException">Another draft is in progress, or YuE2 is generating.</exception>
-    public LyricsState Start(string? keywords, string? style, LyricsLanguage language = LyricsLanguage.English, string? model = null, string? image = null)
+    public LyricsState Start(
+        string? keywords,
+        string? style,
+        LyricsLanguage language = LyricsLanguage.English,
+        string? model = null,
+        string? image = null,
+        LyricsRevision? revision = null)
     {
         if (!_gate.Wait(0))
         {
@@ -99,13 +106,13 @@ public sealed partial class LyricsWriter(
         }
         var state = new LyricsState { Id = Guid.NewGuid().ToString("N")[..12], UpdatedAt = time.GetUtcNow() };
         worker.UpdateLyrics(state);
-        var brief = new Brief(keywords?.Trim() ?? "", style, language, image);
+        var brief = new Brief(keywords?.Trim() ?? "", style, language, image, revision);
         _ = Task.Run(() => RunAsync(state, brief, string.IsNullOrWhiteSpace(model) ? options.Value.Model : model.Trim()));
         return state;
     }
 
     /// <summary>What the song is to be about, as the form sent it.</summary>
-    private sealed record Brief(string Keywords, string? Style, LyricsLanguage Language, string? Image);
+    private sealed record Brief(string Keywords, string? Style, LyricsLanguage Language, string? Image, LyricsRevision? Revision);
 
     private async Task RunAsync(LyricsState state, Brief brief, string model)
     {
@@ -385,7 +392,9 @@ public sealed partial class LyricsWriter(
     private static async Task<string> CompleteAsync(
         HttpClient http, LyricsOptions settings, string model, int context, Brief brief, ILogger logger, CancellationToken cancellationToken)
     {
-        var text = UserPrompt(brief.Keywords, brief.Style, brief.Image is not null);
+        var text = brief.Revision is { } revision
+            ? RevisionPrompt(revision, brief.Keywords, brief.Style)
+            : UserPrompt(brief.Keywords, brief.Style, brief.Image is not null);
         // The OpenAI form for images, which LM Studio passes to a vision model; a model without vision refuses it.
         JsonNode prompt = brief.Image is null
             ? text
@@ -403,7 +412,7 @@ public sealed partial class LyricsWriter(
             // well over 4000 tokens. So the answer gets the whole context it was loaded with except the prompt,
             // which may be less than configured (see LoadAsync).
             // LM Studio's reasoning "off" is no way out for Gemma 4: it thinks anyway, unmarked in the answer.
-            ["max_tokens"] = Math.Max(1024, context - PromptTokens - (brief.Image is null ? 0 : ImageTokens)),
+            ["max_tokens"] = Math.Max(1024, context - PromptTokens - (brief.Image is null ? 0 : ImageTokens) - RevisionTokens(brief.Revision)),
             ["stream"] = false,
             // LM Studio's own field: unload after this many idle seconds, should the model be loaded just in time.
             ["ttl"] = settings.IdleTtlSeconds,
@@ -485,6 +494,35 @@ public sealed partial class LyricsWriter(
             ? about
             : $"{about}\nThe song's style (for mood and pacing, do not mention it): {style.Trim()}";
     }
+
+    /// <remarks>
+    /// The point of a revision is that what worked stays: a model asked to "improve" lyrics rewrites every line, so it
+    /// is told to change only what the instruction asks for. The whole text comes back, since it replaces the field.
+    /// </remarks>
+    internal static string RevisionPrompt(LyricsRevision revision, string keywords, string? style)
+    {
+        var prompt = $"""
+            Revise these lyrics:
+
+            {revision.Lyrics.Trim()}
+
+            What to change: {revision.Instruction.Trim()}
+            Change only what this asks for and keep every other line word for word. Answer with the complete revised lyrics.
+            """;
+        if (keywords.Trim() is { Length: > 0 } about)
+        {
+            prompt += $"\nThe song is about: {about}";
+        }
+        return string.IsNullOrWhiteSpace(style)
+            ? prompt
+            : $"{prompt}\nThe song's style (for mood and pacing, do not mention it): {style.Trim()}";
+    }
+
+    /// <summary>
+    /// The lyrics to revise are part of the prompt, beyond <see cref="PromptTokens"/>. Lyrics take about four characters
+    /// a token; three is counted, since an answer cut short loses the song's end.
+    /// </summary>
+    private static int RevisionTokens(LyricsRevision? revision) => revision is null ? 0 : revision.Lyrics.Length / 3 + 1;
 
     /// <summary>What models add around the lyrics despite the instructions: reasoning, code fences, bold tags.</summary>
     internal static string Clean(string text)
