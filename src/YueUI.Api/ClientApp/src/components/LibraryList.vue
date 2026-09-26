@@ -451,7 +451,7 @@ const severityByQuality: Record<string, string> = {
                     :disabled="busyIds.has(song.id)"
                     @click="renderFull(song)"
                   />
-                  <div class="flex justify-end">
+                  <div class="ml-auto flex justify-end">
                     <Button as="a" text v-if="song.hasAudio" size="small" :href="audioUrl(song.id, true)">{{
                       t('download')
                     }}</Button>

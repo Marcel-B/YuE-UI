@@ -41,6 +41,9 @@ app.use(PrimeVue, {
     // The order itself is declared at the top of style.css.
     options: { cssLayer: { name: 'primevue', order: 'theme, base, primevue, components, utilities' } },
   },
+  // A Button rendered as a link (as="a", downloads and ZIPs) keeps the browser's underline, since Tailwind runs
+  // without preflight and the preset sets no text-decoration. Every Button looks the same, whatever its tag.
+  pt: { button: { root: { class: 'no-underline' } } },
 })
 // Asks before anything is deleted; App.vue holds the one ConfirmDialog.
 app.use(ConfirmationService)
