@@ -2,6 +2,7 @@
 import { computed, useTemplateRef } from 'vue'
 import type Menu from 'primevue/menu'
 import { t } from '../i18n'
+import { shareSong } from '../share'
 import { showSong } from '../view'
 
 /** What else can be done with a song where only a line of it is shown (player, playlist): a menu behind one button. */
@@ -25,6 +26,7 @@ const items = computed(() => [
     command: () => emit('useScore', props.songId),
   },
   { label: t('useAsNewSong'), icon: 'pi pi-clone', command: () => emit('newSong', props.songId) },
+  { label: t('share'), icon: 'pi pi-share-alt', command: () => shareSong(props.songId) },
 ])
 </script>
 

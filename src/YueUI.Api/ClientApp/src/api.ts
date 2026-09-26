@@ -157,7 +157,27 @@ export async function getLogicExport(): Promise<LogicExportInfo> {
 export async function downloadLogicProject(songId: string): Promise<LogicDiagnostic[]> {
   const response = await send(`/api/songs/${songId}/logic`)
   const blob = await response.blob()
-  const name = fileName(response.headers.get('Content-Disposition')) ?? 'YuE.logicx.zip'
+  saveBlob(blob, fileName(response.headers.get('Content-Disposition')) ?? 'YuE.logicx.zip')
+  const header = response.headers.get('X-YueToLogic-Diagnostics')
+  try {
+    return header ? (JSON.parse(header) as LogicDiagnostic[]) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The song as a small AAC (`.m4a`, about a tenth of the FLAC) for the share sheet, named after its title. The
+ * server encodes it first, which takes a few seconds.
+ */
+export async function songShareFile(songId: string): Promise<File> {
+  const response = await send(`/api/songs/${songId}/share`)
+  const name = fileName(response.headers.get('Content-Disposition')) ?? 'YuE.m4a'
+  return new File([await response.blob()], name, { type: 'audio/mp4' })
+}
+
+/** Saves a fetched file the way a download link would. */
+export function saveBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -167,12 +187,6 @@ export async function downloadLogicProject(songId: string): Promise<LogicDiagnos
   link.remove()
   // Safari starts the download after click() returns; revoking at once can cancel it.
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
-  const header = response.headers.get('X-YueToLogic-Diagnostics')
-  try {
-    return header ? (JSON.parse(header) as LogicDiagnostic[]) : []
-  } catch {
-    return []
-  }
 }
 
 /** The file name of a Content-Disposition header, preferring the UTF-8 form ASP.NET Core sends alongside. */

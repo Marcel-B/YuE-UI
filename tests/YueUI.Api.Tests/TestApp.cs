@@ -12,6 +12,7 @@ using YueUI.Api.Data;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
+using YueUI.Api.Share;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Tests;
@@ -53,6 +54,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public string? LogicBaseUrl { get; set; } = "http://logic.test/";
 
     public FakePushSender Push { get; } = new();
+
+    public FakeEncoder Encoder { get; } = new();
 
     public FakeWorker Worker => Launcher.Current ?? throw new InvalidOperationException("No worker was started.");
 
@@ -120,6 +123,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
             services.Configure<PushOptions>(options => options.DataPath = Path.Combine(Root, "push.json"));
             services.AddSingleton<IPushSender>(Push);
+            services.AddSingleton<IAudioEncoder>(Encoder);
             services.Configure<DataOptions>(options => options.Path = Path.Combine(Root, "yueui.db"));
             if (_fakeWorker)
             {
@@ -440,4 +444,37 @@ public sealed class FakePushSender : IPushSender
     }
 
     public bool TryNext(out (PushSubscriptionEntry Subscription, JsonObject Payload) sent) => _sent.Reader.TryRead(out sent);
+}
+
+/// <summary>Writes a few bytes instead of running afconvert; remembers what it was asked to encode.</summary>
+public sealed class FakeEncoder : IAudioEncoder
+{
+    public static readonly byte[] M4a = [.. "ftypM4A "u8, 1, 2, 3];
+
+    /// <summary>False stands for a machine with neither afconvert nor ffmpeg.</summary>
+    public bool Available { get; set; } = true;
+
+    /// <summary>Set to make the encoder fail like afconvert with a non-zero exit code.</summary>
+    public string? Failure { get; set; }
+
+    public string? Source { get; private set; }
+
+    public string? Target { get; private set; }
+
+    public Task<bool> EncodeAsync(string flac, string m4a, CancellationToken cancellationToken)
+    {
+        Source = flac;
+        Target = m4a;
+        if (!Available)
+        {
+            return Task.FromResult(false);
+        }
+        if (Failure is not null)
+        {
+            File.WriteAllBytes(m4a, [1]);
+            throw new InvalidOperationException(Failure);
+        }
+        File.WriteAllBytes(m4a, M4a);
+        return Task.FromResult(true);
+    }
 }

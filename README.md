@@ -55,6 +55,8 @@ Der Stift neben einem Lauf gibt ihm einen neuen Titel. Er gilt für Bibliothek, 
 
 Jeder Song lässt sich mit 1 bis 5 Sternen bewerten, in der Bibliothek und im Player für den Song, der gerade läuft. Ein Tipp auf denselben Stern nimmt die Bewertung wieder weg. Die Bewertung gehört zum einzelnen Song, nicht zum Lauf, und liegt in `yueui.db`. Die Auswahl neben der Suche zeigt nur Songs ab einer Bewertung (oder nur die mit fünf Sternen); was dann in der Liste steht, spielt der Player auch nacheinander ab.
 
+Der Knopf **Teilen** beim Song (auch im Menü von Player und Playlist) öffnet das Teilen-Menü des Handys, etwa um einen Song per Messenger zu verschicken. Geteilt wird nicht die FLAC, sondern eine kleine AAC-Datei (`.m4a`, 128 kbit/s, etwa ein Zehntel der Größe), die der Mac dafür jedes Mal neu mit `afconvert` erzeugt, das zu macOS gehört (anderswo mit `ffmpeg`, falls installiert). Dauert das länger, als Safari einen Tipp gelten lässt, bleibt ein Fenster mit einem zweiten Knopf **Teilen** stehen. Browser ohne Teilen-Menü für Dateien laden die kleine Datei herunter.
+
 Das Suchfeld über der Bibliothek sucht wahlweise in **Titel & Stil** oder im **Text**. Getrennt, weil fast jeder Songtext Allerweltswörter wie „Nacht“ enthält und die wenigen Treffer im Titel sonst untergingen. Mehrere Wörter müssen alle vorkommen, in beliebiger Reihenfolge; Groß- und Kleinschreibung und Akzente zählen nicht („traume“ findet „Träume“). Was in Anführungszeichen steht, muss genau so vorkommen, etwa eine erinnerte Zeile. Bei der Textsuche stehen die passenden Zeilen mit markierten Treffern unter dem Stil. Der Player spielt nach einem Song die weiteren Treffer.
 
 ## Benachrichtigungen
@@ -143,6 +145,7 @@ yue-to-logic-pro verlangt keinen Schlüssel. Läuft es hinter einem Proxy, muss 
 | `GET` | `/api/library` | alle Läufe mit ihren Songs |
 | `GET` | `/api/songs/{run}/{song}/audio` | FLAC (Range-fähig; `?download=true` als Download) |
 | `GET` | `/api/songs/{run}/{song}/score` | `score.abc` |
+| `GET` | `/api/songs/{run}/{song}/share` | Song als kleine AAC (`.m4a`, 128 kbit/s) zum Teilen; `501`, wenn weder `afconvert` noch `ffmpeg` da ist |
 | `GET` | `/api/songs/{run}/{song}/zip` | FLAC und ABC des Songs als ZIP |
 | `GET` | `/api/runs/{run}/zip` | FLAC und ABC aller Songs des Laufs als ZIP |
 | `GET` | `/api/logic` | `{ configured }`: ob ein Server von yue-to-logic-pro eingetragen ist |
@@ -170,6 +173,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 
 - [x] Suche in der Bibliothek: nach Titel und im Volltext (Style und Lyrics)
 - [x] Songs bewerten (1 bis 5 Sterne)
+- [x] Songs vom Handy teilen (kleine AAC statt FLAC)
 - [ ] Mehrere Playlists (die Tabelle `playlists` ist schon da)
 - [ ] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
 - [ ] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)

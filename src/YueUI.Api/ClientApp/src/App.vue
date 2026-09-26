@@ -7,6 +7,7 @@ import LibraryList from './components/LibraryList.vue'
 import NotificationButton from './components/NotificationButton.vue'
 import QueueList from './components/QueueList.vue'
 import PlayerBar from './components/PlayerBar.vue'
+import ShareDialog from './components/ShareDialog.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
@@ -286,6 +287,7 @@ async function useAsNewSong(songId: string): Promise<void> {
 
 <template>
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
+  <ShareDialog />
   <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
     <template #start>
       <span class="brand">YuE UI</span>
