@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.RegularExpressions;
 using YueUI.Api.Library;
+using YueUI.Api.Share;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api;
@@ -29,6 +30,8 @@ public static partial class LibraryEndpoints
         // Range requests let the browser's player seek and start before a five-minute FLAC is loaded.
         api.MapGet("/songs/{run}/{song}/audio", (string run, string song, bool? download, SongLibrary library) =>
             SongFile(library, run, song, "audio.flac", "audio/flac", "flac", download == true));
+        // For the phone's share sheet: the FLAC is ten times larger than a messenger wants.
+        api.MapGet("/songs/{run}/{song}/share", ShareAsync);
         api.MapGet("/songs/{run}/{song}/score", (string run, string song, SongLibrary library) =>
             SongFile(library, run, song, "score.abc", "text/vnd.abc; charset=utf-8", "abc", download: true));
         // What the song was made with, for "as a new song" in the web form.
@@ -52,6 +55,39 @@ public static partial class LibraryEndpoints
             Rate(library, host, run, song, request.Rating is 0 ? null : request.Rating));
         api.MapGet("/storage", (YuePaths paths) => Storage(paths.OutputDir));
         return api;
+    }
+
+    /// <summary>
+    /// The song as a small AAC, made anew each time into a temporary file that deletes itself once sent: it takes a
+    /// few seconds, is shared rarely, and a cache would outlive deleted songs.
+    /// </summary>
+    private static async Task<IResult> ShareAsync(string run, string song, SongLibrary library, IAudioEncoder encoder, CancellationToken cancellationToken)
+    {
+        if (library.SongDirectory(run, song) is not { } directory || !File.Exists(Path.Combine(directory, "audio.flac")))
+        {
+            return Results.NotFound();
+        }
+
+        var temp = Path.Combine(Path.GetTempPath(), $"yueui-share-{Guid.NewGuid():N}.m4a");
+        try
+        {
+            if (!await encoder.EncodeAsync(Path.Combine(directory, "audio.flac"), temp, cancellationToken))
+            {
+                return Results.Problem(title: "Neither afconvert nor ffmpeg is installed.", statusCode: StatusCodes.Status501NotImplemented);
+            }
+            var stream = new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Delete, 1 << 16, FileOptions.DeleteOnClose);
+            return Results.File(stream, "audio/mp4", $"{FileName(library.TitleOf(run, directory), run)}-{song}.m4a");
+        }
+        catch (InvalidOperationException exception)
+        {
+            File.Delete(temp);
+            return Results.Problem(title: "The song could not be encoded.", detail: exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+        }
+        catch
+        {
+            File.Delete(temp);
+            throw;
+        }
     }
 
     /// <summary>

@@ -5,6 +5,7 @@ using YueUI.Api.Library;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
+using YueUI.Api.Share;
 using YueUI.Api.Worker;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -31,6 +32,9 @@ builder.Services.AddHttpClient(LyricsWriter.HttpClientName, client => client.Tim
 // Logic Pro projects from yue-to-logic-pro; uploading a long FLAC to it and building the project take minutes.
 builder.Services.Configure<LogicOptions>(builder.Configuration.GetSection(LogicOptions.Section));
 builder.Services.AddHttpClient(LogicEndpoints.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
+
+// Sharing a song from the phone as a small AAC instead of the FLAC.
+builder.Services.AddSingleton<IAudioEncoder, AacEncoder>();
 
 // Web Push: notifies subscribed browsers (the app on a phone's home screen) when something finishes.
 builder.Services.Configure<PushOptions>(builder.Configuration.GetSection(PushOptions.Section));

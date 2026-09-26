@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import DataView from 'primevue/dataview'
+import Dialog from 'primevue/dialog'
+import Fieldset from 'primevue/fieldset'
 import { useConfirm } from 'primevue/useconfirm'
 import {
   audioUrl,
@@ -19,6 +22,7 @@ import { current, libraryTracks, play, playing, trackOf } from '../player'
 import { playlistIds, toggleInPlaylist } from '../playlist'
 import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
+import { shareSong } from '../share'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import type { RunInfo, SongInfo } from '../types'
 import { focusedSong, focusRequest, view } from '../view'
@@ -479,6 +483,16 @@ const severityByQuality: Record<string, string> = {
                     <Button as="a" text v-if="song.hasScore" size="small" :href="scoreUrl(song.id)">{{
                       t('score')
                     }}</Button>
+                    <Button
+                      v-if="song.hasAudio"
+                      icon="pi pi-share-alt"
+                      text
+                      size="small"
+                      rounded
+                      v-tooltip="t('share')"
+                      :aria-label="t('share')"
+                      @click="shareSong(song.id)"
+                    />
                     <Button
                       v-if="song.hasAudio"
                       :icon="playlistIds.includes(song.id) ? 'pi pi-check-circle' : 'pi pi-plus-circle'"
