@@ -13,6 +13,7 @@ import { fromSongRequest, loadFormState, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
 import { current, retitle } from './player'
 import { loadPlaylist, playlistIds } from './playlist'
+import { setRatings } from './ratings'
 import { navigate, view, type View } from './view'
 import type {
   LogEntry,
@@ -173,6 +174,7 @@ async function loadLibrary(): Promise<void> {
     const [library, space] = await Promise.all([listLibrary(), getStorage().catch(() => null)])
     runs.value = library
     retitle(library)
+    setRatings(library)
     storage.value = space
     libraryError.value = null
   } catch (caught) {

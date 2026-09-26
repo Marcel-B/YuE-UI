@@ -109,6 +109,92 @@ public sealed class LibraryEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_song_keeps_its_rating_until_it_is_taken_away()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        _app.AddSong(run, "song1");
+        _app.AddSong(run, "song2");
+
+        var response = await _client.PutAsJsonAsync($"/api/songs/{run}/song2/rating", new { rating = 4 });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Equal([null, 4], listed.Songs.Select(s => s.Rating));
+
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song2/rating", new { rating = 2 });
+        listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Equal(2, listed.Songs[1].Rating);
+
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song2/rating", new { rating = (int?)null });
+        listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Null(listed.Songs[1].Rating);
+    }
+
+    [Fact]
+    public async Task Zero_stars_take_the_rating_away()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        _app.AddSong(run, "song1");
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song1/rating", new { rating = 5 });
+
+        var response = await _client.PutAsJsonAsync($"/api/songs/{run}/song1/rating", new { rating = 0 });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Null(listed.Songs[0].Rating);
+    }
+
+    [Theory]
+    [InlineData(6)]
+    [InlineData(-1)]
+    public async Task A_rating_beyond_five_stars_is_refused(int rating)
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1");
+
+        var response = await _client.PutAsJsonAsync("/api/songs/20260921-165850-Neon-Night/song1/rating", new { rating });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("20260921-165850-Neon-Night", "song2")]
+    [InlineData("20260921-165850-Other-Song", "song1")]
+    [InlineData("..", "song1")]
+    public async Task Rating_a_song_that_does_not_exist_is_not_found(string run, string song)
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1");
+
+        var response = await _client.PutAsJsonAsync($"/api/songs/{run}/{song}/rating", new { rating = 3 });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Deleted_songs_and_runs_forget_their_ratings()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        const string other = "20260921-165850-Neon-Nightb";
+        _app.AddSong(run, "song1");
+        _app.AddSong(run, "song2");
+        _app.AddSong(other, "song1");
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song1/rating", new { rating = 5 });
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song2/rating", new { rating = 3 });
+        await _client.PutAsJsonAsync($"/api/songs/{other}/song1/rating", new { rating = 1 });
+
+        await _client.DeleteAsync($"/api/songs/{run}/song1");
+        _app.AddSong(run, "song1");
+        var listed = (await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!;
+        Assert.Equal([null, 3], listed.Single(r => r.Id == run).Songs.Select(s => s.Rating));
+
+        await _client.DeleteAsync($"/api/runs/{run}");
+        _app.AddSong(run, "song2");
+        listed = (await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!;
+        Assert.Null(listed.Single(r => r.Id == run).Songs[0].Rating);
+        // A run whose name starts like the deleted one keeps its ratings.
+        Assert.Equal(1, listed.Single(r => r.Id == other).Songs[0].Rating);
+    }
+
+    [Fact]
     public async Task A_renamed_runs_request_carries_the_new_title()
     {
         _app.AddSong("20260921-165850-Neon-Night", "song1");

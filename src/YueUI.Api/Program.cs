@@ -44,6 +44,7 @@ builder.Services.Configure<DataOptions>(builder.Configuration.GetSection(DataOpt
 builder.Services.AddSingleton<SqliteDatabase>();
 builder.Services.AddSingleton<SqlitePlaylistStore>();
 builder.Services.AddSingleton<SqliteRunTitleStore>();
+builder.Services.AddSingleton<SqliteSongRatingStore>();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));

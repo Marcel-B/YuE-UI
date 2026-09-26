@@ -14,6 +14,7 @@ namespace YueUI.Api.Data;
 /// Version 1: playlists and their songs. There is one playlist (<see cref="DefaultPlaylistId"/>) so far, the table
 /// is there so that more can follow without moving the songs.
 /// Version 2: titles given to runs in this app (<see cref="SqliteRunTitleStore"/>).
+/// Version 3: song ratings, one to five stars (<see cref="SqliteSongRatingStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -106,6 +107,19 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         title TEXT NOT NULL
                     );
                     PRAGMA user_version = 2;
+                    """);
+            }
+            if (current < 3)
+            {
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE song_ratings (
+                        song_id TEXT PRIMARY KEY,
+                        rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5)
+                    );
+                    PRAGMA user_version = 3;
                     """);
             }
             _ready = true;

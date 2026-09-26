@@ -16,6 +16,7 @@ import {
 import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
 import { current, libraryTracks, play, playing, trackOf } from '../player'
 import { playlistIds, toggleInPlaylist } from '../playlist'
+import { rate, ratingOf, ratings } from '../ratings'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import type { RunInfo, SongInfo } from '../types'
 import { focusedSong, focusRequest, view } from '../view'
@@ -50,8 +51,33 @@ const scopes = computed(() => [
   { value: 'lyrics', label: t('searchLyrics') },
 ])
 const terms = computed(() => parseQuery(query.value))
-const shownRuns = computed(() => props.runs.filter((run) => matchesRun(run, terms.value, scope.value)))
+
+/** Only songs with at least this many stars (5: only those with five); 0 shows every song. */
+const minRating = ref(0)
+const ratingFilters = computed(() => [
+  { value: 0, label: t('ratingAll') },
+  { value: 5, label: t('ratingOnly', { n: 5 }) },
+  ...[4, 3, 2, 1].map((n) => ({ value: n, label: t('ratingAtLeast', { n }) })),
+])
+
+/** The songs of the run the rating filter lets through; the run itself (its size, deleting it) stays whole. */
+function shownSongs(run: RunInfo): SongInfo[] {
+  // Read here, so the list follows a rating that changes while filtered.
+  const stars = ratings.value
+  return minRating.value === 0 ? run.songs : run.songs.filter((song) => (stars[song.id] ?? 0) >= minRating.value)
+}
+
+const shownRuns = computed(() =>
+  props.runs.filter((run) => shownSongs(run).length > 0 && matchesRun(run, terms.value, scope.value)),
+)
 const searching = computed(() => terms.value.length > 0)
+/** Some runs are hidden, by the search or the rating filter; the count of hits shows. */
+const filtering = computed(() => searching.value || minRating.value > 0)
+
+function clearSearch(): void {
+  query.value = ''
+  minRating.value = 0
+}
 
 const pageSize = 8
 /** Index of the first run on the current page (DataView's `first`). */
@@ -59,7 +85,7 @@ const first = ref(0)
 const list = ref<HTMLElement | null>(null)
 
 // A new search starts on the first page; its hits would otherwise hide behind a page number.
-watch([terms, scope], () => {
+watch([terms, scope, minRating], () => {
   first.value = 0
 })
 
@@ -99,8 +125,9 @@ watch(
       return
     }
     // A link to a song the search hides (from the player or the playlist) must still show it.
-    if (!shownRuns.value.some((run) => run.songs.some((song) => song.id === id))) {
+    if (!shownRuns.value.some((run) => shownSongs(run).some((song) => song.id === id))) {
       query.value = ''
+      minRating.value = 0
       await nextTick()
     }
     const index = shownRuns.value.findIndex((run) => run.songs.some((song) => song.id === id))
@@ -115,9 +142,20 @@ watch(
   { immediate: true },
 )
 
-/** The player goes on with the songs below this one, as the library lists them, so a search is also a play queue. */
+/**
+ * The player goes on with the songs below this one, as the library lists them, so a search or the rating filter is
+ * also a play queue ("everything with four stars").
+ */
 function playSong(run: RunInfo, song: SongInfo): void {
-  play(trackOf(run, song), libraryTracks(shownRuns.value))
+  play(trackOf(run, song), libraryTracks(shownRuns.value.map((shown) => ({ ...shown, songs: shownSongs(shown) }))))
+}
+
+async function rateSong(song: SongInfo, rating: number | null | undefined): Promise<void> {
+  try {
+    await rate(song.id, rating ?? null)
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  }
 }
 
 function isPlaying(song: SongInfo): boolean {
@@ -271,7 +309,7 @@ const severityByQuality: Record<string, string> = {
         :aria-label="t('search')"
         enterkeyhint="search"
         autocomplete="off"
-        class="flex-1 min-w-0"
+        class="min-w-0 basis-full sm:flex-1 sm:basis-0"
       />
       <SelectButton
         v-model="scope"
@@ -282,10 +320,20 @@ const severityByQuality: Record<string, string> = {
         :aria-label="t('searchScope')"
         size="small"
       />
+      <Select
+        v-model="minRating"
+        :options="ratingFilters"
+        option-label="label"
+        option-value="value"
+        :aria-label="t('ratingFilter')"
+        v-tooltip.top="t('ratingFilter')"
+        size="small"
+        class="shrink-0"
+      />
     </form>
-    <p v-if="searching" class="muted text-sm mt-2 mb-0">
+    <p v-if="filtering" class="muted text-sm mt-2 mb-0">
       {{ shownRuns.length === 0 ? t('searchNone') : t('searchHits', { count: shownRuns.length, total: runs.length }) }}
-      <Button :label="t('searchClear')" text size="small" @click="query = ''" />
+      <Button :label="t('searchClear')" text size="small" @click="clearSearch" />
     </p>
     <DataView
       :value="shownRuns"
@@ -363,12 +411,12 @@ const severityByQuality: Record<string, string> = {
 
             <ul class="songs">
               <li
-                v-for="song in run.songs"
+                v-for="song in shownSongs(run)"
                 :id="anchor(song.id)"
                 :key="song.id"
                 :class="['song', { 'focused bg-emphasis': focusedSong === song.id }]"
               >
-                <div class="flex gap-3 items-center">
+                <div class="flex flex-wrap gap-x-3 gap-y-1 items-center">
                   <Button
                     v-if="song.hasAudio"
                     :icon="isPlaying(song) ? 'pi pi-pause' : 'pi pi-play'"
@@ -386,6 +434,12 @@ const severityByQuality: Record<string, string> = {
                     {{ song.quality === 'draft' ? t('qualityDraft') : t('qualityFull') }}
                   </Tag>
                   <div v-if="song.seed !== null" class="muted seed">#{{ song.seed }}</div>
+                  <Rating
+                    :model-value="ratingOf(song.id)"
+                    :aria-label="t('rating')"
+                    class="ml-auto"
+                    @update:model-value="rateSong(song, $event)"
+                  />
                 </div>
                 <div class="flex justify-between">
                   <Button
@@ -502,8 +556,10 @@ const severityByQuality: Record<string, string> = {
 </template>
 
 <style scoped>
+/* On a phone the field takes the first line, scope and rating filter share the second. */
 .search {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.5rem;

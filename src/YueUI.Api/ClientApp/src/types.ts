@@ -151,6 +151,8 @@ export interface SongInfo {
   canRender: boolean
   /** What the song folder takes on disk: audio, tokens and the worker's intermediate files. */
   bytes: number
+  /** One to five stars given in this app, null while not rated. */
+  rating: number | null
 }
 
 /**
