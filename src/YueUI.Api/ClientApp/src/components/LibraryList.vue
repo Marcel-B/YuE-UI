@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import {
   audioUrl,
@@ -16,6 +16,7 @@ import {
 import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
 import { current, libraryTracks, play, playing, trackOf } from '../player'
 import { playlistIds, toggleInPlaylist } from '../playlist'
+import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import type { RunInfo, SongInfo } from '../types'
 import { focusedSong, focusRequest, view } from '../view'
 
@@ -41,14 +42,30 @@ const emit = defineEmits<{
 
 const confirm = useConfirm()
 
+/** What the search field holds; the list shows only the runs that match. */
+const query = ref('')
+const scope = ref<SearchScope>('titleStyle')
+const scopes = computed(() => [
+  { value: 'titleStyle', label: t('searchTitleStyle') },
+  { value: 'lyrics', label: t('searchLyrics') },
+])
+const terms = computed(() => parseQuery(query.value))
+const shownRuns = computed(() => props.runs.filter((run) => matchesRun(run, terms.value, scope.value)))
+const searching = computed(() => terms.value.length > 0)
+
 const pageSize = 8
 /** Index of the first run on the current page (DataView's `first`). */
 const first = ref(0)
 const list = ref<HTMLElement | null>(null)
 
+// A new search starts on the first page; its hits would otherwise hide behind a page number.
+watch([terms, scope], () => {
+  first.value = 0
+})
+
 // A deletion can empty the last page; go back to the last one that still has runs.
 watch(
-  () => props.runs.length,
+  () => shownRuns.value.length,
   (length) => {
     if (first.value >= length && length > 0) {
       first.value = Math.floor((length - 1) / pageSize) * pageSize
@@ -78,7 +95,15 @@ watch(
     if (!id || view.value !== 'songs' || scrolledFor === focusRequest.value) {
       return
     }
-    const index = props.runs.findIndex((run) => run.songs.some((song) => song.id === id))
+    if (!props.runs.some((run) => run.songs.some((song) => song.id === id))) {
+      return
+    }
+    // A link to a song the search hides (from the player or the playlist) must still show it.
+    if (!shownRuns.value.some((run) => run.songs.some((song) => song.id === id))) {
+      query.value = ''
+      await nextTick()
+    }
+    const index = shownRuns.value.findIndex((run) => run.songs.some((song) => song.id === id))
     if (index < 0) {
       return
     }
@@ -90,9 +115,9 @@ watch(
   { immediate: true },
 )
 
-/** The player goes on with the songs below this one, as the library lists them. */
+/** The player goes on with the songs below this one, as the library lists them, so a search is also a play queue. */
 function playSong(run: RunInfo, song: SongInfo): void {
-  play(trackOf(run, song), libraryTracks(props.runs))
+  play(trackOf(run, song), libraryTracks(shownRuns.value))
 }
 
 function isPlaying(song: SongInfo): boolean {
@@ -238,8 +263,32 @@ const severityByQuality: Record<string, string> = {
   <section ref="list">
     <p v-if="error" class="danger">{{ t('libraryError', { message: error }) }}</p>
     <p v-else-if="!loading && runs.length === 0" class="muted">{{ t('libraryEmpty') }}</p>
+    <form v-if="runs.length > 0" class="search" role="search" @submit.prevent>
+      <InputText
+        v-model="query"
+        type="search"
+        :placeholder="scope === 'lyrics' ? t('searchLyricsPlaceholder') : t('searchPlaceholder')"
+        :aria-label="t('search')"
+        enterkeyhint="search"
+        autocomplete="off"
+        class="flex-1 min-w-0"
+      />
+      <SelectButton
+        v-model="scope"
+        :options="scopes"
+        option-label="label"
+        option-value="value"
+        :allow-empty="false"
+        :aria-label="t('searchScope')"
+        size="small"
+      />
+    </form>
+    <p v-if="searching" class="muted text-sm mt-2 mb-0">
+      {{ shownRuns.length === 0 ? t('searchNone') : t('searchHits', { count: shownRuns.length, total: runs.length }) }}
+      <Button :label="t('searchClear')" text size="small" @click="query = ''" />
+    </p>
     <DataView
-      :value="runs"
+      :value="shownRuns"
       data-key="id"
       paginator
       :rows="pageSize"
@@ -286,6 +335,15 @@ const severityByQuality: Record<string, string> = {
               </div>
             </div>
             <p class="style muted">{{ run.style }}</p>
+            <!-- Where the lyrics matched, so a hit makes sense without opening the whole text. -->
+            <ul v-if="searching && scope === 'lyrics'" class="hits">
+              <li v-for="(line, index) in matchingLines(run.lyrics, terms)" :key="index">
+                <template v-for="(segment, part) in line" :key="part">
+                  <mark v-if="segment.hit" class="bg-highlight">{{ segment.text }}</mark>
+                  <template v-else>{{ segment.text }}</template>
+                </template>
+              </li>
+            </ul>
             <div class="flex top-0">
               <div class="extras flex-1">
                 <details v-if="run.lyrics" class="lyrics">
@@ -444,6 +502,27 @@ const severityByQuality: Record<string, string> = {
 </template>
 
 <style scoped>
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.hits {
+  margin: 0.4rem 0 0;
+  padding: 0 0 0 0.75rem;
+  border-left: 2px solid var(--p-primary-color);
+  font-size: 0.9rem;
+  font-style: italic;
+  list-style: none;
+}
+
+.hits mark {
+  border-radius: 2px;
+  font-style: normal;
+}
+
 .style {
   display: -webkit-box;
   margin: 0.5rem 0 0;

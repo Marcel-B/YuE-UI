@@ -53,6 +53,8 @@ Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn w
 
 Der Stift neben einem Lauf gibt ihm einen neuen Titel. Er gilt für Bibliothek, Player, Playlist, Warteschlange und die Dateinamen beim Herunterladen; der Ordner behält seinen Namen, damit Playlist, Links und YuE Studio den Song weiter finden. Der neue Titel liegt ebenfalls in `yueui.db`, ein leeres Feld stellt den ursprünglichen wieder her.
 
+Das Suchfeld über der Bibliothek sucht wahlweise in **Titel & Stil** oder im **Text**. Getrennt, weil fast jeder Songtext Allerweltswörter wie „Nacht“ enthält und die wenigen Treffer im Titel sonst untergingen. Mehrere Wörter müssen alle vorkommen, in beliebiger Reihenfolge; Groß- und Kleinschreibung und Akzente zählen nicht („traume“ findet „Träume“). Was in Anführungszeichen steht, muss genau so vorkommen, etwa eine erinnerte Zeile. Bei der Textsuche stehen die passenden Zeilen mit markierten Treffern unter dem Stil. Der Player spielt nach einem Song die weiteren Treffer.
+
 ## Benachrichtigungen
 
 Die Glocke oben rechts meldet per Web Push, wenn ein Song fertig ist oder fehlschlägt, eine Transkription endet oder ein Songtext-Entwurf steht, auch bei gesperrtem Handy. Abgebrochene Songs bleiben still. Auf iPhone und iPad geht das nur in der App auf dem Home-Bildschirm (ab iOS 16.4) und nur über HTTPS, also über `tailscale serve`; im normalen Safari-Tab erklärt die Glocke das. Beim Einschalten kommt eine Test-Nachricht. Jedes Gerät schaltet für sich ein, die Texte kommen in der Sprache, die dort eingestellt ist.
@@ -158,7 +160,7 @@ OpenAPI unter `/api/openapi`.
 
 Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder löschen.
 
-- [ ] Suche in der Bibliothek: nach Titel und im Volltext (Style und Lyrics)
+- [x] Suche in der Bibliothek: nach Titel und im Volltext (Style und Lyrics)
 - [ ] Songs bewerten (1 bis 5 Sterne)
 - [ ] Mehrere Playlists (die Tabelle `playlists` ist schon da)
 - [ ] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
