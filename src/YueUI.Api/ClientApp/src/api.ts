@@ -39,16 +39,20 @@ export async function generate(request: GenerateRequest): Promise<void> {
 }
 
 /**
- * Starts English or German lyrics in YuE2's format from a few keywords, written by the language model in LM Studio; the draft
- * arrives as a `lyrics` event. Refused (409) while YuE2 generates or another draft is being written.
+ * Starts English or German lyrics in YuE2's format from a few keywords or a photo (a data URL, see `photo.ts`), written by
+ * the language model in LM Studio; the draft arrives as a `lyrics` event. Refused (409) while YuE2 generates or another
+ * draft is being written.
  */
 export async function draftLyrics(
   keywords: string,
   style: string,
   language: LyricsLanguage,
   model: string | null,
+  image: string | null = null,
 ): Promise<LyricsState> {
-  return (await send('/api/lyrics', json('POST', { keywords, style, language, model }))).json() as Promise<LyricsState>
+  return (
+    await send('/api/lyrics', json('POST', { keywords, style, language, model, image }))
+  ).json() as Promise<LyricsState>
 }
 
 /** The models LM Studio has downloaded, for the picker; starts LM Studio's server if needed (503 if it cannot). */

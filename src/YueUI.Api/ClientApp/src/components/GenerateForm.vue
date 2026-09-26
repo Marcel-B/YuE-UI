@@ -4,6 +4,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import { ApiError, draftLyrics, generate, getLyricsModels } from '../api'
 import { defaultFormState, toGenerateRequest, type FormState } from '../form'
 import { formatBytes, t } from '../i18n'
+import { photoDataUrl } from '../photo'
 import { hasTag } from '../styleTags'
 import type { LyricsModels, LyricsState } from '../types'
 import FieldHelp from './FieldHelp.vue'
@@ -96,6 +97,7 @@ async function draft(): Promise<void> {
       form.value.style.trim(),
       form.value.lyricsLanguage,
       form.value.lyricsModel || null,
+      photo.value,
     )
     form.value.lyricsDraftId = started.id
     // A quick failure (LM Studio missing) can arrive as an event before this answer.
@@ -106,6 +108,37 @@ async function draft(): Promise<void> {
     starting.value = false
   }
 }
+
+/**
+ * The photo the next draft is about, scaled down (see photo.ts). Only in memory, not in the saved form: a few hundred KB
+ * of base64 do not belong in localStorage.
+ */
+const photo = ref<string | null>(null)
+const photoInput = ref<HTMLInputElement | null>(null)
+
+async function pickPhoto(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  // Cleared so that picking the same photo again after removing it fires a change.
+  input.value = ''
+  if (!file) {
+    return
+  }
+  draftMessage.value = null
+  try {
+    photo.value = await photoDataUrl(file)
+  } catch {
+    draftMessage.value = { text: t('photoUnreadable'), error: true }
+  }
+}
+
+const canDraft = computed(() => form.value.lyricsIdea.trim() !== '' || photo.value !== null)
+
+/** LM Studio says which models can see; one that cannot would refuse the photo only after loading for a while. */
+const blind = computed(() => {
+  const chosen = lyricsModels.value?.models.find((m) => m.id === lyricsModel.value)
+  return photo.value !== null && chosen?.vision === false
+})
 
 /** Null until LM Studio answered; without it the picker stays hidden and drafts use the configured model. */
 const lyricsModels = ref<LyricsModels | null>(null)
@@ -127,7 +160,11 @@ onMounted(async () => {
 const lyricsModelOptions = computed(() =>
   (lyricsModels.value?.models ?? []).map((m) => {
     const name = m.id === lyricsModels.value?.default ? t('lyricsModelDefault', { name: m.name }) : m.name
-    const details = [m.sizeBytes ? formatBytes(m.sizeBytes) : '', m.loaded ? t('lyricsModelLoaded') : '']
+    const details = [
+      m.sizeBytes ? formatBytes(m.sizeBytes) : '',
+      m.vision ? t('lyricsModelVision') : '',
+      m.loaded ? t('lyricsModelLoaded') : '',
+    ]
     return { value: m.id, label: [name, ...details.filter((d) => d)].join(' · ') }
   }),
 )
@@ -240,13 +277,25 @@ const batchOptions = [
         :aria-label="t('lyricsLanguage')"
         class="shrink-0"
       />
+      <!-- Without "capture" a phone offers both the camera and its photo library. -->
+      <input ref="photoInput" type="file" accept="image/*" class="hidden" @change="pickPhoto" />
+      <Button
+        type="button"
+        icon="pi pi-camera"
+        text
+        size="large"
+        :disabled="drafting"
+        :aria-label="t('photoPick')"
+        v-tooltip.bottom="t('photoPick')"
+        @click="photoInput?.click()"
+      />
       <Button
         type="button"
         icon="pi pi-sparkles"
         text
         size="large"
         :loading="drafting"
-        :disabled="drafting || busy || form.lyricsIdea.trim() === ''"
+        :disabled="drafting || busy || !canDraft || blind"
         v-tooltip.bottom="busy ? t('draftBusy') : undefined"
         @click="askDraft"
       />
@@ -263,6 +312,19 @@ const batchOptions = [
       size="small"
       class="mt-2 w-full"
     />
+    <div v-if="photo" class="mt-2 flex items-center gap-2">
+      <img :src="photo" :alt="t('photoAlt')" class="h-16 w-16 rounded-md object-cover" />
+      <small class="muted min-w-0 flex-1">{{ blind ? t('photoBlindModel') : t('photoHint') }}</small>
+      <Button
+        type="button"
+        icon="pi pi-times"
+        text
+        severity="secondary"
+        :disabled="drafting"
+        :aria-label="t('photoRemove')"
+        @click="photo = null"
+      />
+    </div>
     <FieldHelp id="gen-lyrics-idea-help" :hint="t('lyricsIdeaHint')" :more="t('lyricsIdeaMore')" />
     <small v-if="draftMessage" :class="['block', draftMessage.error ? 'danger' : 'muted']" role="status">{{
       draftMessage.text

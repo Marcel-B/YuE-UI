@@ -301,6 +301,7 @@ public sealed class FakeLmStudio : ILmStudioStarter
                                 display_name = "Gemma 4 E4B",
                                 size_bytes = 5_000_000_000L,
                                 loaded_instances = lm.LoadedInstance is { } id ? new object[] { new { id } } : [],
+                                capabilities = new { vision = true, trained_for_tool_use = true },
                             },
                             new
                             {
@@ -309,6 +310,7 @@ public sealed class FakeLmStudio : ILmStudioStarter
                                 display_name = "Qwen3 8B",
                                 size_bytes = 5_500_000_000L,
                                 loaded_instances = lm.OtherLoadedInstance is { } other ? new object[] { new { id = other } } : [],
+                                capabilities = new { vision = false, trained_for_tool_use = true },
                             },
                             new { type = "embedding", key = "text-embedding-nomic", display_name = "Nomic Embed", size_bytes = 80_000_000L, loaded_instances = Array.Empty<object>() },
                         },
