@@ -12,6 +12,7 @@ import {
   type FormState,
   type SamplingPhase,
 } from '../form'
+import { abcKey, transposeAbc, vocalRange } from '../abcTranspose'
 import { midiToAbc } from '../api'
 import { formatDuration, t } from '../i18n'
 import { pickMidiFile } from '../midi'
@@ -64,6 +65,20 @@ const steps = computed({
     }
   },
 })
+
+const scoreKey = computed(() => {
+  const key = abcKey(form.value.abc)
+  if (key === null) {
+    return null
+  }
+  const range = vocalRange(form.value.abc)
+  return range ? t('abcKeyRange', { key, ...range }) : t('abcKeyOnly', { key })
+})
+
+/** YuE2 sings the score's "Vocal" voice at its written pitch, so this is how a song gets lower or higher. */
+function transpose(semitones: number): void {
+  form.value = { ...form.value, abc: transposeAbc(form.value.abc, semitones).abc }
+}
 
 const importingMidi = ref(false)
 
@@ -256,6 +271,27 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
               <label for="gen-abc">{{ t('abc') }}</label>
             </FloatLabel>
             <FieldHelp id="gen-abc-help" :hint="t('abcHint')" :more="t('abcMore')" />
+            <div v-if="form.abc.trim() !== ''" class="flex items-center gap-1">
+              <Button
+                v-tooltip="t('abcTransposeDown')"
+                :aria-label="t('abcTransposeDown')"
+                icon="pi pi-minus"
+                size="small"
+                text
+                rounded
+                @click="transpose(-1)"
+              />
+              <Button
+                v-tooltip="t('abcTransposeUp')"
+                :aria-label="t('abcTransposeUp')"
+                icon="pi pi-plus"
+                size="small"
+                text
+                rounded
+                @click="transpose(1)"
+              />
+              <small v-if="scoreKey" class="muted">{{ scoreKey }}</small>
+            </div>
             <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
             <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
           </div>

@@ -154,10 +154,14 @@ const messages = {
     abcPlaceholder: 'X:1\nM:4/4\nL:1/16\nQ:1/4=88\nK:C\n…',
     abcHint: 'Ersetzt die Planung durch eine eigene Partitur: Melodie, Akkorde, Tempo und Form stehen dann fest.',
     abcMore:
-      'Zum Beispiel die ABC-Datei eines Songs aus der Bibliothek mit geänderten Akkorden oder einem anderen Tempo (Q:), oder eine mit SheetSage2 transkribierte Melodie für ein Cover. Braucht die Planung „Melodie und Akkorde“ (Akkorde werden übernommen) oder „Nur Melodie“ mit einer Partitur ohne Akkordsymbole (die Begleitung ist frei). Die Silben des Textes sollten zu den Noten der Stimme „Vocal“ passen. Bei „Instrumental“ bleibt die Gesangsstimme einer eigenen Partitur erhalten – dort also die Vocal-Takte durch Pausen ersetzen.\n\n„Beispiel einsetzen“ lädt die Partitur zu „City Lights“ (siehe Beispiel beim Songtext).',
+      'Zum Beispiel die ABC-Datei eines Songs aus der Bibliothek mit geänderten Akkorden oder einem anderen Tempo (Q:), oder eine mit SheetSage2 transkribierte Melodie für ein Cover. Braucht die Planung „Melodie und Akkorde“ (Akkorde werden übernommen) oder „Nur Melodie“ mit einer Partitur ohne Akkordsymbole (die Begleitung ist frei). Die Silben des Textes sollten zu den Noten der Stimme „Vocal“ passen. Bei „Instrumental“ bleibt die Gesangsstimme einer eigenen Partitur erhalten – dort also die Vocal-Takte durch Pausen ersetzen.\n\n„Beispiel einsetzen“ lädt die Partitur zu „City Lights“ (siehe Beispiel beim Songtext).\n\n− und + verschieben die ganze Partitur um einen Halbton: Melodie, Begleitung und Akkorde. YuE2 singt die Stimme „Vocal“ in dieser Lage, ist der Gesang zu hoch, also ein paar Halbtöne tiefer. Wie tief eine Stimme klingen kann, hängt auch vom Stil ab (z. B. „male vocal“, „deep voice“).',
     abcExample: 'Beispiel einsetzen',
     abcClear: 'Partitur entfernen',
     abcFromMidi: 'Partitur aus MIDI-Datei (z. B. aus Logic)',
+    abcTransposeDown: 'Einen Halbton tiefer',
+    abcTransposeUp: 'Einen Halbton höher',
+    abcKeyRange: 'Tonart {key} · Gesang {low}–{high}',
+    abcKeyOnly: 'Tonart {key}',
     samplingSemantic: 'Sampling: Song',
     samplingSemanticIntro:
       'Steuert, wie die Song-Tokens gezogen werden – also Klang, Arrangement und Gesang. Vorbelegt mit den Werten des Modells; laut YuE2-Dokumentation kann jede Änderung die Qualität verändern. Ein Auftrag mit geändertem Sampling wird nicht mit anderen Aufträgen zusammen komponiert.',
@@ -507,10 +511,14 @@ const messages = {
     abcPlaceholder: 'X:1\nM:4/4\nL:1/16\nQ:1/4=88\nK:C\n…',
     abcHint: 'Replaces the planning with your own score: melody, chords, tempo and form are then fixed.',
     abcMore:
-      'For example the ABC file of a song from the library with changed chords or a different tempo (Q:), or a melody transcribed with SheetSage2 for a cover. Needs the planning “Melody and chords” (the chords are kept) or “Melody only” with a score without chord symbols (the accompaniment is free). The syllables of the lyrics should match the notes of the “Vocal” voice. With “Instrumental” the vocal voice of your own score is kept – replace its bars with rests there.\n\n“Insert example” loads the score of “City Lights” (see the example under lyrics).',
+      'For example the ABC file of a song from the library with changed chords or a different tempo (Q:), or a melody transcribed with SheetSage2 for a cover. Needs the planning “Melody and chords” (the chords are kept) or “Melody only” with a score without chord symbols (the accompaniment is free). The syllables of the lyrics should match the notes of the “Vocal” voice. With “Instrumental” the vocal voice of your own score is kept – replace its bars with rests there.\n\n“Insert example” loads the score of “City Lights” (see the example under lyrics).\n\n− and + move the whole score by a semitone: melody, accompaniment and chords. YuE2 sings the “Vocal” voice at that pitch, so if the vocals are too high, go a few semitones lower. How low a voice can sound also depends on the style (e.g. “male vocal”, “deep voice”).',
     abcExample: 'Insert example',
     abcClear: 'Remove score',
     abcFromMidi: 'Score from a MIDI file (e.g. from Logic)',
+    abcTransposeDown: 'One semitone lower',
+    abcTransposeUp: 'One semitone higher',
+    abcKeyRange: 'Key {key} · vocals {low}–{high}',
+    abcKeyOnly: 'Key {key}',
     samplingSemantic: 'Sampling: song',
     samplingSemanticIntro:
       'Controls how the song tokens are drawn – the sound, arrangement and singing. Preset to the model’s values; according to the YuE2 documentation any change may change the quality. A job with changed sampling is not composed together with other jobs.',
