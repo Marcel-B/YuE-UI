@@ -151,6 +151,16 @@ public sealed class LyricsEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task The_answer_gets_the_context_asked_for_whatever_LM_Studio_echoes()
+    {
+        _app.LmStudio.EchoedContext = 4096;
+
+        await Draft();
+
+        Assert.Equal(8192 - 1024, (int?)Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!["max_tokens"]);
+    }
+
+    [Fact]
     public async Task Other_loaded_models_are_unloaded_before_the_context_is_made_smaller()
     {
         _app.LmStudio.OtherLoadedInstance = "qwen/qwen3-8b";

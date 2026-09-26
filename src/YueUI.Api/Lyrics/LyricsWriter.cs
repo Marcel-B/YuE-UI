@@ -231,10 +231,12 @@ public sealed partial class LyricsWriter(
                 return (null, 0, $"({(int)response.StatusCode}) {ErrorOf(json)}");
             }
             var instance = (json?["instance_id"] as JsonValue)?.GetValue<string>() ?? model;
-            var loadedContext = (json?["load_config"]?["context_length"] as JsonValue)?.TryGetValue<int>(out var echoed) == true ? echoed : context;
-            logger.LogInformation("LM Studio loaded {Instance} with a context of {Context} tokens in {Seconds} s",
-                instance, loadedContext, json?["load_time_seconds"]?.ToString() ?? "?");
-            return (instance, loadedContext, null);
+            // The answer is sized by the context asked for, not by the one LM Studio echoes: on the Mac it echoed
+            // 4096 for Gemma 4 loaded with 30000, and drafts that had worked ran out of tokens while thinking.
+            var echoed = json?["load_config"]?["context_length"]?.ToString();
+            logger.LogInformation("LM Studio loaded {Instance} with a context of {Context} tokens (echoed: {Echoed}) in {Seconds} s",
+                instance, context, echoed ?? "?", json?["load_time_seconds"]?.ToString() ?? "?");
+            return (instance, context, null);
         }
     }
 
