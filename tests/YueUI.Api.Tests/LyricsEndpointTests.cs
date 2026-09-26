@@ -127,6 +127,64 @@ public sealed class LyricsEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_refused_load_is_tried_again_with_half_the_context_down_to_the_minimum()
+    {
+        _app.LmStudio.LoadRefusal = "Model loading was stopped due to insufficient system resources.";
+
+        var draft = await Finished(new { keywords = "summer" });
+
+        Assert.Contains("not even with a context of 2048 tokens", draft.Message, StringComparison.Ordinal);
+        Assert.Equal([8192, 4096, 2048], _app.LmStudio.Requests.Where(r => r.Path == "/api/v1/models/load").Select(r => (int)r.Body!["context_length"]!));
+    }
+
+    [Fact]
+    public async Task A_smaller_context_LM_Studio_accepts_is_what_the_answer_gets()
+    {
+        _app.LmStudio.LoadRefusal = "Model loading was stopped due to insufficient system resources.";
+        _app.LmStudio.RefusesContext = context => context > 4096;
+
+        Assert.Equal("[Verse]\nLine one\n\n[Chorus]\nLine two", await Draft());
+
+        Assert.Equal([8192, 4096], _app.LmStudio.Requests.Where(r => r.Path == "/api/v1/models/load").Select(r => (int)r.Body!["context_length"]!));
+        Assert.Equal(4096 - 1024, (int?)Assert.Single(_app.LmStudio.Requests, r => r.Path == "/v1/chat/completions").Body!["max_tokens"]);
+        Assert.Equal("/api/v1/models/unload", _app.LmStudio.Requests[^1].Path);
+    }
+
+    [Fact]
+    public async Task Other_loaded_models_are_unloaded_before_the_context_is_made_smaller()
+    {
+        _app.LmStudio.OtherLoadedInstance = "qwen/qwen3-8b";
+        _app.LmStudio.LoadRefusal = "Model loading was stopped due to insufficient system resources.";
+        _app.LmStudio.RefusesContext = _ => _app.LmStudio.OtherLoadedInstance is not null;
+
+        await Draft();
+
+        Assert.Null(_app.LmStudio.OtherLoadedInstance);
+        Assert.Equal([8192, 8192], _app.LmStudio.Requests.Where(r => r.Path == "/api/v1/models/load").Select(r => (int)r.Body!["context_length"]!));
+    }
+
+    [Fact]
+    public async Task Other_loaded_models_stay_when_the_model_loads()
+    {
+        _app.LmStudio.OtherLoadedInstance = "qwen/qwen3-8b";
+
+        await Draft();
+
+        Assert.Equal("qwen/qwen3-8b", _app.LmStudio.OtherLoadedInstance);
+    }
+
+    [Fact]
+    public async Task A_load_refused_for_another_reason_is_not_tried_again()
+    {
+        _app.LmStudio.LoadRefusal = "Model not found";
+
+        var draft = await Finished(new { keywords = "summer" });
+
+        Assert.Contains("Model not found", draft.Message, StringComparison.Ordinal);
+        Assert.Single(_app.LmStudio.Requests, r => r.Path == "/api/v1/models/load");
+    }
+
+    [Fact]
     public async Task A_model_that_only_thought_until_its_tokens_ran_out_says_so()
     {
         _app.LmStudio.RawAnswer = new

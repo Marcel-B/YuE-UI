@@ -135,9 +135,9 @@ public sealed partial class LyricsWriter(
                 await worker.ShutdownWorkerAsync();
             }
             await EnsureServerAsync(http, cancellationToken);
-            var (instance, loadedHere) = await LoadAsync(http, model, settings, cancellationToken);
+            var (instance, loadedHere, context) = await LoadAsync(http, model, settings, cancellationToken);
             unload = loadedHere ? instance : null;
-            return await CompleteAsync(http, settings, instance, keywords, style, language, logger, cancellationToken);
+            return await CompleteAsync(http, settings, instance, context, keywords, style, language, logger, cancellationToken);
         }
         finally
         {
@@ -152,19 +152,65 @@ public sealed partial class LyricsWriter(
     /// Loads the model with <see cref="LyricsOptions.ContextLength"/> instead of leaving it to LM Studio's
     /// just-in-time loading, whose context can be the model's maximum.
     /// </summary>
-    /// <returns>The instance to address, and whether it was loaded here (and so is unloaded after).</returns>
-    private async Task<(string Instance, bool LoadedHere)> LoadAsync(HttpClient http, string model, LyricsOptions settings, CancellationToken cancellationToken)
+    /// <remarks>
+    /// LM Studio's guardrails refuse a load whose estimate (weights plus the cache for the whole context) exceeds the
+    /// free memory. A dense model loads less easily than Gemma 4's mixture of experts: Qwen 3.8 27B needs all its
+    /// weights and a cache of several GB for 30000 tokens, which on 24 GB is refused as soon as a few apps are open.
+    /// The guardrail is right to refuse (it guards against the swap freeze), so it is not switched off; instead what
+    /// is in the way goes first: other models still loaded in LM Studio, then half the context each time down to
+    /// <see cref="LyricsOptions.MinContextLength"/>. The draft then has less room for reasoning, which is still
+    /// better than none.
+    /// </remarks>
+    /// <returns>The instance to address, whether it was loaded here (and so is unloaded after), and its context.</returns>
+    private async Task<(string Instance, bool LoadedHere, int Context)> LoadAsync(HttpClient http, string model, LyricsOptions settings, CancellationToken cancellationToken)
     {
-        if (await LoadedInstanceAsync(http, model, cancellationToken) is { } loaded)
+        var loaded = await LoadedInstancesAsync(http, cancellationToken);
+        if (loaded.FirstOrDefault(i => i.Model == model) is { Instance: { } instance })
         {
-            logger.LogInformation("Using {Instance}, which is already loaded in LM Studio", loaded);
-            return (loaded, false);
+            logger.LogInformation("Using {Instance}, which is already loaded in LM Studio", instance);
+            return (instance, false, settings.ContextLength);
         }
 
+        var context = settings.ContextLength;
+        var othersUnloaded = false;
+        while (true)
+        {
+            var (loadedInstance, loadedContext, refusal) = await TryLoadAsync(http, model, context, cancellationToken);
+            if (loadedInstance is not null)
+            {
+                return (loadedInstance, true, loadedContext);
+            }
+            if (!refusal!.Contains("insufficient system resources", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new LyricsUnavailableException($"LM Studio could not load {model}: {refusal}");
+            }
+            if (!othersUnloaded && loaded.Count > 0)
+            {
+                othersUnloaded = true;
+                foreach (var other in loaded)
+                {
+                    logger.LogInformation("Unloading {Instance} to make room for {Model}", other.Instance, model);
+                    await UnloadAsync(http, other.Instance);
+                }
+                continue;
+            }
+            var smaller = Math.Max(settings.MinContextLength, context / 2);
+            if (smaller >= context)
+            {
+                throw new LyricsUnavailableException($"LM Studio could not load {model}, not even with a context of {context} tokens; close other apps or pick a smaller model. {refusal}");
+            }
+            logger.LogInformation("LM Studio refused {Model} with a context of {Context} tokens for lack of memory; trying {Smaller}", model, context, smaller);
+            context = smaller;
+        }
+    }
+
+    /// <returns>The instance and its context if LM Studio loaded the model, else its refusal.</returns>
+    private async Task<(string? Instance, int Context, string? Refusal)> TryLoadAsync(HttpClient http, string model, int context, CancellationToken cancellationToken)
+    {
         var request = new JsonObject
         {
             ["model"] = model,
-            ["context_length"] = settings.ContextLength,
+            ["context_length"] = context,
             ["echo_load_config"] = true,
         };
         HttpResponseMessage response;
@@ -182,13 +228,13 @@ public sealed partial class LyricsWriter(
             if (!response.IsSuccessStatusCode)
             {
                 // E.g. LM Studio's guardrails: "Model loading was stopped due to insufficient system resources …".
-                throw new LyricsUnavailableException($"LM Studio could not load {model} ({(int)response.StatusCode}): {ErrorOf(json)}");
+                return (null, 0, $"({(int)response.StatusCode}) {ErrorOf(json)}");
             }
             var instance = (json?["instance_id"] as JsonValue)?.GetValue<string>() ?? model;
-            var context = json?["load_config"]?["context_length"]?.ToString();
+            var loadedContext = (json?["load_config"]?["context_length"] as JsonValue)?.TryGetValue<int>(out var echoed) == true ? echoed : context;
             logger.LogInformation("LM Studio loaded {Instance} with a context of {Context} tokens in {Seconds} s",
-                instance, context ?? "?", json?["load_time_seconds"]?.ToString() ?? "?");
-            return (instance, true);
+                instance, loadedContext, json?["load_time_seconds"]?.ToString() ?? "?");
+            return (instance, loadedContext, null);
         }
     }
 
@@ -270,20 +316,23 @@ public sealed partial class LyricsWriter(
         return http;
     }
 
-    /// <summary>An instance of the model that is already in memory, from LM Studio's model list; null if none or unknown.</summary>
-    private static async Task<string?> LoadedInstanceAsync(HttpClient http, string model, CancellationToken cancellationToken)
+    /// <summary>The language models in memory, from LM Studio's model list; empty if none or unknown.</summary>
+    private static async Task<List<(string Model, string Instance)>> LoadedInstancesAsync(HttpClient http, CancellationToken cancellationToken)
     {
         try
         {
             using var response = await http.GetAsync("api/v1/models", cancellationToken);
             var json = await ReadAsync(response, cancellationToken);
-            var entry = (json?["models"] as JsonArray)?.OfType<JsonObject>()
-                .FirstOrDefault(m => m["key"]?.ToString() == model);
-            return (entry?["loaded_instances"] as JsonArray)?.OfType<JsonObject>().Select(i => i["id"]?.ToString()).FirstOrDefault(id => id is not null);
+            return [.. ((json?["models"] as JsonArray)?.OfType<JsonObject>() ?? [])
+                .Where(m => m["key"] is JsonValue && m["type"]?.ToString() != "embedding")
+                .SelectMany(m => ((m["loaded_instances"] as JsonArray)?.OfType<JsonObject>() ?? [])
+                    .Select(i => i["id"]?.ToString())
+                    .OfType<string>()
+                    .Select(id => (m["key"]!.ToString(), id)))];
         }
         catch (HttpRequestException)
         {
-            return null;
+            return [];
         }
     }
 
@@ -320,7 +369,7 @@ public sealed partial class LyricsWriter(
     }
 
     private static async Task<string> CompleteAsync(
-        HttpClient http, LyricsOptions settings, string model, string keywords, string? style, LyricsLanguage language, ILogger logger,
+        HttpClient http, LyricsOptions settings, string model, int context, string keywords, string? style, LyricsLanguage language, ILogger logger,
         CancellationToken cancellationToken)
     {
         var request = new JsonObject
@@ -331,9 +380,10 @@ public sealed partial class LyricsWriter(
                 new JsonObject { ["role"] = "user", ["content"] = UserPrompt(keywords, style) }),
             ["temperature"] = settings.Temperature,
             // Thinking models reason before the lyrics, and at length: Gemma 4 26B counts every line's syllables,
-            // well over 4000 tokens. So the answer gets the whole context it was loaded with except the prompt.
+            // well over 4000 tokens. So the answer gets the whole context it was loaded with except the prompt,
+            // which may be less than configured (see LoadAsync).
             // LM Studio's reasoning "off" is no way out for Gemma 4: it thinks anyway, unmarked in the answer.
-            ["max_tokens"] = Math.Max(1024, settings.ContextLength - PromptTokens),
+            ["max_tokens"] = Math.Max(1024, context - PromptTokens),
             ["stream"] = false,
             // LM Studio's own field: unload after this many idle seconds, should the model be loaded just in time.
             ["ttl"] = settings.IdleTtlSeconds,

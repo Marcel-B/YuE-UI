@@ -25,6 +25,12 @@ public sealed class LyricsOptions
     /// </summary>
     public int ContextLength { get; set; } = 30000;
 
+    /// <summary>
+    /// If LM Studio's guardrails refuse the model for lack of memory, the context is halved down to this before the
+    /// draft fails. Below about 8000 tokens a thinking model rarely gets past its reasoning.
+    /// </summary>
+    public int MinContextLength { get; set; } = 8192;
+
     /// <summary>Only if "Require Authentication" is switched on in LM Studio's server settings.</summary>
     public string? ApiToken { get; set; }
 
