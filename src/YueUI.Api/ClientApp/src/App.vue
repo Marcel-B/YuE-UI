@@ -9,7 +9,7 @@ import QueueList from './components/QueueList.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
-import { fromSongRequest, loadFormState, saveFormState } from './form'
+import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
 import { current, retitle } from './player'
 import { loadPlaylist, playlistIds } from './playlist'
@@ -225,10 +225,9 @@ function useScore(abc: string, name: string): void {
 /**
  * A song's score to build on, e.g. with changed chords or tempo: with its run's style, lyrics and the song's seed,
  * so that a changed score is all that differs. Planning follows the score: chords are kept when it has them.
- * Only body lines count, the voice declarations quote their names as well.
  */
-function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
-  const cot = /^(?![A-Za-z]:|%).*"[^"]+"/m.test(abc) ? 'full' : 'melody'
+function useSongScore(run: RunInfo, song: SongInfo, abc: string, midiWarnings?: string[]): void {
+  const cot = planningFor(abc)
   form.value = {
     ...form.value,
     title: run.title,
@@ -239,13 +238,12 @@ function useSongScore(run: RunInfo, song: SongInfo, abc: string): void {
     seed: song.seed === null ? form.value.seed : String(song.seed),
   }
   navigate('create')
-  show(
-    t('songScoreApplied', {
-      title: run.title || t('untitled'),
-      song: t('songN', { n: song.index }),
-      planning: t(cot === 'full' ? 'cotFull' : 'cotMelody'),
-    }),
-  )
+  const applied = t(midiWarnings ? 'songMidiApplied' : 'songScoreApplied', {
+    title: run.title || t('untitled'),
+    song: t('songN', { n: song.index }),
+    planning: t(cot === 'full' ? 'cotFull' : 'cotMelody'),
+  })
+  show(midiWarnings?.length ? `${applied} ${t('midiWarnings', { messages: midiWarnings.join(' ') })}` : applied)
 }
 
 /** A song the player or playlist names by id; one deleted meanwhile is gone from the library as well. */
@@ -352,7 +350,14 @@ async function useAsNewSong(songId: string): Promise<void> {
     </Card>
 
     <div class="flex min-w-0 flex-col gap-4">
-      <AdvancedParameters v-model="form" v-model:errors="fieldErrors" :extensions="worker.extensions" />
+      <AdvancedParameters
+        v-model="form"
+        v-model:errors="fieldErrors"
+        :extensions="worker.extensions"
+        :midi-import="logicExport"
+        @notice="show($event)"
+        @error="show($event, true)"
+      />
 
       <Card>
         <template #title>

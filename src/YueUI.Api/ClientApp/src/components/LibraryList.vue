@@ -6,6 +6,7 @@ import {
   deleteRun,
   deleteSong,
   downloadLogicProject,
+  midiToAbc,
   renameRun,
   render,
   runZipUrl,
@@ -16,6 +17,7 @@ import {
 import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
 import { current, libraryTracks, play, playing, trackOf } from '../player'
 import { playlistIds, toggleInPlaylist } from '../playlist'
+import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import type { RunInfo, SongInfo } from '../types'
@@ -34,7 +36,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   template: [run: RunInfo]
   /** The song's score for the next song, together with its run's style and lyrics. */
-  useScore: [run: RunInfo, song: SongInfo, abc: string]
+  /** `warnings` only when the score came from a MIDI file, which then replaces the song's own. */
+  useScore: [run: RunInfo, song: SongInfo, abc: string, warnings?: string[]]
   /** Something was deleted; carries the run's title for the notice. */
   deleted: [title: string]
   notice: [message: string]
@@ -209,6 +212,24 @@ async function useScore(run: RunInfo, song: SongInfo): Promise<void> {
   } catch (caught) {
     emit('error', caught instanceof Error ? caught.message : String(caught))
   }
+}
+
+/** Songs whose MIDI file is being read back into a score. */
+const importing = ref(new Set<string>())
+
+/** The song edited in Logic: its MIDI file as the score, with the song's style, lyrics and seed. */
+function useMidi(run: RunInfo, song: SongInfo): void {
+  pickMidiFile(async (file) => {
+    importing.value.add(song.id)
+    try {
+      const midi = await midiToAbc(file)
+      emit('useScore', run, song, midi.abc, midi.warnings)
+    } catch (caught) {
+      emit('error', caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      importing.value.delete(song.id)
+    }
+  })
 }
 
 async function toggleScore(song: SongInfo, event: Event): Promise<void> {
@@ -477,6 +498,18 @@ const severityByQuality: Record<string, string> = {
                       v-tooltip="t('useScore')"
                       :aria-label="t('useScore')"
                       @click="useScore(run, song)"
+                    />
+                    <Button
+                      v-if="logicExport"
+                      icon="pi pi-file-arrow-up"
+                      text
+                      size="small"
+                      rounded
+                      v-tooltip="t('useMidi')"
+                      :aria-label="t('useMidi')"
+                      :loading="importing.has(song.id)"
+                      :disabled="importing.has(song.id)"
+                      @click="useMidi(run, song)"
                     />
                     <Button
                       v-if="logicExport && song.hasAudio && song.hasScore"

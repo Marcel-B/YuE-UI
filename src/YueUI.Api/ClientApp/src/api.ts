@@ -6,6 +6,7 @@ import type {
   LyricsLanguage,
   LyricsModels,
   LyricsState,
+  MidiScore,
   PlaylistInfo,
   RunInfo,
   SongRequest,
@@ -180,6 +181,13 @@ function fileName(disposition: string | null): string | null {
 }
 
 /** Uploads a recording for SheetSage2; its progress then arrives as `transcription` events. */
+/** A MIDI file, typically a song edited in Logic, read back into a score by yue-to-logic-pro. */
+export async function midiToAbc(file: File): Promise<MidiScore> {
+  const form = new FormData()
+  form.append('file', file)
+  return (await send('/api/midi/abc', { method: 'POST', body: form })).json() as Promise<MidiScore>
+}
+
 export async function transcribe(file: File, task: TranscriptionTask): Promise<TranscriptionState> {
   const form = new FormData()
   form.append('file', file)

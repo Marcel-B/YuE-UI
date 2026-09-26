@@ -11,6 +11,11 @@ namespace YueUI.Api;
 /// <param name="Configured">A yue-to-logic-pro server is set under <c>Logic:BaseUrl</c>.</param>
 public sealed record LogicExportInfo(bool Configured);
 
+/// <summary>A MIDI file read back into a score by yue-to-logic-pro.</summary>
+/// <param name="Abc">The <c>score.abc</c> for the next song.</param>
+/// <param name="Warnings">What yue-to-logic-pro could not carry over, e.g. a track it ignored.</param>
+public sealed record MidiScore(string Abc, IReadOnlyList<string> Warnings);
+
 /// <summary>
 /// A song as a Logic Pro project: its <c>audio.flac</c> and <c>score.abc</c> go to yue-to-logic-pro, server to
 /// server, and the <c>.logicx</c> ZIP it builds comes back to the browser. The files are on this Mac already, so
@@ -27,6 +32,8 @@ public static class LogicEndpoints
     {
         api.MapGet("/logic", (IOptions<LogicOptions> options) => new LogicExportInfo(options.Value.BaseUri is not null));
         api.MapGet("/songs/{run}/{song}/logic", ExportAsync);
+        // The way back: a song edited in Logic and exported as MIDI becomes the score of a new song.
+        api.MapPost("/midi/abc", MidiToAbcAsync).DisableAntiforgery();
         return api;
     }
 
@@ -72,8 +79,7 @@ public static class LogicEndpoints
         }
         catch (HttpRequestException exception)
         {
-            loggers.CreateLogger(typeof(LogicEndpoints)).LogWarning(exception, "yue-to-logic-pro at {BaseUri} did not answer", baseUri);
-            return Results.Problem(title: $"yue-to-logic-pro at {baseUri} could not be reached.", statusCode: StatusCodes.Status502BadGateway);
+            return Unreachable(exception, baseUri, loggers);
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -84,7 +90,7 @@ public static class LogicEndpoints
         {
             using (response)
             {
-                return await RefusalAsync(response, cancellationToken);
+                return await RefusalAsync(response, "yue-to-logic-pro cannot turn this song into a Logic project.", cancellationToken);
             }
         }
 
@@ -96,14 +102,82 @@ public static class LogicEndpoints
         return Results.Stream(await response.Content.ReadAsStreamAsync(cancellationToken), "application/zip", $"{name}.logicx.zip");
     }
 
+    /// <summary>yue-to-logic-pro's own limit; a song's MIDI file is a few hundred kilobytes even with every track.</summary>
+    public const long MaxMidiBytes = 4 * 1024 * 1024;
+
+    private static async Task<IResult> MidiToAbcAsync(
+        IFormFile? file,
+        IOptions<LogicOptions> options,
+        IHttpClientFactory httpClients,
+        ILoggerFactory loggers,
+        CancellationToken cancellationToken)
+    {
+        if (options.Value.BaseUri is not { } baseUri)
+        {
+            return Results.Problem(title: "No yue-to-logic-pro server is configured (Logic:BaseUrl).", statusCode: StatusCodes.Status501NotImplemented);
+        }
+        if (file is null || file.Length == 0)
+        {
+            return Results.Problem(title: "Send the MIDI file as form field 'file'.", statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (file.Length > MaxMidiBytes)
+        {
+            return Results.Problem(
+                title: $"A MIDI file may have at most {MaxMidiBytes / (1024 * 1024)} MB.",
+                statusCode: StatusCodes.Status413PayloadTooLarge);
+        }
+
+        await using var midi = file.OpenReadStream();
+        using var form = new MultipartFormDataContent { { Upload(midi, "audio/midi"), "file", "song.mid" } };
+        var client = httpClients.CreateClient(HttpClientName);
+        JsonNode? body;
+        try
+        {
+            using var response = await client.PostAsync(new Uri(baseUri, "api/midi/abc"), form, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return await RefusalAsync(response, "yue-to-logic-pro cannot read a score from this MIDI file.", cancellationToken);
+            }
+            body = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+        }
+        catch (HttpRequestException exception)
+        {
+            return Unreachable(exception, baseUri, loggers);
+        }
+        catch (JsonException)
+        {
+            body = null;
+        }
+
+        if ((string?)body?["abc"] is not { Length: > 0 } abc)
+        {
+            return Results.Problem(title: "yue-to-logic-pro answered without a score.", statusCode: StatusCodes.Status502BadGateway);
+        }
+        return Results.Ok(new MidiScore(abc, Messages(body, "Warning")));
+    }
+
+    private static IResult Unreachable(HttpRequestException exception, Uri baseUri, ILoggerFactory loggers)
+    {
+        loggers.CreateLogger(typeof(LogicEndpoints)).LogWarning(exception, "yue-to-logic-pro at {BaseUri} did not answer", baseUri);
+        return Results.Problem(title: $"yue-to-logic-pro at {baseUri} could not be reached.", statusCode: StatusCodes.Status502BadGateway);
+    }
+
+    private static List<string> Messages(JsonNode? body, string severity) =>
+        (body?["diagnostics"] as JsonArray ?? [])
+            .Where(d => string.Equals((string?)d?["severity"], severity, StringComparison.OrdinalIgnoreCase))
+            .Select(d => (string?)d?["message"])
+            .OfType<string>()
+            .ToList();
+
     private static StreamContent Upload(Stream stream, string contentType) =>
         new(stream) { Headers = { ContentType = new MediaTypeHeaderValue(contentType) } };
 
     /// <summary>
-    /// A 422 means the song itself cannot become a project (a score it cannot read, audio that is not 48 kHz);
-    /// its diagnostics say why and are passed on. Anything else is yue-to-logic-pro's or this server's fault.
+    /// A 422 means the input itself cannot be converted (a score it cannot read, audio that is not 48 kHz, a MIDI file
+    /// without a melody); its diagnostics say why and are passed on. Anything else is yue-to-logic-pro's or this
+    /// server's fault.
     /// </summary>
-    private static async Task<IResult> RefusalAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<IResult> RefusalAsync(HttpResponseMessage response, string title, CancellationToken cancellationToken)
     {
         JsonNode? body = null;
         try
@@ -116,13 +190,8 @@ public static class LogicEndpoints
 
         if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
         {
-            var messages = (body?["diagnostics"] as JsonArray ?? [])
-                .Where(d => string.Equals((string?)d?["severity"], "Error", StringComparison.OrdinalIgnoreCase))
-                .Select(d => (string?)d?["message"])
-                .OfType<string>()
-                .ToList();
+            var messages = Messages(body, "Error");
             // The browser shows the detail alone, so it carries the whole sentence.
-            const string title = "yue-to-logic-pro cannot turn this song into a Logic project.";
             return Results.Problem(
                 title: title,
                 detail: string.Join(" ", [title, .. messages]),

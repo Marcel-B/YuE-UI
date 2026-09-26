@@ -7,11 +7,14 @@ import {
   exampleScore,
   lengthChoices,
   maxSongSeconds,
+  planningFor,
   resetAdvanced,
   type FormState,
   type SamplingPhase,
 } from '../form'
+import { midiToAbc } from '../api'
 import { formatDuration, t } from '../i18n'
+import { pickMidiFile } from '../midi'
 import FieldHelp from './FieldHelp.vue'
 import NumberField from './NumberField.vue'
 import SamplingFields from './SamplingFields.vue'
@@ -23,6 +26,12 @@ import SamplingFields from './SamplingFields.vue'
 defineProps<{
   /** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
   extensions: boolean | null
+  /** A yue-to-logic-pro server is configured, which reads MIDI files back into scores. */
+  midiImport: boolean
+}>()
+const emit = defineEmits<{
+  notice: [message: string]
+  error: [message: string]
 }>()
 const form = defineModel<FormState>({ required: true })
 const fieldErrors = defineModel<Record<string, string[]>>('errors', { required: true })
@@ -55,6 +64,26 @@ const steps = computed({
     }
   },
 })
+
+const importingMidi = ref(false)
+
+/** A MIDI file, e.g. a song built in Logic, as the score; planning follows it like a song's own score. */
+function useMidi(): void {
+  pickMidiFile(async (file) => {
+    importingMidi.value = true
+    try {
+      const midi = await midiToAbc(file)
+      form.value = { ...form.value, abc: midi.abc, cot: planningFor(midi.abc) }
+      if (midi.warnings.length > 0) {
+        emit('notice', t('midiWarnings', { messages: midi.warnings.join(' ') }))
+      }
+    } catch (caught) {
+      emit('error', caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      importingMidi.value = false
+    }
+  })
+}
 
 /** Parameters only: a score someone pasted or transcribed has its own button. */
 function resetParameters(): void {
@@ -228,7 +257,7 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
             <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
             <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
           </div>
-          <div class="mt-4">
+          <div class="mt-4 flex flex-col">
             <Button
               v-if="form.abc.trim() === ''"
               v-tooltip="t('abcExample')"
@@ -239,6 +268,17 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
               @click="form.abc = exampleScore"
             />
             <Button v-else icon="pi pi-trash" @click="form.abc = ''" text rounded v-tooltip="t('abcClear')" />
+            <Button
+              v-if="midiImport"
+              v-tooltip="t('abcFromMidi')"
+              :aria-label="t('abcFromMidi')"
+              icon="pi pi-file-arrow-up"
+              text
+              rounded
+              :loading="importingMidi"
+              :disabled="importingMidi"
+              @click="useMidi"
+            />
           </div>
         </div>
       </div>

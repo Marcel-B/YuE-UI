@@ -348,7 +348,10 @@ public sealed class FakeLmStudio : ILmStudioStarter
     }
 }
 
-/// <summary>yue-to-logic-pro's <c>POST /api/convert/logic</c>: records the form it gets and answers as told.</summary>
+/// <summary>
+/// yue-to-logic-pro's <c>POST /api/convert/logic</c> and <c>POST /api/midi/abc</c>: records the form it gets and
+/// answers as told.
+/// </summary>
 public sealed class FakeLogic
 {
     public bool Running { get; set; } = true;
@@ -361,6 +364,9 @@ public sealed class FakeLogic
     public string? Diagnostics { get; set; }
 
     public byte[] Zip { get; set; } = [.. "PK"u8, 3, 4, 1, 2, 3];
+
+    /// <summary>The answer to a MIDI file (JSON).</summary>
+    public string Abc { get; set; } = """{"success":true,"abc":"X:1\n","diagnostics":[]}""";
 
     public Uri? RequestUri { get; private set; }
 
@@ -392,6 +398,13 @@ public sealed class FakeLogic
                 return new HttpResponseMessage(logic.Status)
                 {
                     Content = new StringContent(logic.Body ?? "", System.Text.Encoding.UTF8, "application/json"),
+                };
+            }
+            if (request.RequestUri!.AbsolutePath.EndsWith("/midi/abc", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(logic.Abc, System.Text.Encoding.UTF8, "application/json"),
                 };
             }
             var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(logic.Zip) };
