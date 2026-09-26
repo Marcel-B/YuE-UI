@@ -55,6 +55,7 @@ function onBlur() {
 
 <template>
   <InputText
+    fluid
     :model-value="text"
     type="text"
     :inputmode="fractionDigits > 0 ? 'decimal' : 'numeric'"

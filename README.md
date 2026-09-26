@@ -53,7 +53,7 @@ Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn w
 
 Der Stift neben einem Lauf gibt ihm einen neuen Titel. Er gilt für Bibliothek, Player, Playlist, Warteschlange und die Dateinamen beim Herunterladen; der Ordner behält seinen Namen, damit Playlist, Links und YuE Studio den Song weiter finden. Der neue Titel liegt ebenfalls in `yueui.db`, ein leeres Feld stellt den ursprünglichen wieder her.
 
-Jeder Song lässt sich mit 1 bis 5 Sternen bewerten, in der Bibliothek und im Player für den Song, der gerade läuft. Ein Tipp auf denselben Stern nimmt die Bewertung wieder weg. Die Bewertung gehört zum einzelnen Song, nicht zum Lauf, und liegt in `yueui.db`. Die Auswahl neben der Suche zeigt nur Songs ab einer Bewertung (oder nur die mit fünf Sternen); was dann in der Liste steht, spielt der Player auch nacheinander ab.
+Jeder Song lässt sich mit 1 bis 5 Sternen bewerten, in der Bibliothek und im Player für den Song, der gerade läuft. Ein Tipp auf denselben Stern nimmt die Bewertung wieder weg. Die Bewertung gehört zum einzelnen Song, nicht zum Lauf, und liegt in `yueui.db`. Die Auswahl neben der Suche zeigt nur Songs ab einer Bewertung (oder nur die mit fünf Sternen); was dann in der Liste steht, spielt der Player auch nacheinander ab. Die zweite Auswahl sortiert die Bibliothek: nach Datum (neueste oder älteste zuerst), nach Bewertung oder nach Dauer (längste oder kürzeste zuerst). Ein Lauf bleibt dabei zusammen und rückt nach seinem besten Song ein, der dann innerhalb des Laufs vorne steht. Die Reihenfolge merkt sich jeder Browser selbst.
 
 Der Knopf **Teilen** beim Song (auch im Menü von Player und Playlist) öffnet das Teilen-Menü des Handys, etwa um einen Song per Messenger zu verschicken. Geteilt wird nicht die FLAC, sondern eine kleine AAC-Datei (`.m4a`, 128 kbit/s, etwa ein Zehntel der Größe), die der Mac dafür jedes Mal neu mit `afconvert` erzeugt, das zu macOS gehört (anderswo mit `ffmpeg`, falls installiert). Dauert das länger, als Safari einen Tipp gelten lässt, bleibt ein Fenster mit einem zweiten Knopf **Teilen** stehen. Browser ohne Teilen-Menü für Dateien laden die kleine Datei herunter.
 
@@ -88,6 +88,8 @@ SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI ins
 ## Songtext entwerfen mit LM Studio
 
 YuE2 singt Texte, schreibt aber selbst keine. Über dem Songtext-Feld steht deshalb **Worum geht es?**: Stichwörter oder ein Satz genügen, **Text entwerfen** lässt ein Sprachmodell in [LM Studio](https://lmstudio.ai) auf dem Mac daraus einen Songtext im Format von YuE2 schreiben (Abschnitte wie `[Verse]` und `[Chorus]`, vier Zeilen je Abschnitt, gleichmäßige Silben). **EN** oder **DE** daneben wählt, ob er englisch oder deutsch wird; die Abschnittsmarken bleiben englisch, weil YuE2 sie so liest. Damit YuE2 einen deutschen Text auch deutsch ausspricht, gehört `German` an den Anfang des Stils (Bausteine → Sprache). Der Stil aus dem Formular geht mit, damit Stimmung und Tempo passen. Ein vorhandener Text wird erst nach einer Rückfrage ersetzt. Der Entwurf läuft auf dem Mac weiter, auch wenn das Handy zwischendurch sperrt oder die Seite neu lädt; der Text landet danach im Feld.
+
+Passt ein Entwurf fast, muss er nicht neu gewürfelt werden: Unter dem Songtext steht ein Feld für eine kurze Anweisung wie „Refrain eingängiger“ oder „zweite Strophe trauriger“. Der Knopf daneben schickt den Text, wie er gerade im Feld steht (auch von Hand geändert), mit dieser Anweisung an dasselbe Sprachmodell; es soll nur ändern, worum es gebeten wurde, und den Rest Wort für Wort lassen. Das Ergebnis ersetzt den Text ohne Rückfrage, **Rückgängig** holt den vorherigen zurück, solange niemand am neuen etwas geändert hat.
 
 Statt oder neben den Stichwörtern kann ein **Foto** die Vorlage sein: Die Kamera neben dem Feld nimmt eins auf oder holt es aus der Mediathek. Der Entwurf erzählt dann von dem, was darauf zu sehen ist, Stimmung, Ort, eine mögliche Geschichte; Stichwörter lenken, worauf er achtet. Der Browser verkleinert das Foto vorher auf 1024 Pixel (JPEG, auch aus HEIC), es wird nirgends gespeichert und gilt nur bis zum Neuladen der Seite. Das Modell muss Bilder lesen können, wie Gemma 4; in der Modellauswahl steht bei solchen „sieht Fotos“, und mit einem, das LM Studio als blind meldet, bleibt der Entwurf-Knopf aus.
 
@@ -157,7 +159,7 @@ yue-to-logic-pro verlangt keinen Schlüssel. Läuft es hinter einem Proxy, muss 
 | `DELETE` | `/api/runs/{run}` | Lauf mit allen Songs löschen; `409`, solange der Worker an einem davon arbeitet |
 | `GET` | `/api/storage` | `{ freeBytes, totalBytes }` des Datenträgers der Bibliothek |
 | `GET` | `/api/lyrics/models` | Modelle für Textentwürfe: `{ default, models: [{ id, name, sizeBytes, loaded, vision }] }` (`vision`: kann Fotos lesen, `null`, wenn der Server es nicht sagt); startet den Server von LM Studio bei Bedarf, `503`, wenn er nicht erreichbar ist |
-| `POST` | `/api/lyrics` | Songtext entwerfen: `{ keywords, style?, language?, model?, image? }` (ohne `model` das eingestellte; `image` ein Foto als `data:image/jpeg;base64,…`-URL, dann ist `keywords` optional); antwortet `202`, der Entwurf kommt als `lyrics`-Event (`writing`, dann `done` mit `lyrics` oder `failed` mit `message`); `409`, solange YuE2 rechnet oder schon ein Entwurf entsteht |
+| `POST` | `/api/lyrics` | Songtext entwerfen: `{ keywords, style?, language?, model?, image? }` (ohne `model` das eingestellte; `image` ein Foto als `data:image/jpeg;base64,…`-URL, dann ist `keywords` optional); mit `lyrics` und `instruction` statt dessen einen vorhandenen Text wie angewiesen überarbeiten (`keywords` optional, kein `image`); antwortet `202`, der Entwurf kommt als `lyrics`-Event (`writing`, dann `done` mit `lyrics` oder `failed` mit `message`); `409`, solange YuE2 rechnet oder schon ein Entwurf entsteht |
 | `GET` | `/api/playlist` | `{ songIds }`: Songs der Playlist in Reihenfolge (`run/songN`), gelöschte weggelassen |
 | `PUT` | `/api/playlist` | `{ songIds }`: Playlist ersetzen; `400` für einen Song, den es nicht gibt |
 | `GET` | `/api/push` | `{ publicKey }`: VAPID-Schlüssel für `pushManager.subscribe` |
@@ -173,7 +175,9 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 
 - [x] Suche in der Bibliothek: nach Titel und im Volltext (Style und Lyrics)
 - [x] Songs bewerten (1 bis 5 Sterne)
+- [x] Bibliothek sortieren (Datum, Sterne, Dauer)
+- [x] Songtext-Entwurf mit einer kurzen Anweisung überarbeiten lassen
 - [x] Songs vom Handy teilen (kleine AAC statt FLAC)
 - [ ] Mehrere Playlists (die Tabelle `playlists` ist schon da)
 - [x] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
-- [ ] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)
+- [x] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)

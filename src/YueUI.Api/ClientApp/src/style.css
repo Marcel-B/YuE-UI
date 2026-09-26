@@ -9,26 +9,19 @@
 @import 'primeicons/primeicons.css';
 
 @layer base {
+  /* The page's own colours follow the Aura preset, so the scoped styles and PrimeVue's components share one palette
+     and one accent in both themes. Only the backgrounds are the app's own. */
   :root {
     --bg: #f6f7fb;
-    --surface: #ffffff;
+    --surface: var(--p-content-background);
     --surface-sunken: #f1f3f8;
-    --text: #16181d;
-    --text-muted: #5d6474;
-    --border: #e3e6ee;
-    --border-strong: #c9cedb;
-    --accent: #4f46e5;
-    --accent-hover: #4338ca;
-    --accent-soft: #e8e7fd;
-    --on-accent: #ffffff;
-    --success: #067647;
-    --success-soft: #dcfae6;
-    --danger: #d92d20;
-    --danger-soft: #fee4e2;
-    --warning-text: #b54708;
-    --warning-soft: #fef0c7;
-    --radius: 12px;
-    --radius-small: 8px;
+    --text: var(--p-text-color);
+    --text-muted: var(--p-text-muted-color);
+    --border: var(--p-content-border-color);
+    --accent: var(--p-primary-color);
+    --danger: var(--p-red-600);
+    --warning-text: var(--p-amber-700);
+    --radius-small: var(--p-form-field-border-radius);
     --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
     color-scheme: light;
@@ -43,22 +36,9 @@
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0f1115;
-      --surface: #171a21;
       --surface-sunken: #1e222b;
-      --text: #e8eaf0;
-      --text-muted: #9aa1b2;
-      --border: #282d38;
-      --border-strong: #3a404e;
-      --accent: #7c74ff;
-      --accent-hover: #948dff;
-      --accent-soft: #2a2752;
-      --on-accent: #0f1115;
-      --success: #47cd89;
-      --success-soft: #053321;
-      --danger: #f97066;
-      --danger-soft: #55160c;
-      --warning-text: #fdb022;
-      --warning-soft: #4e1d09;
+      --danger: var(--p-red-400);
+      --warning-text: var(--p-amber-400);
 
       color-scheme: dark;
     }
@@ -86,151 +66,27 @@
     font-size: 1.1rem;
   }
 
-  /* 16px keeps iOS Safari from zooming into a field on focus. */
-  input[type='text'],
-  input[type='number'],
+  /* 16px keeps iOS Safari from zooming into a field on focus; PrimeVue's own fields sit on native inputs. */
+  input,
   select,
   textarea {
-    width: 100%;
-    padding: 0.5rem 0.65rem;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-small);
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
     font-size: max(1rem, 16px);
   }
 
-  textarea {
-    resize: vertical;
-  }
-
-  input:disabled,
-  select:disabled {
-    opacity: 0.5;
-  }
-
-  input[type='checkbox'] {
-    width: 1.1rem;
-    height: 1.1rem;
-    flex: none;
-    accent-color: var(--accent);
-  }
-
+  /* Details, summaries and plain links; PrimeVue's components draw their own focus ring. */
   :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 }
 
+/* Small text helpers; everything with a shape (buttons, cards, fields, tags) is a PrimeVue component. */
 @layer components {
-  .card {
-    padding: 1.25rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-  }
-
-  @media (max-width: 30rem) {
-    .card {
-      padding: 1rem;
-    }
-  }
-
   .muted {
     color: var(--text-muted);
   }
 
   .danger {
     color: var(--danger);
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-  }
-
-  .field > span,
-  .field > label:not(.check) {
-    font-size: 0.9rem;
-    font-weight: 600;
-  }
-
-  .field small {
-    font-size: 0.8rem;
-  }
-
-  .check {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-  }
-
-  .button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2.5rem;
-    padding: 0.55rem 1.1rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius-small);
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-
-  .button.small {
-    min-height: 2rem;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.85rem;
-  }
-
-  .button.primary {
-    background: var(--accent);
-    color: var(--on-accent);
-  }
-
-  .button.primary:hover:not(:disabled) {
-    background: var(--accent-hover);
-  }
-
-  .button.secondary {
-    border-color: var(--border-strong);
-    background: var(--surface);
-    color: var(--text);
-  }
-
-  .button:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-
-  .link {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--accent);
-    font: inherit;
-    font-size: 0.9rem;
-    cursor: pointer;
-    text-decoration: underline;
-  }
-
-  .link:disabled {
-    cursor: default;
-    color: var(--text-muted);
-    text-decoration: none;
-  }
-
-  .badge {
-    padding: 0.05rem 0.45rem;
-    border-radius: 999px;
-    background: var(--surface-sunken);
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    font-weight: 600;
   }
 }

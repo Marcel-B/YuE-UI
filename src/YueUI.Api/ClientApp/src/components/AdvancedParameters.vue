@@ -166,6 +166,7 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
       <div>
         <FloatLabel variant="on" class="mt-6 w-full">
           <InputText
+            fluid
             id="gen-seed"
             v-model="form.seed"
             type="text"
@@ -241,6 +242,7 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
           <div class="flex-1">
             <FloatLabel variant="on" class="mt-6">
               <Textarea
+                fluid
                 id="gen-abc"
                 v-model="form.abc"
                 class="mono"

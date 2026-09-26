@@ -55,6 +55,23 @@ export async function draftLyrics(
   ).json() as Promise<LyricsState>
 }
 
+/**
+ * Has the language model change lyrics as instructed ("make the chorus catchier") instead of drafting new ones; the
+ * result arrives as a `lyrics` event like a draft. `keywords` and `style` say what the song is about, for context.
+ */
+export async function reviseLyrics(
+  lyrics: string,
+  instruction: string,
+  keywords: string,
+  style: string,
+  language: LyricsLanguage,
+  model: string | null,
+): Promise<LyricsState> {
+  return (
+    await send('/api/lyrics', json('POST', { lyrics, instruction, keywords, style, language, model }))
+  ).json() as Promise<LyricsState>
+}
+
 /** The models LM Studio has downloaded, for the picker; starts LM Studio's server if needed (503 if it cannot). */
 export async function getLyricsModels(): Promise<LyricsModels> {
   return (await send('/api/lyrics/models')).json() as Promise<LyricsModels>
