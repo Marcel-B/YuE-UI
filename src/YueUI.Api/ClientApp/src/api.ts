@@ -92,6 +92,11 @@ export async function renameRun(runId: string, title: string): Promise<void> {
   await send(`/api/runs/${runId}/title`, json('PUT', { title }))
 }
 
+/** One to five stars for the song; null takes its rating away. */
+export async function rateSong(songId: string, rating: number | null): Promise<void> {
+  await send(`/api/songs/${songId}/rating`, json('PUT', { rating }))
+}
+
 /** The playlist's song ids in order; songs deleted since are left out. */
 export async function getPlaylist(): Promise<PlaylistInfo> {
   return (await send('/api/playlist')).json() as Promise<PlaylistInfo>

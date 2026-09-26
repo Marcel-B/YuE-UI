@@ -8,6 +8,9 @@ namespace YueUI.Api;
 /// <param name="Title">The new title; empty returns the run to the worker's.</param>
 public sealed record RenameRequest(string? Title);
 
+/// <param name="Rating">One to five stars; null (or 0) takes the rating away.</param>
+public sealed record RatingRequest(int? Rating);
+
 /// <param name="FreeBytes">What the current user can still write.</param>
 public sealed record StorageInfo(long FreeBytes, long TotalBytes);
 
@@ -45,6 +48,8 @@ public static partial class LibraryEndpoints
             Delete(host, host.IsWorkingOn(run), () => library.DeleteRun(run)));
         api.MapPut("/runs/{run}/title", (string run, RenameRequest request, SongLibrary library, WorkerHost host) =>
             Rename(library, host, run, request.Title?.Trim() ?? ""));
+        api.MapPut("/songs/{run}/{song}/rating", (string run, string song, RatingRequest request, SongLibrary library, WorkerHost host) =>
+            Rate(library, host, run, song, request.Rating is 0 ? null : request.Rating));
         api.MapGet("/storage", (YuePaths paths) => Storage(paths.OutputDir));
         return api;
     }
@@ -86,6 +91,24 @@ public static partial class LibraryEndpoints
         }
         var directories = library.SongDirectories(run);
         host.RunRenamed(run, directories is { Count: > 0 } ? library.TitleOf(run, directories[0]) : title);
+        return Results.NoContent();
+    }
+
+    /// <summary>Every open browser reloads its library, so the stars match on the phone and the Mac.</summary>
+    private static IResult Rate(SongLibrary library, WorkerHost host, string run, string song, int? rating)
+    {
+        if (rating is < 1 or > Data.SqliteSongRatingStore.MaxRating)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["rating"] = [$"1 to {Data.SqliteSongRatingStore.MaxRating} stars, or null to remove the rating."],
+            });
+        }
+        if (!library.Rate(run, song, rating))
+        {
+            return Results.NotFound();
+        }
+        host.LibraryChanged();
         return Results.NoContent();
     }
 

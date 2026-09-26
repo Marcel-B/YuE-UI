@@ -27,6 +27,7 @@ public sealed record RunInfo(
 /// <param name="Quality">"draft" or "full" once synthesized.</param>
 /// <param name="CanRender">Its tokens are saved, so it can be synthesized again (a draft at full quality).</param>
 /// <param name="Bytes">What the song folder takes on disk: audio, tokens and the worker's intermediate files.</param>
+/// <param name="Rating">One to five stars given in this app, null while not rated.</param>
 public sealed record SongInfo(
     string Id,
     int Index,
@@ -36,7 +37,8 @@ public sealed record SongInfo(
     bool HasAudio,
     bool HasScore,
     bool CanRender,
-    long Bytes);
+    long Bytes,
+    int? Rating);
 
 /// <summary>
 /// What a song was generated with, from its <c>request.json</c>, in the terms of <see cref="GenerateRequest"/>, so the
@@ -67,7 +69,7 @@ public sealed record SongRequest(
 /// <c>request.json</c> (the prompt) and <c>result.json</c> (title, quality, length).
 /// </summary>
 /// <remarks>Only names matching the worker's own patterns are accepted, which also keeps request paths inside the library.</remarks>
-public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titles)
+public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titles, SqliteSongRatingStore ratings)
 {
     public string OutputDir => paths.OutputDir;
 
@@ -79,12 +81,13 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
             return [];
         }
         var renamed = Read(titles.All) ?? new Dictionary<string, string>();
+        var rated = Read(ratings.All) ?? new Dictionary<string, int>();
         return
         [
             .. root.EnumerateDirectories()
                 .Where(d => RunName().IsMatch(d.Name))
                 .OrderByDescending(d => d.Name, StringComparer.Ordinal)
-                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name)))
+                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated))
                 // A run still tokenizing has no song folders yet; the queue shows it.
                 .Where(r => r.Songs.Count > 0),
         ];
@@ -121,11 +124,12 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
             return false;
         }
         Directory.Delete(directory, recursive: true);
+        Forget(() => ratings.Remove($"{run}/{song}"));
         var runDirectory = new DirectoryInfo(Path.Combine(paths.OutputDir, run));
         if (!SongFolders(runDirectory).Any())
         {
             runDirectory.Delete(recursive: true);
-            Forget(run);
+            ForgetRun(run);
         }
         return true;
     }
@@ -139,7 +143,7 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
             return false;
         }
         Directory.Delete(Path.Combine(paths.OutputDir, run), recursive: true);
-        Forget(run);
+        ForgetRun(run);
         return true;
     }
 
@@ -158,6 +162,25 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
         else
         {
             titles.Set(run, title);
+        }
+        return true;
+    }
+
+    /// <summary>Gives the song one to five stars, or with null takes its rating away.</summary>
+    /// <returns>False for a name the worker would not write or a song that does not exist.</returns>
+    public bool Rate(string run, string song, int? rating)
+    {
+        if (SongDirectory(run, song) is null)
+        {
+            return false;
+        }
+        if (rating is { } stars)
+        {
+            ratings.Set($"{run}/{song}", stars);
+        }
+        else
+        {
+            ratings.Remove($"{run}/{song}");
         }
         return true;
     }
@@ -235,19 +258,26 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
         }
     }
 
-    /// <summary>A later run could not reuse the name (it carries the second it started), but the row is of no use now.</summary>
-    private void Forget(string run)
+    /// <summary>A later run could not reuse the name (it carries the second it started), but the rows are of no use now.</summary>
+    private void ForgetRun(string run) => Forget(() =>
+    {
+        titles.Remove(run);
+        ratings.RemoveRun(run);
+    });
+
+    /// <summary>The files are gone already; a database that cannot be written only keeps a row nobody sees.</summary>
+    private static void Forget(Action remove)
     {
         try
         {
-            titles.Remove(run);
+            remove();
         }
         catch (Exception exception) when (exception is SqliteException or IOException or UnauthorizedAccessException)
         {
         }
     }
 
-    private RunInfo ReadRun(DirectoryInfo run, string? renamed)
+    private RunInfo ReadRun(DirectoryInfo run, string? renamed, IReadOnlyDictionary<string, int> rated)
     {
         var songs = new List<SongInfo>();
         string title = "", style = "", lyrics = "";
@@ -267,8 +297,9 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
             }
 
             var audio = File.Exists(Path.Combine(folder.FullName, "audio.flac"));
+            var id = $"{run.Name}/{folder.Name}";
             songs.Add(new SongInfo(
-                $"{run.Name}/{folder.Name}",
+                id,
                 int.Parse(folder.Name.AsSpan(4), CultureInfo.InvariantCulture),
                 request is null ? null : (long?)Number(request["seed"]),
                 audio && result is not null ? Text(result["quality"]) : null,
@@ -276,7 +307,8 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
                 audio,
                 File.Exists(Path.Combine(folder.FullName, "score.abc")),
                 File.Exists(Path.Combine(folder.FullName, "semantic.npy")),
-                Size(folder)));
+                Size(folder),
+                rated.TryGetValue(id, out var rating) ? rating : null));
         }
 
         var original = title.Length > 0 ? title : TitleFromName(run.Name);

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import { t } from '../i18n'
 import { attach, close, current, hasNext, hasPrevious, next, playing, previous } from '../player'
 import { playlistIds, toggleInPlaylist } from '../playlist'
+import { rate, ratingOf } from '../ratings'
 import { showSong, songHref } from '../view'
 import SongMenu from './SongMenu.vue'
 
@@ -29,6 +30,17 @@ async function togglePlaylist(): Promise<void> {
   }
 }
 
+async function rateCurrent(rating: number | null | undefined): Promise<void> {
+  if (!current.value) {
+    return
+  }
+  try {
+    await rate(current.value.id, rating ?? null)
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  }
+}
+
 function ended(): void {
   if (!next()) {
     playing.value = false
@@ -47,9 +59,16 @@ function ended(): void {
           class="block truncate font-semibold text-color no-underline hover:underline"
           :title="t('showSong')"
           @click.prevent="showSong(current.id)"
-          >{{ current.title }}</a
+          >{{ current.title }} <span class="text-sm font-normal text-muted-color">· {{ current.detail }}</span></a
         >
-        <div class="truncate text-sm text-muted-color">{{ current?.detail }}</div>
+        <!-- Rated while it plays, when the song is best judged. The line below the title has room for the stars. -->
+        <Rating
+          v-if="current"
+          :model-value="ratingOf(current.id)"
+          :aria-label="t('rating')"
+          class="mt-1"
+          @update:model-value="rateCurrent"
+        />
       </div>
       <Button
         :icon="inPlaylist ? 'pi pi-check-circle' : 'pi pi-plus-circle'"
