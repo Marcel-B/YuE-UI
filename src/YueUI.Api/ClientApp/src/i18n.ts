@@ -258,7 +258,6 @@ const messages = {
     libraryEmpty: 'Noch keine Songs.',
     libraryError: 'Die Bibliothek konnte nicht geladen werden: {message}',
     refresh: 'Aktualisieren',
-    showMore: 'Mehr anzeigen',
     useAsTemplate: 'Als Vorlage',
     templateLoaded: 'Stil und Text von „{title}“ stehen im Formular.',
     songScoreApplied:
@@ -568,7 +567,6 @@ const messages = {
     libraryEmpty: 'No songs yet.',
     libraryError: 'Could not load the library: {message}',
     refresh: 'Refresh',
-    showMore: 'Show more',
     useAsTemplate: 'Use as template',
     templateLoaded: 'Style and lyrics of “{title}” are in the form.',
     songScoreApplied:
