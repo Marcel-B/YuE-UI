@@ -251,6 +251,9 @@ public sealed class FakeLmStudio : ILmStudioStarter
     /// <summary>LM Studio's guardrails refusing the load, with this message.</summary>
     public string? LoadRefusal { get; set; }
 
+    /// <summary>The context LM Studio's load answer claims, instead of the one asked for.</summary>
+    public int? EchoedContext { get; set; }
+
     /// <summary>Limits <see cref="LoadRefusal"/> to loads it holds for, given the context asked for.</summary>
     public Func<int, bool>? RefusesContext { get; set; }
 
@@ -319,7 +322,7 @@ public sealed class FakeLmStudio : ILmStudioStarter
                             instance_id = $"{body?["model"]}:1",
                             status = "loaded",
                             load_time_seconds = 2.5,
-                            load_config = new { context_length = (int?)body?["context_length"] },
+                            load_config = new { context_length = lm.EchoedContext ?? (int?)body?["context_length"] },
                         });
                 case "/v1/chat/completions":
                     if (lm.Gate is { } gate)
