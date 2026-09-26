@@ -1,0 +1,104 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Text.RegularExpressions;
+using YueUI.Api.Share;
+
+namespace YueUI.Api.Voices;
+
+/// <param name="Instrumental">The song without its vocals.</param>
+/// <param name="Vocals">The converted vocals.</param>
+/// <param name="OriginalVocals">The separated vocals before conversion, whose loudness the converted ones take.</param>
+/// <param name="Reverb">The original's reverb to mix back in, or null.</param>
+public sealed record MixInput(string Instrumental, string Vocals, string OriginalVocals, string? Reverb);
+
+/// <summary>Puts converted vocals back under the instrumental. Tests replace it.</summary>
+public interface IAudioMixer
+{
+    /// <summary>Writes the mix as FLAC to <paramref name="output"/>.</summary>
+    Task MixAsync(MixInput input, string output, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Mixes with ffmpeg, which ChangeMyVoice and StemMyWav need on this Mac anyway (afconvert cannot mix).
+/// </summary>
+/// <remarks>
+/// Seed-VC does not keep the level of its input, so the converted vocals are first brought to the mean loudness of
+/// the separated ones: then the balance against the instrumental is the one YuE2 made. Vocals and instrumental
+/// come from the same song and have the same length, give or take a few samples of the vocoder's hop, so the
+/// instrumental decides where the mix ends. A limiter catches what the sum of separately made stems adds on top.
+/// </remarks>
+public sealed partial class FfmpegMixer(ILogger<FfmpegMixer> logger) : IAudioMixer
+{
+    /// <summary>A song of six minutes takes seconds; anything beyond this is hanging.</summary>
+    private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>More would mean one of the two is near silence, where the measurement says nothing.</summary>
+    private const double MaxGainDb = 20;
+
+    public async Task MixAsync(MixInput input, string output, CancellationToken cancellationToken)
+    {
+        var ffmpeg = AacEncoder.FindFfmpeg() ?? throw new VoiceServiceException("ffmpeg is not installed.", System.Net.HttpStatusCode.NotImplemented);
+        var original = await MeanVolumeAsync(ffmpeg, input.OriginalVocals, cancellationToken);
+        var converted = await MeanVolumeAsync(ffmpeg, input.Vocals, cancellationToken);
+        // Silence (an instrumental passage) measures as -inf: nothing to match then.
+        var gain = original is { } o && converted is { } c ? Math.Clamp(o - c, -MaxGainDb, MaxGainDb) : 0;
+
+        List<string> arguments = ["-nostdin", "-loglevel", "error", "-y", "-i", input.Instrumental, "-i", input.Vocals];
+        var sources = "[0:a][v]";
+        if (input.Reverb is not null)
+        {
+            arguments.AddRange(["-i", input.Reverb]);
+            sources += "[2:a]";
+        }
+        var inputs = input.Reverb is null ? 2 : 3;
+        // Seed-VC writes mono; the stems are stereo at 48 kHz.
+        var filter = string.Create(
+            CultureInfo.InvariantCulture,
+            $"[1:a]volume={gain:0.##}dB,aresample=48000,aformat=channel_layouts=stereo[v];{sources}amix=inputs={inputs}:normalize=0:duration=first,alimiter=limit=0.95:level=disabled[m]");
+        arguments.AddRange(["-filter_complex", filter, "-map", "[m]", "-ar", "48000", "-sample_fmt", "s16", "-c:a", "flac", output]);
+        await RunAsync(ffmpeg, arguments, cancellationToken);
+    }
+
+    /// <summary>ffmpeg's volumedetect in dBFS.</summary>
+    private async Task<double?> MeanVolumeAsync(string ffmpeg, string file, CancellationToken cancellationToken)
+    {
+        var report = await RunAsync(ffmpeg, ["-nostdin", "-hide_banner", "-i", file, "-af", "volumedetect", "-f", "null", "-"], cancellationToken);
+        var match = MeanVolume().Match(report);
+        return match.Success ? double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : null;
+    }
+
+    /// <returns>What ffmpeg wrote to stderr, where its reports go.</returns>
+    private async Task<string> RunAsync(string tool, IEnumerable<string> arguments, CancellationToken cancellationToken)
+    {
+        var start = new ProcessStartInfo(tool) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(Timeout);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException($"Could not start {tool}.");
+        try
+        {
+            var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var error = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            if (process.ExitCode != 0)
+            {
+                var message = $"ffmpeg exited with {process.ExitCode}: {(await error).Trim()}";
+                logger.LogWarning("{Message}", message);
+                throw new InvalidOperationException(message);
+            }
+            await output;
+            return await error;
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw;
+        }
+    }
+
+    [GeneratedRegex(@"mean_volume:\s*(-?[\d.]+) dB")]
+    private static partial Regex MeanVolume();
+}

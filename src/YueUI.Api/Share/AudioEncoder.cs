@@ -73,7 +73,7 @@ public sealed class AacEncoder(ILogger<AacEncoder> logger) : IAudioEncoder
     }
 
     /// <summary>A LaunchAgent's PATH lacks Homebrew, so its folders are tried as well.</summary>
-    private static string? FindFfmpeg()
+    public static string? FindFfmpeg()
     {
         var path = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? [];
         return path.Concat(["/opt/homebrew/bin", "/usr/local/bin"])

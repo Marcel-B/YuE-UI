@@ -1,12 +1,13 @@
 using System.Text.Json;
 using System.Threading.Channels;
+using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Push;
 
 /// <summary>
 /// Listens to the worker's state like a browser does and sends a push to every subscription when a song, a
-/// transcription or a lyrics draft finishes, so a phone in a pocket hears about it.
+/// transcription, a song sung with another voice or a lyrics draft finishes, so a phone in a pocket hears about it.
 /// </summary>
 /// <remarks>
 /// Only the change to finished counts: a snapshot marks what is already done, and a song rendered again becomes news
@@ -60,6 +61,10 @@ public sealed class PushNotifier(WorkerHost host, PushStore store, IPushSender s
         {
             _finished[$"transcription:{transcription.Id}"] = transcription.Finished;
         }
+        foreach (var version in snapshot.Versions ?? [])
+        {
+            _finished[$"version:{version.Id}"] = version.Finished;
+        }
         if (snapshot.Lyrics is { } lyrics)
         {
             _finished[$"lyrics:{lyrics.Id}"] = lyrics.Finished;
@@ -76,6 +81,9 @@ public sealed class PushNotifier(WorkerHost host, PushStore store, IPushSender s
             case TranscriptionState transcription when Finishes($"transcription:{transcription.Id}", transcription.Finished)
                 && transcription.Stage != "cancelled":
                 Queue($"transcription:{transcription.Id}", language => PushTexts.Transcription(transcription, language));
+                break;
+            case VersionState version when Finishes($"version:{version.Id}", version.Finished) && version.Stage != "cancelled":
+                Queue($"version:{version.Id}", language => PushTexts.Version(version, language));
                 break;
             case LyricsState lyrics when Finishes($"lyrics:{lyrics.Id}", lyrics.Finished):
                 Queue("lyrics", language => PushTexts.Lyrics(lyrics, language));

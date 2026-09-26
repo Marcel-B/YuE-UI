@@ -45,10 +45,11 @@ public static partial class LibraryEndpoints
             library.SongDirectories(run) is { Count: > 0 } directories
                 ? Zip($"{FileName(library.TitleOf(run, directories[0]), run)}.zip", directories.SelectMany(d => SongEntries(library, run, d)))
                 : Results.NotFound());
-        api.MapDelete("/songs/{run}/{song}", (string run, string song, SongLibrary library, WorkerHost host) =>
-            Delete(host, host.IsWorkingOn(run, song), () => library.DeleteSong(run, song)));
-        api.MapDelete("/runs/{run}", (string run, SongLibrary library, WorkerHost host) =>
-            Delete(host, host.IsWorkingOn(run), () => library.DeleteRun(run)));
+        // A version in the works reads the song's audio; it is cancelled with its song by deleting the version first.
+        api.MapDelete("/songs/{run}/{song}", (string run, string song, SongLibrary library, WorkerHost host, Voices.VoiceConverter voices) =>
+            Delete(host, host.IsWorkingOn(run, song) || voices.IsWorkingOn(run, song), () => library.DeleteSong(run, song)));
+        api.MapDelete("/runs/{run}", (string run, SongLibrary library, WorkerHost host, Voices.VoiceConverter voices) =>
+            Delete(host, host.IsWorkingOn(run) || voices.IsWorkingOn(run), () => library.DeleteRun(run)));
         api.MapPut("/runs/{run}/title", (string run, RenameRequest request, SongLibrary library, WorkerHost host) =>
             Rename(library, host, run, request.Title?.Trim() ?? ""));
         api.MapPut("/songs/{run}/{song}/rating", (string run, string song, RatingRequest request, SongLibrary library, WorkerHost host) =>

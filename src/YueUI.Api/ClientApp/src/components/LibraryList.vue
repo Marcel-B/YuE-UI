@@ -2,13 +2,17 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import DataView from 'primevue/dataview'
 import Dialog from 'primevue/dialog'
+import Checkbox from 'primevue/checkbox'
 import Fieldset from 'primevue/fieldset'
 import { useConfirm } from 'primevue/useconfirm'
 import {
+  addVersion,
   audioUrl,
+  deleteVersion,
   deleteRun,
   deleteSong,
   downloadLogicProject,
+  listVoices,
   midiToAbc,
   renameRun,
   render,
@@ -16,16 +20,17 @@ import {
   scoreUrl,
   songScore,
   songZipUrl,
+  versionAudioUrl,
 } from '../api'
 import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
-import { current, libraryTracks, play, playing, trackOf } from '../player'
+import { current, libraryTracks, play, playing, trackOf, versionTrack } from '../player'
 import { playlistIds, toggleInPlaylist } from '../playlist'
 import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
 import { shareSong } from '../share'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
-import type { RunInfo, SongInfo } from '../types'
+import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
 import { focusedSong, focusRequest, view } from '../view'
 
 const props = defineProps<{
@@ -36,6 +41,10 @@ const props = defineProps<{
   busyIds: Set<string>
   /** A yue-to-logic-pro server is configured, so songs can be opened in Logic Pro. */
   logicExport: boolean
+  /** ChangeMyVoice and StemMyWav are configured, so songs can be sung with another voice. */
+  voices: boolean
+  /** Versions as the event stream reports them, newer than the listing while they are in the works. */
+  liveVersions: VersionState[]
 }>()
 
 const emit = defineEmits<{
@@ -331,6 +340,130 @@ async function saveTitle(): Promise<void> {
   }
 }
 
+// ---- Versions: the song sung with another voice ------------------------------------------------------
+
+/** The song's versions, each in its latest state: the listing's, or the event stream's while one is in the works. */
+function versionsOf(song: SongInfo): VersionState[] {
+  const live = new Map(props.liveVersions.filter((v) => v.songId === song.id).map((v) => [v.id, v]))
+  const listed = song.versions.map((v) => live.get(v.id) ?? v)
+  const known = new Set(listed.map((v) => v.id))
+  // Asked for since the library loaded; it reloads when a version is queued, but the event may come first.
+  const added = [...live.values()].filter((v) => !known.has(v.id) && v.stage !== 'cancelled')
+  return [...listed, ...added]
+}
+
+function playVersion(run: RunInfo, song: SongInfo, version: VersionState): void {
+  play(versionTrack(run, song, version))
+}
+
+function isPlayingVersion(song: SongInfo, version: VersionState): boolean {
+  return current.value?.id === `${song.id}@${version.id}` && playing.value
+}
+
+/** The song the voice dialog is for; it shows while set. */
+const singing = ref<{ run: RunInfo; song: SongInfo } | null>(null)
+const voiceList = ref<ReferenceVoice[]>([])
+const voicesLoading = ref(false)
+const voiceChoice = ref<string | null>(null)
+const octave = ref(0)
+const strength = ref(0.7)
+const steps = ref(50)
+const keepReverb = ref(true)
+const queueing = ref(false)
+
+/** Whole octaves only: any other shift would sing out of key over the song's own accompaniment. */
+const octaves = computed(() => [
+  { value: -12, label: t('octaveDown') },
+  { value: 0, label: t('octaveNone') },
+  { value: 12, label: t('octaveUp') },
+])
+const strengths = computed(() => [
+  { value: 0.5, label: t('strengthLight') },
+  { value: 0.7, label: t('strengthMedium') },
+  { value: 0.9, label: t('strengthStrong') },
+])
+const stepChoices = computed(() => [
+  { value: 25, label: t('stepsFast') },
+  { value: 50, label: t('stepsNormal') },
+  { value: 100, label: t('stepsFine') },
+])
+
+async function startSinging(run: RunInfo, song: SongInfo): Promise<void> {
+  singing.value = { run, song }
+  voicesLoading.value = true
+  try {
+    voiceList.value = await listVoices()
+    if (!voiceList.value.some((v) => v.id === voiceChoice.value)) {
+      voiceChoice.value = voiceList.value[0]?.id ?? null
+    }
+  } catch (caught) {
+    singing.value = null
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  } finally {
+    voicesLoading.value = false
+  }
+}
+
+async function sing(): Promise<void> {
+  const target = singing.value
+  if (!target || !voiceChoice.value) {
+    return
+  }
+  queueing.value = true
+  try {
+    const version = await addVersion(target.song.id, {
+      voiceId: voiceChoice.value,
+      semiToneShift: octave.value,
+      strength: strength.value,
+      diffusionSteps: steps.value,
+      keepReverb: keepReverb.value,
+    })
+    singing.value = null
+    emit('notice', t('versionQueued', { title: target.run.title || t('untitled'), voice: version.voiceLabel }))
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  } finally {
+    queueing.value = false
+  }
+}
+
+/** Stops one in the works right away; a finished one is audio of its own, so that asks first. */
+function removeVersion(run: RunInfo, song: SongInfo, version: VersionState): void {
+  const remove = async () => {
+    try {
+      await deleteVersion(song.id, version.id)
+    } catch (caught) {
+      emit('error', caught instanceof Error ? caught.message : String(caught))
+    }
+  }
+  if (!version.finished) {
+    void remove()
+    return
+  }
+  confirm.require({
+    header: t('confirmDelete'),
+    message: t('confirmDeleteVersion', {
+      voice: version.voiceLabel,
+      song: t('songN', { n: song.index }),
+      title: run.title || t('untitled'),
+    }),
+    icon: 'pi pi-trash',
+    rejectProps: { label: t('keep'), severity: 'secondary', outlined: true },
+    acceptProps: { label: t('delete'), severity: 'danger' },
+    accept: remove,
+  })
+}
+
+function versionLabel(version: VersionState): string {
+  const shift =
+    version.semiToneShift > 0
+      ? ` +${version.semiToneShift}`
+      : version.semiToneShift < 0
+        ? ` ${version.semiToneShift}`
+        : ''
+  return `${version.voiceLabel}${shift}`
+}
+
 const severityByQuality: Record<string, string> = {
   draft: 'warning',
   full: 'success',
@@ -574,6 +707,16 @@ const severityByQuality: Record<string, string> = {
                       :title="t('zipTitle')"
                     />
                     <Button
+                      v-if="voices && song.hasAudio"
+                      icon="pi pi-user-edit"
+                      text
+                      size="small"
+                      rounded
+                      v-tooltip="t('singWithVoice')"
+                      :aria-label="t('singWithVoice')"
+                      @click="startSinging(run, song)"
+                    />
+                    <Button
                       icon="pi pi-trash"
                       text
                       size="small"
@@ -586,6 +729,50 @@ const severityByQuality: Record<string, string> = {
                     />
                   </div>
                 </div>
+                <ul v-if="versionsOf(song).length > 0" class="versions">
+                  <li v-for="version in versionsOf(song)" :key="version.id" class="flex flex-wrap items-center gap-x-2">
+                    <Button
+                      v-if="version.stage === 'done'"
+                      :icon="isPlayingVersion(song, version) ? 'pi pi-pause' : 'pi pi-play'"
+                      rounded
+                      text
+                      size="small"
+                      :aria-label="isPlayingVersion(song, version) ? t('pause') : t('play')"
+                      @click="playVersion(run, song, version)"
+                    />
+                    <span class="pi pi-user muted px-2" v-else aria-hidden="true" />
+                    <span>{{ versionLabel(version) }}</span>
+                    <Tag v-if="version.stage !== 'done'" :severity="version.stage === 'failed' ? 'danger' : undefined">
+                      {{ t(`versionStage_${version.stage}`) }}
+                      <template v-if="version.stage === 'converting' && version.fraction > 0">
+                        {{ Math.round(version.fraction * 100) }} %
+                      </template>
+                    </Tag>
+                    <div class="ml-auto flex">
+                      <Button
+                        v-if="version.stage === 'done'"
+                        as="a"
+                        text
+                        size="small"
+                        :href="versionAudioUrl(song.id, version.id, true)"
+                        >{{ t('download') }}</Button
+                      >
+                      <Button
+                        :icon="version.finished ? 'pi pi-trash' : 'pi pi-times'"
+                        text
+                        rounded
+                        size="small"
+                        :severity="version.finished ? 'danger' : 'secondary'"
+                        v-tooltip="version.finished ? t('deleteVersion') : t('cancel')"
+                        :aria-label="version.finished ? t('deleteVersion') : t('cancel')"
+                        @click="removeVersion(run, song, version)"
+                      />
+                    </div>
+                    <span v-if="version.stage === 'failed' && version.message" class="danger basis-full text-sm">
+                      {{ version.message }}
+                    </span>
+                  </li>
+                </ul>
                 <!-- One player for the whole page (PlayerBar.vue), so the song keeps playing on the other pages. -->
                 <span v-if="!song.hasAudio" class="muted">{{ t('noAudio') }}</span>
                 <details v-if="song.hasScore" class="score" @toggle="toggleScore(song, $event)">
@@ -621,6 +808,77 @@ const severityByQuality: Record<string, string> = {
         <div class="flex justify-end gap-2">
           <Button type="button" :label="t('cancel')" severity="secondary" text @click="renaming = null" />
           <Button type="submit" :label="t('save')" :loading="savingTitle" />
+        </div>
+      </form>
+    </Dialog>
+    <Dialog
+      :visible="singing !== null"
+      modal
+      :header="t('singWithVoice')"
+      :draggable="false"
+      :style="{ width: 'min(30rem, calc(100vw - 2rem))' }"
+      @update:visible="(open: boolean) => !open && (singing = null)"
+    >
+      <form v-if="singing" class="flex flex-col gap-4" @submit.prevent="sing">
+        <p class="muted m-0 text-sm">
+          {{
+            t('singIntro', { title: singing.run.title || t('untitled'), song: t('songN', { n: singing.song.index }) })
+          }}
+        </p>
+        <p v-if="!voicesLoading && voiceList.length === 0" class="m-0">{{ t('singNoVoices') }}</p>
+        <div v-else class="flex flex-col gap-1">
+          <label for="sing-voice" class="muted text-sm">{{ t('voice') }}</label>
+          <Select
+            v-model="voiceChoice"
+            input-id="sing-voice"
+            :options="voiceList"
+            option-label="label"
+            option-value="id"
+            :loading="voicesLoading"
+            fluid
+          />
+        </div>
+        <div class="flex flex-col gap-1">
+          <span class="muted text-sm">{{ t('octave') }}</span>
+          <SelectButton
+            v-model="octave"
+            :options="octaves"
+            option-label="label"
+            option-value="value"
+            :allow-empty="false"
+            :aria-label="t('octave')"
+          />
+        </div>
+        <div class="flex flex-col gap-1">
+          <span class="muted text-sm">{{ t('strength') }}</span>
+          <SelectButton
+            v-model="strength"
+            :options="strengths"
+            option-label="label"
+            option-value="value"
+            :allow-empty="false"
+            :aria-label="t('strength')"
+          />
+        </div>
+        <div class="flex flex-col gap-1">
+          <span class="muted text-sm">{{ t('steps') }}</span>
+          <SelectButton
+            v-model="steps"
+            :options="stepChoices"
+            option-label="label"
+            option-value="value"
+            :allow-empty="false"
+            :aria-label="t('steps')"
+          />
+        </div>
+        <div class="flex items-center gap-2">
+          <Checkbox v-model="keepReverb" input-id="sing-reverb" binary />
+          <label for="sing-reverb">{{ t('keepReverb') }}</label>
+        </div>
+        <p class="muted m-0 text-sm">{{ t('singHint') }}</p>
+        <div class="flex justify-end gap-2">
+          <Button type="button" :label="t('cancel')" severity="secondary" text @click="singing = null" />
+          <Button type="submit" :label="t('sing')" :loading="queueing" :disabled="!voiceChoice || voicesLoading" />
         </div>
       </form>
     </Dialog>
@@ -722,6 +980,17 @@ const severityByQuality: Record<string, string> = {
   margin: -0.5rem;
   padding: 0.5rem;
   border-radius: var(--radius-small);
+}
+
+.versions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0 0 0 0.75rem;
+  border-left: 2px solid var(--border);
+  font-size: 0.9rem;
+  list-style: none;
 }
 
 .seed {

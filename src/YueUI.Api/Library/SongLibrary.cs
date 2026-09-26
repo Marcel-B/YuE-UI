@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using YueUI.Api.Data;
+using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Library;
@@ -28,6 +29,7 @@ public sealed record RunInfo(
 /// <param name="CanRender">Its tokens are saved, so it can be synthesized again (a draft at full quality).</param>
 /// <param name="Bytes">What the song folder takes on disk: audio, tokens and the worker's intermediate files.</param>
 /// <param name="Rating">One to five stars given in this app, null while not rated.</param>
+/// <param name="Versions">The song sung with other voices, oldest first; cancelled ones are left out.</param>
 public sealed record SongInfo(
     string Id,
     int Index,
@@ -38,7 +40,8 @@ public sealed record SongInfo(
     bool HasScore,
     bool CanRender,
     long Bytes,
-    int? Rating);
+    int? Rating,
+    IReadOnlyList<VersionState> Versions);
 
 /// <summary>
 /// What a song was generated with, from its <c>request.json</c>, in the terms of <see cref="GenerateRequest"/>, so the
@@ -69,7 +72,11 @@ public sealed record SongRequest(
 /// <c>request.json</c> (the prompt) and <c>result.json</c> (title, quality, length).
 /// </summary>
 /// <remarks>Only names matching the worker's own patterns are accepted, which also keeps request paths inside the library.</remarks>
-public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titles, SqliteSongRatingStore ratings)
+public sealed partial class SongLibrary(
+    YuePaths paths,
+    SqliteRunTitleStore titles,
+    SqliteSongRatingStore ratings,
+    SqliteVersionStore versions)
 {
     public string OutputDir => paths.OutputDir;
 
@@ -82,12 +89,16 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
         }
         var renamed = Read(titles.All) ?? new Dictionary<string, string>();
         var rated = Read(ratings.All) ?? new Dictionary<string, int>();
+        var sung = (Read(versions.All) ?? [])
+            .Where(v => v.Stage != "cancelled")
+            .GroupBy(v => v.SongId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<VersionState>)[.. g]);
         return
         [
             .. root.EnumerateDirectories()
                 .Where(d => RunName().IsMatch(d.Name))
                 .OrderByDescending(d => d.Name, StringComparer.Ordinal)
-                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated))
+                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated, sung))
                 // A run still tokenizing has no song folders yet; the queue shows it.
                 .Where(r => r.Songs.Count > 0),
         ];
@@ -124,7 +135,11 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
             return false;
         }
         Directory.Delete(directory, recursive: true);
-        Forget(() => ratings.Remove($"{run}/{song}"));
+        Forget(() =>
+        {
+            ratings.Remove($"{run}/{song}");
+            versions.RemoveSong($"{run}/{song}");
+        });
         var runDirectory = new DirectoryInfo(Path.Combine(paths.OutputDir, run));
         if (!SongFolders(runDirectory).Any())
         {
@@ -263,6 +278,7 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
     {
         titles.Remove(run);
         ratings.RemoveRun(run);
+        versions.RemoveRun(run);
     });
 
     /// <summary>The files are gone already; a database that cannot be written only keeps a row nobody sees.</summary>
@@ -277,7 +293,8 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
         }
     }
 
-    private RunInfo ReadRun(DirectoryInfo run, string? renamed, IReadOnlyDictionary<string, int> rated)
+    private RunInfo ReadRun(
+        DirectoryInfo run, string? renamed, IReadOnlyDictionary<string, int> rated, IReadOnlyDictionary<string, IReadOnlyList<VersionState>> sung)
     {
         var songs = new List<SongInfo>();
         string title = "", style = "", lyrics = "";
@@ -308,7 +325,8 @@ public sealed partial class SongLibrary(YuePaths paths, SqliteRunTitleStore titl
                 File.Exists(Path.Combine(folder.FullName, "score.abc")),
                 File.Exists(Path.Combine(folder.FullName, "semantic.npy")),
                 Size(folder),
-                rated.TryGetValue(id, out var rating) ? rating : null));
+                rated.TryGetValue(id, out var rating) ? rating : null,
+                sung.GetValueOrDefault(id) ?? []));
         }
 
         var original = title.Length > 0 ? title : TitleFromName(run.Name);

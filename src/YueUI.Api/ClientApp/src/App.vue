@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
-import { getLogicExport, getStorage, listLibrary, songRequest, songScore, subscribe } from './api'
+import { getLogicExport, getStorage, getVoiceInfo, listLibrary, songRequest, songScore, subscribe } from './api'
 import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
 import NotificationButton from './components/NotificationButton.vue'
@@ -8,6 +8,7 @@ import QueueList from './components/QueueList.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
+import VoicesPanel from './components/VoicesPanel.vue'
 import Message from 'primevue/message'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
@@ -24,6 +25,8 @@ import type {
   SongState,
   StorageInfo,
   TranscriptionState,
+  VersionState,
+  VoiceInfo,
   WorkerInfo,
 } from './types'
 
@@ -59,6 +62,8 @@ const songs = ref<SongState[]>([])
 const log = ref<LogEntry[]>([])
 const transcriptions = ref<TranscriptionState[]>([])
 const lyricsDraft = ref<LyricsState | null>(null)
+/** Versions in the works, and those finished while the page was open; by id. */
+const versions = ref<VersionState[]>([])
 /** Starts optimistic: the warning is for a stream that broke, not for one that is still opening. */
 const connected = ref(true)
 /** Finished songs the user put away; the server keeps them, so they would come back with the next snapshot. */
@@ -86,6 +91,15 @@ function upsert(song: SongState): void {
   }
 }
 
+function upsertVersion(version: VersionState): void {
+  const index = versions.value.findIndex((v) => v.id === version.id)
+  if (index >= 0) {
+    versions.value[index] = version
+  } else {
+    versions.value.push(version)
+  }
+}
+
 function hideFinished(): void {
   hidden.value = new Set([...hidden.value, ...songs.value.filter((s) => s.finished).map((s) => s.id)])
 }
@@ -97,6 +111,7 @@ const unsubscribe = subscribe({
     log.value = snapshot.log
     transcriptions.value = snapshot.transcriptions
     lyricsDraft.value = snapshot.lyrics
+    versions.value = snapshot.versions
     // The stream (re)opened: whatever was written meanwhile is in the library now, the playlist may have changed on
     // another device.
     void loadLibrary()
@@ -124,6 +139,7 @@ const unsubscribe = subscribe({
   lyrics(lyrics) {
     lyricsDraft.value = lyrics
   },
+  version: upsertVersion,
   connection(open) {
     connected.value = open
   },
@@ -137,6 +153,7 @@ const pages: { view: View; label: MessageKey; icon: string }[] = [
   { view: 'transcribe', label: 'menuTranscribe', icon: 'pi pi-microphone' },
   { view: 'songs', label: 'menuSongs', icon: 'pi pi-list' },
   { view: 'playlist', label: 'menuPlaylist', icon: 'pi pi-play-circle' },
+  { view: 'voices', label: 'menuVoices', icon: 'pi pi-users' },
 ]
 
 /**
@@ -147,16 +164,25 @@ const badges = computed<Partial<Record<View, number>>>(() => ({
   create: busyIds.value.size,
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
   playlist: playlistIds.value.length,
+  voices: versions.value.filter((v) => !v.finished).length,
 }))
 
+/** Voices need ChangeMyVoice; without it the page is left out of the menu and the library offers no voice. */
+const voiceInfo = ref<VoiceInfo>({ voicesConfigured: false, conversionConfigured: false })
+getVoiceInfo()
+  .then((info) => (voiceInfo.value = info))
+  .catch(() => undefined)
+
 const menu = computed(() =>
-  pages.map((page) => ({
-    key: page.view,
-    label: t(page.label),
-    icon: page.icon,
-    badge: badges.value[page.view] || undefined,
-    command: () => navigate(page.view),
-  })),
+  pages
+    .filter((page) => page.view !== 'voices' || voiceInfo.value.voicesConfigured)
+    .map((page) => ({
+      key: page.view,
+      label: t(page.label),
+      icon: page.icon,
+      badge: badges.value[page.view] || undefined,
+      command: () => navigate(page.view),
+    })),
 )
 
 // ---- Library ----------------------------------------------------------------------------------------
@@ -442,6 +468,8 @@ async function useAsNewSong(songId: string): Promise<void> {
           :error="libraryError"
           :busy-ids="busyIds"
           :logic-export="logicExport"
+          :voices="voiceInfo.conversionConfigured"
+          :live-versions="versions"
           @template="useTemplate"
           @use-score="useSongScore"
           @deleted="onDeleted"
@@ -463,10 +491,21 @@ async function useAsNewSong(songId: string): Promise<void> {
     </Card>
   </main>
 
+  <main v-if="voiceInfo.voicesConfigured" v-show="view === 'voices'">
+    <Card>
+      <template #title>
+        <h2>{{ t('voices') }}</h2>
+      </template>
+      <template #content>
+        <VoicesPanel :active="view === 'voices'" :versions="versions" @error="show($event, true)" />
+      </template>
+    </Card>
+  </main>
+
   <!-- Outside the pages, so switching between them does not stop the song. The spacer keeps it off the page's end. -->
   <div v-if="current" class="h-28" />
   <PlayerBar
-    :has-score="!!current && !!librarySongs.get(current.id)?.song.hasScore"
+    :has-score="!!current && !!librarySongs.get(current.songId)?.song.hasScore"
     @use-score="useSongScoreById"
     @new-song="useAsNewSong"
     @error="show($event, true)"

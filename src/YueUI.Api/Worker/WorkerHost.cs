@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using YueUI.Api.Library;
+using YueUI.Api.Voices;
 
 namespace YueUI.Api.Worker;
 
@@ -39,6 +40,7 @@ public sealed class WorkerHost(
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly Dictionary<string, SongState> _songs = [];
     private readonly Dictionary<string, TranscriptionState> _transcriptions = [];
+    private readonly Dictionary<string, VersionState> _versions = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
     /// <summary>Songs a render was asked for and that have not started yet; the worker's started event does not say.</summary>
     private readonly HashSet<string> _renders = [];
@@ -203,6 +205,23 @@ public sealed class WorkerHost(
             _lyrics = lyrics;
         }
         Publish("lyrics", lyrics);
+    }
+
+    /// <summary>
+    /// Keeps a song's version in the works (Voices/VoiceConverter.cs) for the snapshot and sends it to the browsers; a
+    /// finished one leaves the snapshot with the next, since the library lists it from then on.
+    /// </summary>
+    public void UpdateVersion(VersionState version)
+    {
+        lock (_gate)
+        {
+            foreach (var old in _versions.Values.Where(v => v.Finished).ToList())
+            {
+                _versions.Remove(old.Id);
+            }
+            _versions[version.Id] = version;
+        }
+        Publish("version", version);
     }
 
     /// <summary>Cancels every song. Does not start a worker just for that.</summary>
@@ -622,7 +641,8 @@ public sealed class WorkerHost(
         [.. _songs.Values.OrderBy(s => s.Run, StringComparer.Ordinal).ThenBy(s => s.Index)],
         [.. _log],
         [.. _transcriptions.Values.OrderBy(t => t.UpdatedAt)],
-        _lyrics);
+        _lyrics,
+        [.. _versions.Values.OrderBy(v => v.CreatedAt)]);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, _songs.Values.Any(s => !s.Finished), studioRunning, _lastError, _extensions);

@@ -1,3 +1,4 @@
+using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Push;
@@ -22,6 +23,16 @@ public static class PushTexts
         return transcription.Stage == "done"
             ? (de ? "Transkription fertig" : "Transcription finished", transcription.FileName)
             : (de ? "Transkription fehlgeschlagen" : "Transcription failed", WithMessage(transcription.FileName, transcription.Message));
+    }
+
+    public static (string Title, string Body) Version(VersionState version, string language)
+    {
+        var de = IsGerman(language);
+        var song = version.SongId[(version.SongId.IndexOf('/') + 1)..].Replace("song", "Song ", StringComparison.Ordinal);
+        var which = $"{(string.IsNullOrWhiteSpace(version.Title) ? version.Run : version.Title)} · {song} · {version.VoiceLabel}";
+        return version.Stage == "done"
+            ? (de ? "Stimme fertig" : "Voice finished", which)
+            : (de ? "Stimme fehlgeschlagen" : "Voice failed", WithMessage(which, version.Message));
     }
 
     public static (string Title, string Body) Lyrics(LyricsState lyrics, string language)

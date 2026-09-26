@@ -1,0 +1,100 @@
+using System.Text.Json.Serialization;
+
+namespace YueUI.Api.Voices;
+
+/// <param name="VoicesConfigured">ChangeMyVoice is set up, so reference voices can be managed.</param>
+/// <param name="ConversionConfigured">StemMyWav is set up as well, so songs can be sung with another voice.</param>
+public sealed record VoiceInfo(bool VoicesConfigured, bool ConversionConfigured);
+
+/// <summary>A reference voice kept by ChangeMyVoice; songs are sung with its timbre.</summary>
+/// <param name="Seconds">How long the stored recording is; ChangeMyVoice keeps at most 25 seconds.</param>
+public sealed record ReferenceVoice(string Id, string Label, double Seconds, DateTimeOffset? CreatedAt);
+
+/// <param name="VoiceId">One of <c>GET /api/voices</c>.</param>
+/// <param name="SemiToneShift">
+/// Moves the melody, −24 to 24; under the song's own accompaniment only whole octaves (±12) stay in key.
+/// </param>
+/// <param name="Strength">How much of the reference's timbre comes through, 0 to 1 (Seed-VC's inference CFG rate).</param>
+/// <param name="DiffusionSteps">More steps sound cleaner and take longer, 10 to 100.</param>
+/// <param name="KeepReverb">
+/// Mixes the original's reverb back in. The separated vocals are dry, and a dry voice sits oddly in a mix made
+/// with reverb; the reverb carries a trace of the original voice, though.
+/// </param>
+public sealed record VersionRequest(
+    string? VoiceId,
+    int SemiToneShift = 0,
+    double Strength = 0.7,
+    int DiffusionSteps = 50,
+    bool KeepReverb = true)
+{
+    public const int MaxSemiToneShift = 24;
+    public const int MinDiffusionSteps = 10;
+    public const int MaxDiffusionSteps = 100;
+
+    public Dictionary<string, string[]> Validate()
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(VoiceId) || VoiceId.Length > 100)
+        {
+            errors["voiceId"] = ["A reference voice as GET /api/voices lists it."];
+        }
+        if (SemiToneShift is < -MaxSemiToneShift or > MaxSemiToneShift)
+        {
+            errors["semiToneShift"] = [$"-{MaxSemiToneShift} to {MaxSemiToneShift} semitones."];
+        }
+        if (Strength is < 0 or > 1 || double.IsNaN(Strength))
+        {
+            errors["strength"] = ["0 to 1."];
+        }
+        if (DiffusionSteps is < MinDiffusionSteps or > MaxDiffusionSteps)
+        {
+            errors["diffusionSteps"] = [$"{MinDiffusionSteps} to {MaxDiffusionSteps} steps."];
+        }
+        return errors;
+    }
+}
+
+/// <summary>
+/// A song sung with another voice: its vocals separated, converted to a reference voice and mixed back under the
+/// instrumental. The song itself stays; the version is a file of this app's own, next to its database.
+/// <see cref="Stage"/>: queued, separating, converting, mixing, done, failed or cancelled.
+/// </summary>
+public sealed record VersionState
+{
+    public required string Id { get; init; }
+
+    /// <summary><c>run/songN</c>, the song the version was made from.</summary>
+    public required string SongId { get; init; }
+
+    /// <summary>The run's title when the version was asked for, for the notification.</summary>
+    public string Title { get; init; } = "";
+
+    public required string VoiceId { get; init; }
+
+    public required string VoiceLabel { get; init; }
+
+    public int SemiToneShift { get; init; }
+
+    public double Strength { get; init; }
+
+    public int DiffusionSteps { get; init; }
+
+    public bool KeepReverb { get; init; }
+
+    public string Stage { get; init; } = "queued";
+
+    /// <summary>Progress of the conversion, 0–1, estimated from the time ChangeMyVoice expects; not stored.</summary>
+    public double Fraction { get; init; }
+
+    /// <summary>Why it failed.</summary>
+    public string? Message { get; init; }
+
+    public DateTimeOffset CreatedAt { get; init; }
+
+    public DateTimeOffset UpdatedAt { get; init; }
+
+    public bool Finished => Stage is "done" or "failed" or "cancelled";
+
+    [JsonIgnore]
+    public string Run => SongId[..SongId.IndexOf('/')];
+}

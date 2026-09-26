@@ -13,6 +13,7 @@ using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
 using YueUI.Api.Share;
+using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Tests;
@@ -56,6 +57,15 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public FakePushSender Push { get; } = new();
 
     public FakeEncoder Encoder { get; } = new();
+
+    public FakeVoiceService Voice { get; } = new();
+
+    public FakeStems Stems { get; } = new();
+
+    public FakeMixer Mixer { get; } = new();
+
+    /// <summary>Where the fake ChangeMyVoice is expected; set to null before the first request to switch voices off.</summary>
+    public string? VoiceBaseUrl { get; set; } = "http://voice.test";
 
     public FakeWorker Worker => Launcher.Current ?? throw new InvalidOperationException("No worker was started.");
 
@@ -120,6 +130,21 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddHttpClient(LyricsWriter.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLmStudio.Handler(LmStudio));
             services.Configure<LogicOptions>(options => options.BaseUrl = LogicBaseUrl);
             services.AddHttpClient(LogicEndpoints.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeLogic.Handler(Logic));
+
+            services.Configure<VoiceOptions>(options =>
+            {
+                options.BaseUrl = VoiceBaseUrl;
+                options.ApiKey = "voice-key";
+                options.ApiKeyFile = null;
+                options.StemsBaseUrl = "http://stems.test";
+                options.StemsApiKey = "stems-key";
+                options.StemsApiKeyFile = null;
+                options.PollInterval = TimeSpan.FromMilliseconds(10);
+                options.WaitInterval = TimeSpan.FromMilliseconds(10);
+            });
+            services.AddHttpClient(VoiceClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeVoiceService.Handler(Voice));
+            services.AddHttpClient(StemClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeStems.Handler(Stems));
+            services.AddSingleton<IAudioMixer>(Mixer);
 
             services.Configure<PushOptions>(options => options.DataPath = Path.Combine(Root, "push.json"));
             services.AddSingleton<IPushSender>(Push);
@@ -476,5 +501,163 @@ public sealed class FakeEncoder : IAudioEncoder
         }
         File.WriteAllBytes(m4a, M4a);
         return Task.FromResult(true);
+    }
+}
+
+/// <summary>ChangeMyVoice's Mac API: reference voices and jobs, with the requests it got.</summary>
+public sealed class FakeVoiceService
+{
+    public List<JsonObject> Voices { get; } =
+    [
+        new() { ["id"] = "v1", ["label"] = "Eurobecca", ["createdAtUtc"] = "2026-09-26T10:00:00+00:00", ["stored"] = new JsonObject { ["durationSeconds"] = 24.5 } },
+    ];
+
+    /// <summary>The states GET /jobs/{id} answers with in turn; the last one stays.</summary>
+    public Queue<string> JobStatuses { get; } = new(["RUNNING", "COMPLETED"]);
+
+    public string? JobError { get; set; }
+
+    public byte[] Result { get; set; } = [.. "RIFF"u8, 1, 2, 3, 4];
+
+    public List<(HttpMethod Method, string Path, string? Key)> Requests { get; } = [];
+
+    /// <summary>The form of the last POST, fields as text and files as their size.</summary>
+    public Dictionary<string, string> Form { get; } = [];
+
+    public int DeletedJobs { get; private set; }
+
+    public sealed class Handler(FakeVoiceService voice) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            lock (voice.Requests)
+            {
+                voice.Requests.Add((request.Method, path, request.Headers.TryGetValues("X-Api-Key", out var keys) ? keys.Single() : null));
+            }
+            if (request.Content is MultipartFormDataContent form)
+            {
+                voice.Form.Clear();
+                foreach (var part in form)
+                {
+                    var name = part.Headers.ContentDisposition!.Name!.Trim('"');
+                    voice.Form[name] = part.Headers.ContentDisposition.FileName is null
+                        ? await part.ReadAsStringAsync(cancellationToken)
+                        : $"{(await part.ReadAsByteArrayAsync(cancellationToken)).Length} bytes";
+                }
+            }
+            switch (request.Method.Method, path)
+            {
+                case ("GET", "/api/v1/voices"):
+                    return Json(HttpStatusCode.OK, new JsonArray([.. voice.Voices.Select(v => v.DeepClone())]));
+                case ("POST", "/api/v1/voices"):
+                    var added = new JsonObject { ["id"] = "v2", ["label"] = voice.Form["label"], ["stored"] = new JsonObject { ["durationSeconds"] = 12.0 } };
+                    voice.Voices.Add(added);
+                    return Json(HttpStatusCode.Created, added.DeepClone());
+                case ("GET", "/api/v1/voices/v1/audio"):
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([.. "RIFF"u8, 9]) };
+                case ("DELETE", "/api/v1/voices/v1"):
+                    return Json(HttpStatusCode.Conflict, new JsonObject { ["title"] = "Referenzstimme in Verwendung" });
+                case ("DELETE", _) when path.StartsWith("/api/v1/voices/", StringComparison.Ordinal):
+                    return new HttpResponseMessage(HttpStatusCode.NoContent);
+                case ("POST", "/api/v1/jobs"):
+                    return Json(HttpStatusCode.Accepted, Job("QUEUED"));
+                case ("GET", "/api/v1/jobs/j1"):
+                    string status;
+                    lock (voice.JobStatuses)
+                    {
+                        status = voice.JobStatuses.Count > 1 ? voice.JobStatuses.Dequeue() : voice.JobStatuses.Peek();
+                    }
+                    return Json(HttpStatusCode.OK, Job(status));
+                case ("GET", "/api/v1/jobs/j1/result"):
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(voice.Result) };
+                case ("DELETE", "/api/v1/jobs/j1"):
+                    voice.DeletedJobs++;
+                    return new HttpResponseMessage(HttpStatusCode.NoContent);
+                default:
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+
+            JsonObject Job(string status) => new()
+            {
+                ["jobId"] = "j1",
+                ["status"] = status,
+                ["startedAtUtc"] = status == "QUEUED" ? null : "2026-09-26T10:00:00+00:00",
+                ["estimatedDurationSeconds"] = 600,
+                ["error"] = status == "FAILED" ? new JsonObject { ["code"] = "OUT_OF_MEMORY", ["message"] = voice.JobError } : null,
+            };
+        }
+
+        private static HttpResponseMessage Json(HttpStatusCode status, JsonNode value) =>
+            new(status) { Content = new StringContent(value.ToJsonString(), System.Text.Encoding.UTF8, "application/json") };
+    }
+}
+
+/// <summary>StemMyWav's Mac API: answers POST /api/separate with a ZIP of stems.</summary>
+public sealed class FakeStems
+{
+    public Uri? RequestUri { get; private set; }
+
+    public string? Key { get; private set; }
+
+    public int Calls { get; private set; }
+
+    /// <summary>Holds the separation until a test lets it go, to look at the server meanwhile.</summary>
+    public TaskCompletionSource? Gate { get; set; }
+
+    public HttpStatusCode Status { get; set; } = HttpStatusCode.OK;
+
+    public string[] Files { get; set; } = ["vocals_dry.wav", "vocals_reverb.wav", "instrumental.wav"];
+
+    public sealed class Handler(FakeStems stems) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            stems.Calls++;
+            stems.RequestUri = request.RequestUri;
+            stems.Key = request.Headers.GetValues("X-Api-Key").Single();
+            if (stems.Gate is { } gate)
+            {
+                await gate.Task.WaitAsync(cancellationToken);
+            }
+            if (stems.Status != HttpStatusCode.OK)
+            {
+                return new HttpResponseMessage(stems.Status)
+                {
+                    Content = new StringContent("""{"title":"Unbekanntes Modell"}""", System.Text.Encoding.UTF8, "application/problem+json"),
+                };
+            }
+            var zip = new MemoryStream();
+            using (var archive = new System.IO.Compression.ZipArchive(zip, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            {
+                foreach (var name in stems.Files)
+                {
+                    using var entry = archive.CreateEntry(name).Open();
+                    entry.Write([.. "RIFF"u8, (byte)name.Length]);
+                }
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(zip.ToArray()) };
+        }
+    }
+}
+
+/// <summary>Writes a small FLAC instead of running ffmpeg, and remembers what it was given.</summary>
+public sealed class FakeMixer : IAudioMixer
+{
+    public static readonly byte[] Flac = [.. "fLaC"u8, 7, 7, 7];
+
+    public MixInput? Input { get; private set; }
+
+    public Task MixAsync(MixInput input, string output, CancellationToken cancellationToken)
+    {
+        Input = input with
+        {
+            Instrumental = Path.GetFileName(input.Instrumental),
+            Vocals = Path.GetFileName(input.Vocals),
+            OriginalVocals = Path.GetFileName(input.OriginalVocals),
+            Reverb = input.Reverb is null ? null : Path.GetFileName(input.Reverb),
+        };
+        File.WriteAllBytes(output, Flac);
+        return Task.CompletedTask;
     }
 }
