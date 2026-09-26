@@ -24,6 +24,7 @@ import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
 import { shareSong } from '../share'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
+import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
 import type { RunInfo, SongInfo } from '../types'
 import { focusedSong, focusRequest, view } from '../view'
 
@@ -74,8 +75,22 @@ function shownSongs(run: RunInfo): SongInfo[] {
   return minRating.value === 0 ? run.songs : run.songs.filter((song) => (stars[song.id] ?? 0) >= minRating.value)
 }
 
+/** The order of the list, beside search and rating filter. */
+const sortOptions = computed(() =>
+  (['newest', 'oldest', 'rating', 'longest', 'shortest'] as LibrarySort[]).map((value) => ({
+    value,
+    label: t(`sort_${value}`),
+  })),
+)
+
+/** The runs the search and the rating filter let through, in the chosen order, each with the songs to list. */
 const shownRuns = computed(() =>
-  props.runs.filter((run) => shownSongs(run).length > 0 && matchesRun(run, terms.value, scope.value)),
+  sortRuns(
+    props.runs.filter((run) => matchesRun(run, terms.value, scope.value)),
+    librarySort.value,
+    ratings.value,
+    shownSongs,
+  ).filter((entry) => entry.songs.length > 0),
 )
 const searching = computed(() => terms.value.length > 0)
 /** Some runs are hidden, by the search or the rating filter; the count of hits shows. */
@@ -132,12 +147,12 @@ watch(
       return
     }
     // A link to a song the search hides (from the player or the playlist) must still show it.
-    if (!shownRuns.value.some((run) => shownSongs(run).some((song) => song.id === id))) {
+    if (!shownRuns.value.some((entry) => entry.songs.some((song) => song.id === id))) {
       query.value = ''
       minRating.value = 0
       await nextTick()
     }
-    const index = shownRuns.value.findIndex((run) => run.songs.some((song) => song.id === id))
+    const index = shownRuns.value.findIndex((entry) => entry.songs.some((song) => song.id === id))
     if (index < 0) {
       return
     }
@@ -150,11 +165,11 @@ watch(
 )
 
 /**
- * The player goes on with the songs below this one, as the library lists them, so a search or the rating filter is
- * also a play queue ("everything with four stars").
+ * The player goes on with the songs below this one, as the library lists them, so a search, the rating filter or the
+ * order is also a play queue ("everything with four stars", "the best first").
  */
 function playSong(run: RunInfo, song: SongInfo): void {
-  play(trackOf(run, song), libraryTracks(shownRuns.value.map((shown) => ({ ...shown, songs: shownSongs(shown) }))))
+  play(trackOf(run, song), libraryTracks(shownRuns.value.map((shown) => ({ ...shown.run, songs: shown.songs }))))
 }
 
 async function rateSong(song: SongInfo, rating: number | null | undefined): Promise<void> {
@@ -355,6 +370,16 @@ const severityByQuality: Record<string, string> = {
         size="small"
         class="shrink-0"
       />
+      <Select
+        v-model="librarySort"
+        :options="sortOptions"
+        option-label="label"
+        option-value="value"
+        :aria-label="t('sortBy')"
+        v-tooltip.top="t('sortBy')"
+        size="small"
+        class="shrink-0"
+      />
     </form>
     <p v-if="filtering" class="muted text-sm mt-2 mb-0">
       {{ shownRuns.length === 0 ? t('searchNone') : t('searchHits', { count: shownRuns.length, total: runs.length }) }}
@@ -373,7 +398,7 @@ const severityByQuality: Record<string, string> = {
       <!-- The paragraph above already says the library is empty; without this slot DataView adds its own text. -->
       <template #empty />
       <template #list="slotProps">
-        <div v-for="run in slotProps.items" :key="run.id">
+        <div v-for="{ run, songs } in slotProps.items as SortedRun[]" :key="run.id">
           <Fieldset :legend="run.title || t('untitled')">
             <div class="flex justify-between items-center">
               <div>
@@ -436,7 +461,7 @@ const severityByQuality: Record<string, string> = {
 
             <ul class="songs">
               <li
-                v-for="song in shownSongs(run)"
+                v-for="song in songs"
                 :id="anchor(song.id)"
                 :key="song.id"
                 :class="['song', { 'focused bg-emphasis': focusedSong === song.id }]"
@@ -603,7 +628,7 @@ const severityByQuality: Record<string, string> = {
 </template>
 
 <style scoped>
-/* On a phone the field takes the first line, scope and rating filter share the second. */
+/* On a phone the field takes the first line, scope, rating filter and order share the second. */
 .search {
   display: flex;
   flex-wrap: wrap;
