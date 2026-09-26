@@ -146,6 +146,7 @@ const messages = {
       'Zum Beispiel die ABC-Datei eines Songs aus der Bibliothek mit geänderten Akkorden oder einem anderen Tempo (Q:), oder eine mit SheetSage2 transkribierte Melodie für ein Cover. Braucht die Planung „Melodie und Akkorde“ (Akkorde werden übernommen) oder „Nur Melodie“ mit einer Partitur ohne Akkordsymbole (die Begleitung ist frei). Die Silben des Textes sollten zu den Noten der Stimme „Vocal“ passen. Bei „Instrumental“ bleibt die Gesangsstimme einer eigenen Partitur erhalten – dort also die Vocal-Takte durch Pausen ersetzen.\n\n„Beispiel einsetzen“ lädt die Partitur zu „City Lights“ (siehe Beispiel beim Songtext).',
     abcExample: 'Beispiel einsetzen',
     abcClear: 'Partitur entfernen',
+    abcFromMidi: 'Partitur aus MIDI-Datei (z. B. aus Logic)',
     samplingSemantic: 'Sampling: Song',
     samplingSemanticIntro:
       'Steuert, wie die Song-Tokens gezogen werden – also Klang, Arrangement und Gesang. Vorbelegt mit den Werten des Modells; laut YuE2-Dokumentation kann jede Änderung die Qualität verändern. Ein Auftrag mit geändertem Sampling wird nicht mit anderen Aufträgen zusammen komponiert.',
@@ -274,6 +275,10 @@ const messages = {
     refresh: 'Aktualisieren',
     useAsTemplate: 'Als Vorlage',
     templateLoaded: 'Stil und Text von „{title}“ stehen im Formular.',
+    songMidiApplied:
+      'Stil, Text und Seed von „{title}“, {song}, und die Partitur aus der MIDI-Datei stehen im Formular, die Planung auf „{planning}“.',
+    midiWarnings: 'Hinweise zur MIDI-Datei: {messages}',
+    useMidi: 'MIDI aus Logic als Partitur',
     songScoreApplied:
       'Stil, Text, Seed und Partitur von „{title}“, {song}, stehen im Formular, die Planung auf „{planning}“. Die Partitur lässt sich unter „Erweiterte Parameter“ bearbeiten.',
     renderFull: 'Voll rendern',
@@ -470,6 +475,7 @@ const messages = {
       'For example the ABC file of a song from the library with changed chords or a different tempo (Q:), or a melody transcribed with SheetSage2 for a cover. Needs the planning “Melody and chords” (the chords are kept) or “Melody only” with a score without chord symbols (the accompaniment is free). The syllables of the lyrics should match the notes of the “Vocal” voice. With “Instrumental” the vocal voice of your own score is kept – replace its bars with rests there.\n\n“Insert example” loads the score of “City Lights” (see the example under lyrics).',
     abcExample: 'Insert example',
     abcClear: 'Remove score',
+    abcFromMidi: 'Score from a MIDI file (e.g. from Logic)',
     samplingSemantic: 'Sampling: song',
     samplingSemanticIntro:
       'Controls how the song tokens are drawn – the sound, arrangement and singing. Preset to the model’s values; according to the YuE2 documentation any change may change the quality. A job with changed sampling is not composed together with other jobs.',
@@ -597,6 +603,10 @@ const messages = {
     refresh: 'Refresh',
     useAsTemplate: 'Use as template',
     templateLoaded: 'Style and lyrics of “{title}” are in the form.',
+    songMidiApplied:
+      'Style, lyrics and seed of “{title}”, {song}, and the score from the MIDI file are in the form, planning is set to “{planning}”.',
+    midiWarnings: 'Notes on the MIDI file: {messages}',
+    useMidi: 'MIDI from Logic as score',
     songScoreApplied:
       'Style, lyrics, seed and score of “{title}”, {song}, are in the form, planning is set to “{planning}”. The score can be edited under “Advanced parameters”.',
     renderFull: 'Render full',

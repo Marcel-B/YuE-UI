@@ -129,4 +129,62 @@ public sealed class LogicEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
     }
+
+    [Fact]
+    public async Task A_midi_file_comes_back_as_a_score()
+    {
+        _app.Logic.Abc = """
+            {"success":true,"abc":"X:1\nK:C\n","diagnostics":[
+              {"severity":"Info","code":"YTL060","message":"Track 3 read as chords."},
+              {"severity":"Warning","code":"YTL061","message":"Track Strings ignored."}]}
+            """;
+        byte[] midi = [.. "MThd"u8, 0, 0, 0, 6];
+
+        var response = await PostMidi(midi);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var score = await response.Content.ReadFromJsonAsync<MidiScore>(TestApp.Json);
+        Assert.Equal("X:1\nK:C\n", score!.Abc);
+        Assert.Equal(["Track Strings ignored."], score.Warnings);
+        Assert.Equal("http://logic.test/api/midi/abc", _app.Logic.RequestUri!.ToString());
+        Assert.Equal(midi, _app.Logic.Form["file"]);
+    }
+
+    [Fact]
+    public async Task A_midi_file_without_a_score_says_why()
+    {
+        _app.Logic.Status = HttpStatusCode.UnprocessableEntity;
+        _app.Logic.Body = """
+            {"success":false,"tracks":[],"diagnostics":[{"severity":"Error","code":"YTL062","message":"No melody track found."}]}
+            """;
+
+        var response = await PostMidi([.. "MThd"u8]);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.EndsWith("No melody track found.", problem!.Detail);
+    }
+
+    [Fact]
+    public async Task Without_a_server_midi_files_are_not_read()
+    {
+        _app.LogicBaseUrl = null;
+
+        var response = await PostMidi([.. "MThd"u8]);
+
+        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
+        Assert.Empty(_app.Logic.Form);
+    }
+
+    [Fact]
+    public async Task A_large_file_is_not_passed_on()
+    {
+        var response = await PostMidi(new byte[LogicEndpoints.MaxMidiBytes + 1]);
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        Assert.Empty(_app.Logic.Form);
+    }
+
+    private Task<HttpResponseMessage> PostMidi(byte[] midi) =>
+        _app.CreateClient().PostAsync("/api/midi/abc", new MultipartFormDataContent { { new ByteArrayContent(midi), "file", "song.mid" } });
 }

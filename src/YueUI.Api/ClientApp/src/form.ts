@@ -229,6 +229,14 @@ function definedOnly(overrides: SamplingOverrides | null): SamplingOverrides {
   return Object.fromEntries(Object.entries(overrides ?? {}).filter(([, value]) => typeof value === 'number'))
 }
 
+/**
+ * The planning a score needs: "full" keeps its chords when it has them, "melody" plans them anew. Only body lines
+ * count, the voice declarations quote their names as well.
+ */
+export function planningFor(abc: string): 'full' | 'melody' {
+  return /^(?![A-Za-z]:|%).*"[^"]+"/m.test(abc) ? 'full' : 'melody'
+}
+
 /** YuE2's examples/score.abc: the melody and chords for its "City Lights" lyrics (quoted in i18n's lyricsMore). */
 export const exampleScore = `X:1
 T:

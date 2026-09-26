@@ -39,7 +39,7 @@ YuE2 only sings lyrics, it cannot write them. `LyricsWriter` drafts English or G
 
 ### Logic export (`Logic/`, `LogicEndpoints`)
 
-`GET /api/songs/{run}/{song}/logic` posts the song's `audio.flac` and `score.abc` to a yue-to-logic-pro server (`LogicOptions`, section `Logic`; its `POST /api/convert/logic` needs no key) and streams the `.logicx` ZIP back, passing on its `X-YueToLogic-Diagnostics` header. Without `Logic:BaseUrl` it answers 501 and `GET /api/logic` tells the UI to hide the button. The browser fetches the ZIP instead of following a link, so a refusal becomes a message and the warnings are readable. Tests fake the server through the named `HttpClient` (`FakeLogic` in `TestApp.cs`).
+`GET /api/songs/{run}/{song}/logic` posts the song's `audio.flac` and `score.abc` to a yue-to-logic-pro server (`LogicOptions`, section `Logic`; its `POST /api/convert/logic` needs no key) and streams the `.logicx` ZIP back, passing on its `X-YueToLogic-Diagnostics` header. The way back is `POST /api/midi/abc`: a MIDI file (typically a song edited in Logic) goes to yue-to-logic-pro's route of the same name and comes back as `MidiScore` (`abc` plus its warnings), which the library puts into the form with the song's style, lyrics and seed, or the advanced parameters as a bare score. Without `Logic:BaseUrl` both answer 501 and `GET /api/logic` tells the UI to hide the buttons. The browser fetches the ZIP instead of following a link, so a refusal becomes a message and the warnings are readable. Tests fake the server through the named `HttpClient` (`FakeLogic` in `TestApp.cs`).
 
 ### Notifications (`Push/`)
 
