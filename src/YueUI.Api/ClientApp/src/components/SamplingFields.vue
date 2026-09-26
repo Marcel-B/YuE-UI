@@ -68,7 +68,7 @@ function hint(field: Field): string {
 
 <template>
   <div class="grid grid-cols-2 gap-3 gap-y-5">
-    <div v-for="field in fields" :key="field.key" class="field">
+    <div v-for="field in fields" :key="field.key" class="flex flex-col gap-1">
       <FloatLabel variant="on">
         <NumberField
           :id="id(field)"

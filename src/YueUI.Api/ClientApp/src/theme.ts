@@ -14,7 +14,9 @@ import inputnumber from '@primeuix/themes/aura/inputnumber'
 import inputtext from '@primeuix/themes/aura/inputtext'
 import menu from '@primeuix/themes/aura/menu'
 import menubar from '@primeuix/themes/aura/menubar'
+import message from '@primeuix/themes/aura/message'
 import paginator from '@primeuix/themes/aura/paginator'
+import progressbar from '@primeuix/themes/aura/progressbar'
 import panel from '@primeuix/themes/aura/panel'
 import rating from '@primeuix/themes/aura/rating'
 import ripple from '@primeuix/themes/aura/ripple'
@@ -54,7 +56,9 @@ export default {
     inputtext,
     menu,
     menubar,
+    message,
     paginator,
+    progressbar,
     panel,
     rating,
     ripple,

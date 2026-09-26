@@ -202,6 +202,8 @@ const messages = {
     transcriptionNotInstalled:
       'SheetSage2 ist noch nicht installiert. Einmal in YuE Studio „Transcribe recording“ öffnen und „Install transcription support“ wählen (etwa 2 GB); danach geht es auch hier.',
     recording: 'Aufnahme',
+    chooseRecording: 'Datei wählen',
+    noRecording: 'Keine Datei gewählt',
     recordingHint: 'Jedes Format, das macOS lesen kann: MP3, M4A/AAC, WAV, AIFF, FLAC …, bis 300 MB.',
     transcriptionTask: 'Melodie',
     taskFull: 'Gesang und Instrumente',
@@ -553,6 +555,8 @@ const messages = {
     transcriptionNotInstalled:
       'SheetSage2 is not installed yet. Open “Transcribe recording” in YuE Studio once and choose “Install transcription support” (about 2 GB); it then works here as well.',
     recording: 'Recording',
+    chooseRecording: 'Choose file',
+    noRecording: 'No file chosen',
     recordingHint: 'Any format macOS can read: MP3, M4A/AAC, WAV, AIFF, FLAC …, up to 300 MB.',
     transcriptionTask: 'Melody',
     taskFull: 'Vocals and instruments',

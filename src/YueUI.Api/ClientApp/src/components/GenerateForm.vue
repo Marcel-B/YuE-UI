@@ -283,6 +283,7 @@ const batchOptions = [
   <form @submit.prevent="submit">
     <FloatLabel variant="on">
       <InputText
+        fluid
         id="gen-title"
         v-model="form.title"
         type="text"
@@ -296,6 +297,7 @@ const batchOptions = [
 
     <FloatLabel variant="on" class="mt-6">
       <Textarea
+        fluid
         id="gen-style"
         v-model="form.style"
         rows="3"
@@ -323,6 +325,7 @@ const batchOptions = [
     <div class="mt-6 flex items-start gap-2">
       <FloatLabel variant="on" class="min-w-0 flex-1">
         <InputText
+          fluid
           id="gen-lyrics-idea"
           v-model="form.lyricsIdea"
           type="text"
@@ -396,6 +399,7 @@ const batchOptions = [
 
     <FloatLabel variant="on" class="mt-6">
       <Textarea
+        fluid
         id="gen-lyrics"
         v-model="form.lyrics"
         class="mono"

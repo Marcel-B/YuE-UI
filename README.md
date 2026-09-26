@@ -180,4 +180,4 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Songs vom Handy teilen (kleine AAC statt FLAC)
 - [ ] Mehrere Playlists (die Tabelle `playlists` ist schon da)
 - [x] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
-- [ ] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)
+- [x] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)

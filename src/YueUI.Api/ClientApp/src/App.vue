@@ -8,6 +8,7 @@ import QueueList from './components/QueueList.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
+import Message from 'primevue/message'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
 import { current, retitle } from './player'
@@ -46,6 +47,14 @@ const worker = ref<WorkerInfo>({
   lastError: null,
   extensions: null,
 })
+/** Green once the model is loaded; the accent while it starts or works; grey while no worker runs. */
+const workerSeverity = computed(() =>
+  worker.value.busy || worker.value.status === 'starting'
+    ? undefined
+    : worker.value.status === 'ready'
+      ? 'success'
+      : 'secondary',
+)
 const songs = ref<SongState[]>([])
 const log = ref<LogEntry[]>([])
 const transcriptions = ref<TranscriptionState[]>([])
@@ -313,22 +322,23 @@ async function useAsNewSong(songId: string): Promise<void> {
     </template>
     <template #end>
       <div class="flex items-center gap-2">
-        <span :class="['pill', worker.busy ? 'busy' : worker.status]">{{
-          workerLabel(worker.status, worker.busy)
-        }}</span>
+        <Tag
+          :value="workerLabel(worker.status, worker.busy)"
+          :severity="workerSeverity"
+          rounded
+          class="whitespace-nowrap"
+        />
         <NotificationButton @notice="show" />
-        <button type="button" class="link" @click="setLocale(locale === 'de' ? 'en' : 'de')">
-          {{ t('language') }}
-        </button>
+        <Button :label="t('language')" text size="small" @click="setLocale(locale === 'de' ? 'en' : 'de')" />
       </div>
     </template>
   </Menubar>
 
-  <div class="banners">
-    <p v-if="!connected" class="banner warning">{{ t('disconnected') }}</p>
-    <p v-if="worker.studioRunning" class="banner warning">{{ t('studioRunning') }}</p>
-    <p v-if="worker.lastError" class="banner danger">{{ t('workerError', { message: worker.lastError }) }}</p>
-    <p v-if="notice" :class="['banner', notice.error ? 'danger' : 'info']" role="status">{{ notice.text }}</p>
+  <div class="mb-4 flex flex-col gap-2 empty:hidden">
+    <Message v-if="!connected" severity="warn">{{ t('disconnected') }}</Message>
+    <Message v-if="worker.studioRunning" severity="warn">{{ t('studioRunning') }}</Message>
+    <Message v-if="worker.lastError" severity="error">{{ t('workerError', { message: worker.lastError }) }}</Message>
+    <Message v-if="notice" :severity="notice.error ? 'error' : 'info'" role="status">{{ notice.text }}</Message>
   </div>
 
   <!--
@@ -469,85 +479,5 @@ async function useAsNewSong(songId: string): Promise<void> {
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.01em;
-}
-
-.pill {
-  padding: 0.2rem 0.7rem;
-  border-radius: 999px;
-  background: var(--surface-sunken);
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.pill.ready {
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-.pill.starting,
-.pill.busy {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.banners {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.banners:empty {
-  display: none;
-}
-
-.banner {
-  margin: 0;
-  padding: 0.65rem 0.9rem;
-  border-radius: var(--radius-small);
-  font-size: 0.9rem;
-}
-
-.banner.warning {
-  background: var(--warning-soft);
-  color: var(--warning-text);
-}
-
-.banner.danger {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.banner.info {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem;
-}
-
-@media (min-width: 60rem) {
-  .layout {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    align-items: start;
-  }
-
-  .queue-column {
-    position: sticky;
-    top: 1rem;
-  }
-
-  .library-row {
-    grid-column: 1 / -1;
-  }
-}
-
-.form-column {
-  scroll-margin-top: 1rem;
 }
 </style>

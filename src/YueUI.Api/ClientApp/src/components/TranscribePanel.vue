@@ -14,12 +14,15 @@ import {
 import { formatBytes, formatDateTime, t } from '../i18n'
 import type { TranscriptionInfo, TranscriptionList, TranscriptionState, TranscriptionTask } from '../types'
 import FieldHelp from './FieldHelp.vue'
+import Message from 'primevue/message'
+import ProgressBar from 'primevue/progressbar'
 
 /** The live transcriptions from the event stream; the finished ones on disk are loaded here. */
 const props = defineProps<{ transcriptions: TranscriptionState[] }>()
 const emit = defineEmits<{ useScore: [abc: string, name: string]; error: [message: string] }>()
 
 const file = ref<File | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
 const task = ref<TranscriptionTask>('melody-full')
 const sending = ref(false)
 const message = ref<{ text: string; error: boolean } | null>(null)
@@ -129,100 +132,155 @@ function askDelete(item: TranscriptionInfo): void {
   })
 }
 
+const taskOptions = computed(() => [
+  { value: 'melody-full', label: t('defaultValue', { value: t('taskFull') }) },
+  { value: 'melody-vocal', label: t('taskVocal') },
+])
+
 function taskLabel(value: TranscriptionTask | null): string {
   return value === 'melody-vocal' ? t('taskVocal') : t('taskFull')
 }
 </script>
 
 <template>
-  <section>
+  <section class="flex flex-col gap-4">
     <FieldHelp id="transcribe-help" :hint="t('transcriptionIntro')" :more="t('transcriptionMore')" />
 
-    <p v-if="list && !list.installed" class="notice" role="note">{{ t('transcriptionNotInstalled') }}</p>
+    <Message v-if="list && !list.installed" severity="warn" role="note">{{ t('transcriptionNotInstalled') }}</Message>
 
-    <form class="start" @submit.prevent="start">
-      <div class="field">
-        <label for="transcribe-file">{{ t('recording') }}</label>
+    <form class="flex flex-col gap-4" @submit.prevent="start">
+      <div class="flex flex-col gap-1">
+        <label for="transcribe-file" class="text-sm font-semibold">{{ t('recording') }}</label>
+        <!-- The native field only opens the picker; the button and the name beside it are what shows. -->
         <input
           id="transcribe-file"
+          ref="fileInput"
           type="file"
           accept="audio/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.flac,.caf"
+          class="hidden"
           aria-describedby="transcribe-file-help"
           @change="pick"
         />
+        <div class="flex min-w-0 items-center gap-2">
+          <Button
+            type="button"
+            icon="pi pi-folder-open"
+            :label="t('chooseRecording')"
+            severity="secondary"
+            outlined
+            class="shrink-0"
+            @click="fileInput?.click()"
+          />
+          <span class="muted min-w-0 truncate">{{ file?.name ?? t('noRecording') }}</span>
+        </div>
         <FieldHelp id="transcribe-file-help" :hint="t('recordingHint')" />
       </div>
 
-      <div class="field">
-        <label for="transcribe-task">{{ t('transcriptionTask') }}</label>
-        <select id="transcribe-task" v-model="task" aria-describedby="transcribe-task-help">
-          <option value="melody-full">{{ t('defaultValue', { value: t('taskFull') }) }}</option>
-          <option value="melody-vocal">{{ t('taskVocal') }}</option>
-        </select>
+      <div class="flex flex-col gap-1">
+        <label for="transcribe-task" class="text-sm font-semibold">{{ t('transcriptionTask') }}</label>
+        <Select
+          v-model="task"
+          input-id="transcribe-task"
+          :options="taskOptions"
+          option-label="label"
+          option-value="value"
+          aria-describedby="transcribe-task-help"
+        />
         <FieldHelp id="transcribe-task-help" :hint="t('taskHint')" :more="t('taskMore')" />
       </div>
 
-      <div class="actions">
-        <button
+      <div class="flex flex-wrap items-center gap-3">
+        <Button
           type="submit"
-          class="button primary"
+          :label="sending ? t('uploading') : t('transcribe')"
+          :loading="sending"
           :disabled="!file || sending || running !== null || list?.installed === false"
-        >
-          {{ sending ? t('uploading') : t('transcribe') }}
-        </button>
+        />
         <span v-if="message" :class="message.error ? 'danger' : 'muted'" role="status">{{ message.text }}</span>
       </div>
     </form>
 
-    <div v-if="running" class="running">
-      <div class="line">
-        <strong>{{ running.fileName }}</strong>
+    <div v-if="running" class="flex flex-col gap-2">
+      <div class="flex flex-wrap items-center gap-x-3">
+        <strong class="min-w-0 break-words">{{ running.fileName }}</strong>
         <span class="muted">{{ t(`transcriptionStage_${running.stage}`) }}</span>
-        <button type="button" class="link push" @click="cancel">{{ t('cancel') }}</button>
+        <Button :label="t('cancel')" text size="small" severity="secondary" class="ml-auto" @click="cancel" />
       </div>
-      <!-- No value while SheetSage2 only sends heartbeats: the bar then shows that it is busy. -->
-      <progress :value="running.fraction ?? undefined" max="1" />
+      <!-- Indeterminate while SheetSage2 only sends heartbeats: the bar then shows that it is busy. -->
+      <ProgressBar
+        :mode="running.fraction === null ? 'indeterminate' : 'determinate'"
+        :value="Math.round((running.fraction ?? 0) * 100)"
+        :show-value="false"
+        class="h-2"
+      />
       <small class="muted">{{ running.detail }}</small>
     </div>
-    <p v-else-if="lastFailure" class="danger failure">
+    <p v-else-if="lastFailure" class="danger m-0">
       {{ lastFailure.fileName }}: {{ t(`transcriptionStage_${lastFailure.stage}`)
       }}{{ lastFailure.message ? ` – ${lastFailure.message}` : '' }}
     </p>
 
-    <h3>{{ t('transcriptions') }}</h3>
-    <p v-if="list && list.items.length === 0" class="muted">{{ t('transcriptionsEmpty') }}</p>
-    <ul v-if="list" class="items">
-      <li v-for="item in list.items" :key="item.id" class="item">
-        <div class="line flex flex-wrap items-center gap-x-3">
-          <strong class="name">{{ item.sourceName }}</strong>
-          <span class="muted">{{ taskLabel(item.task) }}</span>
-          <span v-if="item.createdAt" class="muted">{{ formatDateTime(item.createdAt) }}</span>
-          <span class="muted">{{ formatBytes(item.bytes) }}</span>
-        </div>
-        <small v-if="item.warnings.length" class="muted">{{ t('warnings', { list: item.warnings.join('; ') }) }}</small>
-        <div class="line links flex flex-wrap items-center gap-x-3">
-          <button type="button" class="link" @click="useScore(item)">{{ t('useScore') }}</button>
-          <a class="link" :href="transcriptionScoreUrl(item.id)">{{ t('score') }}</a>
-          <a class="link" :href="transcriptionZipUrl(item.id)" :title="t('filesTitle')">{{ t('files') }}</a>
-          <Button
-            icon="pi pi-trash"
-            text
-            rounded
-            size="small"
-            severity="danger"
-            class="ml-auto"
-            v-tooltip="t('deleteTranscription')"
-            :aria-label="t('deleteTranscription')"
-            @click="askDelete(item)"
-          />
-        </div>
-        <details @toggle="toggleScore(item, $event)">
-          <summary>{{ t('showScore') }}</summary>
-          <pre>{{ scores[item.id] ?? '…' }}</pre>
-        </details>
-      </li>
-    </ul>
+    <div>
+      <h3 class="mt-2 mb-2 text-base">{{ t('transcriptions') }}</h3>
+      <p v-if="list && list.items.length === 0" class="muted m-0">{{ t('transcriptionsEmpty') }}</p>
+      <ul v-if="list" class="m-0 flex list-none flex-col gap-3 p-0">
+        <li
+          v-for="item in list.items"
+          :key="item.id"
+          class="flex flex-col gap-1 border-t border-surface pt-3 first:border-t-0 first:pt-0"
+        >
+          <div class="flex flex-wrap items-center gap-x-3">
+            <strong class="min-w-0 break-words">{{ item.sourceName }}</strong>
+            <span class="muted">{{ taskLabel(item.task) }}</span>
+            <span v-if="item.createdAt" class="muted">{{ formatDateTime(item.createdAt) }}</span>
+            <span class="muted">{{ formatBytes(item.bytes) }}</span>
+          </div>
+          <small v-if="item.warnings.length" class="muted">{{
+            t('warnings', { list: item.warnings.join('; ') })
+          }}</small>
+          <div class="flex flex-wrap items-center">
+            <Button :label="t('useScore')" text size="small" @click="useScore(item)" />
+            <Button as="a" :label="t('score')" text size="small" :href="transcriptionScoreUrl(item.id)" />
+            <Button
+              as="a"
+              :label="t('files')"
+              text
+              size="small"
+              :href="transcriptionZipUrl(item.id)"
+              :title="t('filesTitle')"
+            />
+            <Button
+              icon="pi pi-trash"
+              text
+              rounded
+              size="small"
+              severity="danger"
+              class="ml-auto"
+              v-tooltip="t('deleteTranscription')"
+              :aria-label="t('deleteTranscription')"
+              @click="askDelete(item)"
+            />
+          </div>
+          <details class="text-sm" @toggle="toggleScore(item, $event)">
+            <summary class="cursor-pointer text-primary">{{ t('showScore') }}</summary>
+            <pre class="score">{{ scores[item.id] ?? '…' }}</pre>
+          </details>
+        </li>
+      </ul>
+    </div>
   </section>
 </template>
 
-<style scoped></style>
+<style scoped>
+.score {
+  max-height: 20rem;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  overflow: auto;
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+</style>

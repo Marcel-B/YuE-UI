@@ -679,10 +679,6 @@ const severityByQuality: Record<string, string> = {
   flex: 0 1 auto;
 }
 
-.zip-run {
-  line-height: 1.5;
-}
-
 .score {
   font-size: 0.9rem;
 }
@@ -731,16 +727,5 @@ const severityByQuality: Record<string, string> = {
 .seed {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-}
-
-.links {
-  display: flex;
-  gap: 0.9rem;
-  margin-left: auto;
-}
-
-.badge.full {
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 </style>
