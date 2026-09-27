@@ -3,7 +3,9 @@ import Slider from 'primevue/slider'
 import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { addVoice, deleteVoice, listVoices, voiceAudioUrl } from '../api'
 import { formatDateTime, formatDuration, locale, t } from '../i18n'
+import { peaksOf } from '../waveform'
 import NumberField from './NumberField.vue'
+import WaveformView from './WaveformView.vue'
 import type { ReferenceVoice, VersionState } from '../types'
 import { showSong } from '../view'
 
@@ -98,6 +100,10 @@ const previewUrl = ref<string | null>(null)
 const duration = ref<number | null>(null)
 /** Start and end in seconds, as the slider's range. */
 const clip = ref<[number, number]>([0, 0])
+/** The file's loudness outline, drawn above the slider; null while decoding or when the browser cannot. */
+const peaks = ref<number[] | null>(null)
+/** Where playback stands, for the waveform's line. */
+const position = ref(0)
 /** Set while "play the part" runs, so playback stops at the end. */
 const playingClip = ref(false)
 
@@ -114,6 +120,16 @@ function setPreview(chosen: File | null): void {
   previewUrl.value = chosen ? URL.createObjectURL(chosen) : null
   duration.value = null
   playingClip.value = false
+  peaks.value = null
+  position.value = 0
+  if (chosen) {
+    // One bar per few pixels of a phone's width is enough to find the singing and the silence.
+    void peaksOf(chosen, 200).then((result) => {
+      if (file.value === chosen) {
+        peaks.value = result
+      }
+    })
+  }
 }
 
 function metadata(): void {
@@ -163,8 +179,16 @@ function playClip(): void {
   void element.play().catch(() => (playingClip.value = false))
 }
 
+function seek(seconds: number): void {
+  if (preview.value) {
+    preview.value.currentTime = seconds
+    position.value = seconds
+  }
+}
+
 function timeUpdate(): void {
   const element = preview.value
+  position.value = element?.currentTime ?? 0
   if (playingClip.value && element && element.currentTime >= clip.value[1]) {
     element.pause()
     playingClip.value = false
@@ -327,6 +351,16 @@ const stageSeverity: Record<string, string | undefined> = {
           @pause="playingClip = false"
         ></audio>
         <template v-if="duration !== null">
+          <div v-if="peaks" class="px-2">
+            <WaveformView
+              :peaks="peaks"
+              :duration="duration"
+              :start="clip[0]"
+              :end="clip[1]"
+              :position="position"
+              @seek="seek"
+            />
+          </div>
           <Slider v-model="clip" range :min="0" :max="duration" :step="0.1" :disabled="adding" class="mx-2" />
           <div class="flex flex-wrap items-end gap-3">
             <div class="flex w-32 flex-col gap-1">
