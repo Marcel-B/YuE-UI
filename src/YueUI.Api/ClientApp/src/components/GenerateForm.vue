@@ -7,7 +7,7 @@ import { formatBytes, t } from '../i18n'
 import { photoDataUrl } from '../photo'
 import { hasTag } from '../styleTags'
 import type { LyricsModels, LyricsState, ReferenceVoice } from '../types'
-import { octaveOptions, strengthOptions } from '../voiceChoices'
+import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
 import FieldHelp from './FieldHelp.vue'
 import StyleBlocks from './StyleBlocks.vue'
 import Checkbox from 'primevue/checkbox'
@@ -268,6 +268,7 @@ const voiceOptions = computed(() => [
 ])
 const octaves = computed(octaveOptions)
 const strengths = computed(strengthOptions)
+const stepChoices = computed(stepOptions)
 
 // The size is shown because on 24 GB it decides whether a model fits beside the open apps.
 const lyricsModelOptions = computed(() =>
@@ -555,6 +556,15 @@ const batchOptions = [
           option-value="value"
           :allow-empty="false"
           :aria-label="t('strength')"
+          size="small"
+        />
+        <SelectButton
+          v-model="form.voiceSteps"
+          :options="stepChoices"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          :aria-label="t('steps')"
           size="small"
         />
       </div>
