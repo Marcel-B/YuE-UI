@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { cancel, cancelQueued, moveQueued, shutdownWorker, stopAll } from '../api'
 import { formatDuration, formatTime, stageLabel, t } from '../i18n'
+import QueueOverview from './QueueOverview.vue'
 import SongTimeline from './SongTimeline.vue'
+import { holderOf, waitReason } from '../queueModels'
 import { showSong, songHref } from '../view'
-import type { LogEntry, QueuedJob, SongState, WorkerInfo } from '../types'
+import type { LogEntry, LyricsState, QueuedJob, SongState, VersionState, WorkerInfo } from '../types'
 
 defineExpose({ run, stopAll, shutdownWorker })
 
@@ -13,6 +15,10 @@ const props = defineProps<{
   /** Jobs the server holds back until the memory is free, in the order they start. */
   jobs: QueuedJob[]
   worker: WorkerInfo
+  lyricsDraft: LyricsState | null
+  versions: VersionState[]
+  /** Queue:BundleWindow; null for a server from before it was sent. */
+  bundleWindowSeconds: number | null
   log: LogEntry[]
   /** Songs the library lists; those have a place on the songs page to jump to. */
   listed: Set<string>
@@ -55,6 +61,18 @@ function jobDetail(job: QueuedJob): string {
       return t(job.revision ? 'jobRevision' : 'jobLyrics')
   }
 }
+
+/** Ticks for the bundling window's countdown in the wait reasons. */
+const now = ref(Date.now())
+const timer = setInterval(() => (now.value = Date.now()), 15_000)
+onBeforeUnmount(() => clearInterval(timer))
+
+const reasons = computed(() => {
+  const holder = holderOf(props.worker, props.lyricsDraft, props.versions)
+  return props.jobs.map((_, i) =>
+    waitReason(props.jobs, i, holder, props.versions, props.bundleWindowSeconds, now.value),
+  )
+})
 
 /** From joining the queue to the end, or null for a song without its stages (a server from before they were kept). */
 function totalTime(song: SongState): string | null {
@@ -112,6 +130,8 @@ watch(
       />
     </div>
 
+    <QueueOverview :songs="songs" :jobs="jobs" :worker="worker" :lyrics-draft="lyricsDraft" :versions="versions" />
+
     <div v-if="jobs.length > 0" class="mb-4">
       <h3 class="m-0 text-sm font-medium text-muted-color" :title="t('queueWaitingHint')">{{ t('queueWaiting') }}</h3>
       <ul class="m-0 p-0 list-none flex flex-col gap-1">
@@ -127,7 +147,10 @@ watch(
               >{{ jobTitle(job) }}</a
             >
             <strong v-else class="block truncate">{{ jobTitle(job) }}</strong>
-            <span class="text-sm text-muted-color">{{ jobDetail(job) }}</span>
+            <span class="block text-sm text-muted-color truncate">{{ jobDetail(job) }}</span>
+            <span class="block text-xs text-muted-color truncate"
+              ><i class="pi pi-clock text-xs" /> {{ reasons[i] }}</span
+            >
           </div>
           <Button
             icon="pi pi-arrow-up"

@@ -95,6 +95,10 @@ public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunni
 /// <summary>Everything a client needs to draw the queue; also the first event of every event stream.</summary>
 /// <param name="Versions">Songs being sung with another voice, and the last one that finished.</param>
 /// <param name="Queue">Songs, renders and lyrics drafts waiting for their turn (Queue/JobQueue.cs), in order.</param>
+/// <param name="BundleWindowSeconds">
+/// <see cref="QueueOptions.BundleWindow"/>, so that the page can say how long songs may still pass a waiting draft or
+/// version.
+/// </param>
 public sealed record StatusSnapshot(
     WorkerInfo Worker,
     IReadOnlyList<SongState> Songs,
@@ -102,7 +106,8 @@ public sealed record StatusSnapshot(
     IReadOnlyList<TranscriptionState>? Transcriptions = null,
     LyricsState? Lyrics = null,
     IReadOnlyList<VersionState>? Versions = null,
-    IReadOnlyList<QueuedJob>? Queue = null);
+    IReadOnlyList<QueuedJob>? Queue = null,
+    double? BundleWindowSeconds = null);
 
 /// <summary>
 /// The last lyrics draft (Lyrics/LyricsWriter.cs). It arrives as an event rather than as the answer to the request:

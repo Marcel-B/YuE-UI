@@ -152,6 +152,15 @@ public sealed class QueueEndpointTests : IDisposable
     }
 
     [Fact]
+    public void The_snapshot_names_the_bundle_window()
+    {
+        // The page counts down how long songs may still go ahead of a waiting draft.
+        _app.BundleWindow = TimeSpan.FromMinutes(7);
+
+        Assert.Equal(420, _app.Snapshot().BundleWindowSeconds);
+    }
+
+    [Fact]
     public async Task After_the_window_songs_wait_behind_the_draft()
     {
         _app.BundleWindow = TimeSpan.Zero;

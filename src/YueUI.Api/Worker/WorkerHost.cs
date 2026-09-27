@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
+using Microsoft.Extensions.Options;
 using YueUI.Api.Library;
 using YueUI.Api.Queue;
 using YueUI.Api.Voices;
@@ -24,6 +25,7 @@ public sealed class WorkerHost(
     IWorkerLauncher launcher,
     SongLibrary library,
     IStudioDetector studio,
+    IOptions<QueueOptions> queueOptions,
     TimeProvider time,
     ILogger<WorkerHost> logger) : IHostedService, IAsyncDisposable
 {
@@ -723,7 +725,8 @@ public sealed class WorkerHost(
         [.. _transcriptions.Values.OrderBy(t => t.UpdatedAt)],
         _lyrics,
         [.. _versions.Values.OrderBy(v => v.CreatedAt)],
-        _queue);
+        _queue,
+        queueOptions.Value.BundleWindow.TotalSeconds);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);

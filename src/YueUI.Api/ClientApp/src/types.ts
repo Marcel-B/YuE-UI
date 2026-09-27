@@ -65,6 +65,8 @@ export interface StatusSnapshot {
   versions: VersionState[]
   /** Songs, renders and lyrics drafts waiting for the memory, in the order they start. */
   queue: QueuedJob[]
+  /** Queue:BundleWindow in seconds: how long songs may pass a waiting lyrics draft or voice version. */
+  bundleWindowSeconds: number | null
 }
 
 export type JobKind = 'song' | 'render' | 'lyrics'
