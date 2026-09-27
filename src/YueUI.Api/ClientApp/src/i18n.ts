@@ -244,7 +244,8 @@ const messages = {
     queue: 'Warteschlange',
     queueEmpty: 'Nichts in Arbeit.',
     queueWaiting: 'Wartet',
-    queueWaitingHint: 'Startet, sobald kein anderes Modell den Speicher belegt, der Reihe nach.',
+    queueWaitingHint:
+      'Startet der Reihe nach, sobald kein anderes Modell den Speicher belegt. Rechnet YuE2 gerade, dürfen Songs eine Weile an Textentwürfen vorbei.',
     jobSongs: '{n} Songs',
     jobRender: 'Neu berechnen',
     jobLyrics: 'Textentwurf',
@@ -667,7 +668,8 @@ const messages = {
     queue: 'Queue',
     queueEmpty: 'Nothing in progress.',
     queueWaiting: 'Waiting',
-    queueWaitingHint: 'Starts in order as soon as no other model holds the memory.',
+    queueWaitingHint:
+      'Starts in order as soon as no other model holds the memory. While YuE2 is busy, songs may pass lyrics drafts for a while.',
     jobSongs: '{n} songs',
     jobRender: 'Render again',
     jobLyrics: 'Lyrics draft',

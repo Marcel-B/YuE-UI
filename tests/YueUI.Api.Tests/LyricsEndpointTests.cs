@@ -390,7 +390,8 @@ public sealed class LyricsEndpointTests : IDisposable
         var draft = (await _app.WaitForStatus(_client, s => s.Lyrics is { Finished: true } lyrics && lyrics.Id == queued.Id)).Lyrics!;
         Assert.Equal("done", draft.Stage);
         Assert.True(_app.Worker.Disposed);
-        Assert.Empty(_app.Snapshot().Queue!);
+        // The queue lets go of the job once the draft has started, which a fast draft can overtake.
+        await _app.WaitForStatus(_client, s => s.Queue is { Count: 0 });
     }
 
     [Fact]

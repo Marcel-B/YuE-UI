@@ -33,6 +33,8 @@ export interface FormState {
   /** Whole octaves, as in the library's voice dialog. */
   voiceShift: number
   voiceStrength: number
+  /** Seed-VC's diffusion steps: fast, normal or fine, as in the library's voice dialog. */
+  voiceSteps: number
 }
 
 /** One of the model's sampling settings, every value filled in. */
@@ -93,6 +95,7 @@ export function defaultFormState(): FormState {
     voiceId: '',
     voiceShift: 0,
     voiceStrength: 0.7,
+    voiceSteps: 50,
     ...defaultAdvanced(),
   }
 }
@@ -200,7 +203,7 @@ export function toGenerateRequest(form: FormState): GenerateRequest {
     fullSteps: form.quality === 'full' && form.fullSteps !== defaultFullSteps ? form.fullSteps : null,
     abcSampling: samplingOverrides('abcSampling', form.abcSampling),
     semanticSampling: samplingOverrides('semanticSampling', form.semanticSampling),
-    // Quality and the original's reverb as the library's dialog starts them; the form stays short.
+    // The original's reverb as the library's dialog starts it; the form stays short.
     voice:
       form.voiceId === ''
         ? null
@@ -208,7 +211,7 @@ export function toGenerateRequest(form: FormState): GenerateRequest {
             voiceId: form.voiceId,
             semiToneShift: form.voiceShift,
             strength: form.voiceStrength,
-            diffusionSteps: 50,
+            diffusionSteps: form.voiceSteps,
             keepReverb: true,
           },
   }

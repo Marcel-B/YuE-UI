@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
 using YueUI.Api.Data;
 using YueUI.Api.Library;
 using YueUI.Api.Lyrics;
@@ -17,9 +18,13 @@ namespace YueUI.Api.Queue;
 /// The rule is the one the lyrics writer and the voice converter follow on their own: on 24 GB only one large model
 /// fits, YuE2, the lyrics model or separation and Seed-VC. Songs and renders go to the worker as soon as neither a
 /// draft nor a voice conversion holds the memory; the worker queues them itself and batches what it can. A lyrics
-/// draft needs the worker idle as well. Jobs start strictly in order, so a draft queued behind songs waits for them
-/// and a song queued behind a draft waits for that; bundling jobs by model is left for later.
-/// Voice conversions keep their own queue (<see cref="VoiceConverter"/>), which waits for the memory in the same way.
+/// draft needs the worker idle as well. Jobs start in order, with one exception that bundles them by model: while
+/// YuE2 holds the memory, songs and renders pass drafts waiting ahead of them and go to the worker, which batches
+/// them with the songs it has, instead of YuE2 being unloaded for the draft and loaded again after it. That lasts only
+/// as long as the draft at the front has waited less than <see cref="QueueOptions.BundleWindow"/>; after that songs
+/// wait behind it, so the worker runs empty and the draft gets its turn. Voice conversions keep their own queue
+/// (<see cref="VoiceConverter"/>), which waits for the memory in the same way; a version that has waited that long
+/// holds back new songs as well.
 /// Waiting jobs are kept in <see cref="SqliteJobStore"/> and resumed after a restart. Transcriptions are not queued
 /// here: SheetSage2 runs beside YuE2 in the worker.
 /// </remarks>
@@ -29,6 +34,7 @@ public sealed class JobQueue(
     LyricsWriter lyrics,
     VoiceConverter voices,
     SongLibrary library,
+    IOptions<QueueOptions> options,
     TimeProvider time,
     ILogger<JobQueue> logger) : BackgroundService
 {
@@ -142,13 +148,13 @@ public sealed class JobQueue(
         await _starting.WaitAsync(cancellationToken);
         try
         {
-            bool empty;
+            bool first;
             lock (_gate)
             {
-                empty = _jobs.Count == 0;
+                first = _jobs.Count == 0 || (IsYue(job) && !_jobs.Any(j => IsYue(j.Job)) && MayPassLocked());
             }
-            // Behind waiting jobs even if it could start: the order is the one the user sees.
-            if (empty && await TryStartAsync(job, payload, cancellationToken))
+            // Behind waiting jobs even if it could start: the order is the one the user sees, bundling aside.
+            if (first && await TryStartAsync(job, payload, cancellationToken))
             {
                 return null;
             }
@@ -205,7 +211,10 @@ public sealed class JobQueue(
         }
     }
 
-    /// <summary>Starts jobs from the front for as long as they can start, e.g. several songs in a row.</summary>
+    /// <summary>
+    /// Starts jobs from the front for as long as they can start, e.g. several songs in a row; when the front is a
+    /// draft that cannot start yet, the first song or render behind it may (see the remarks).
+    /// </summary>
     private async Task StartWaitingAsync(CancellationToken stoppingToken)
     {
         while (true)
@@ -214,6 +223,7 @@ public sealed class JobQueue(
             try
             {
                 (QueuedJob Job, JsonObject Payload) next;
+                (QueuedJob Job, JsonObject Payload)? passing;
                 lock (_gate)
                 {
                     if (_jobs.Count == 0)
@@ -221,12 +231,18 @@ public sealed class JobQueue(
                         return;
                     }
                     next = _jobs[0];
+                    var index = MayPassLocked() ? _jobs.FindIndex(j => IsYue(j.Job)) : -1;
+                    passing = index > 0 ? _jobs[index] : null;
                 }
                 try
                 {
                     if (!await TryStartAsync(next.Job, next.Payload, stoppingToken))
                     {
-                        return;
+                        if (passing is null || !await TryStartAsync(passing.Value.Job, passing.Value.Payload, stoppingToken))
+                        {
+                            return;
+                        }
+                        next = passing.Value;
                     }
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
@@ -246,6 +262,23 @@ public sealed class JobQueue(
             Published();
         }
     }
+
+    /// <summary>Songs and renders are for YuE2; the rest (drafts) for the lyrics model.</summary>
+    private static bool IsYue(QueuedJob job) => job.Kind is JobKind.Song or JobKind.Render;
+
+    /// <summary>
+    /// Whether a song may go ahead of the draft at the front: only while YuE2 holds the memory anyway, since otherwise
+    /// the draft can start itself, and only until the draft has waited <see cref="QueueOptions.BundleWindow"/>.
+    /// </summary>
+    private bool MayPassLocked() =>
+        _jobs.Count > 0
+        && _jobs[0].Job.Kind == JobKind.Lyrics
+        && host.IsBusy
+        && time.GetUtcNow() - _jobs[0].Job.CreatedAt < options.Value.BundleWindow;
+
+    /// <summary>A version waiting for longer than the window gets the memory next: new songs wait until it has it.</summary>
+    private bool VersionOverdue() =>
+        voices.WaitingSince is { } since && time.GetUtcNow() - since >= options.Value.BundleWindow;
 
     /// <returns>False when the memory is taken and the job has to wait.</returns>
     private async Task<bool> TryStartAsync(QueuedJob job, JsonObject payload, CancellationToken cancellationToken)
@@ -279,7 +312,7 @@ public sealed class JobQueue(
         // Announced before looking: the lyrics writer and the voice converter claim the memory first and then look at
         // the worker, so one of the two always sees the other.
         host.ExpectSongs(voice);
-        if (lyrics.IsWriting || voices.IsConverting)
+        if (lyrics.IsWriting || voices.IsConverting || VersionOverdue())
         {
             host.ExpectNoSongs();
             return false;
