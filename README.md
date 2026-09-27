@@ -41,7 +41,7 @@ Ein eigener HTTPS-Port (8443), weil `tailscale serve` auf 443 schon einen andere
 
 Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ wie eine App ablegen.
 
-## Seiten, Player und Playlist
+## Seiten, Player und Playlists
 
 Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter, Warteschlange), **Transkription** (SheetSage2), **Titel** (die Bibliothek), **Playlist**, **Logic** (siehe unten) und **Stimmen** (nur mit ChangeMyVoice, siehe unten); auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
 
@@ -49,9 +49,11 @@ In der Warteschlange zeigt jeder Song seine Schritte als waagerechte Zeitleiste:
 
 Songs, Neuberechnungen und Textentwürfe werden immer angenommen. Der Mac hat nur Speicher für ein großes Modell zur Zeit (YuE2, das Textmodell oder Stem-Trennung und Seed-VC); was gerade keinen Platz hat, steht oben in der Warteschlange unter **Wartet** und startet der Reihe nach, sobald der Speicher frei ist. Eine Ausnahme bündelt nach Modell: Rechnet YuE2 gerade, gehen neue Songs und Neuberechnungen an einem wartenden Textentwurf vorbei direkt an den Worker, der sie mit den laufenden bündelt; so wird YuE2 nicht für den Entwurf entladen und danach neu geladen. Das gilt nur, bis der Entwurf vorn 20 Minuten gewartet hat (`Queue:BundleWindow`); dann warten neue Songs hinter ihm. Ebenso hält eine Fassung, die schon so lange auf den Speicher wartet, neue Songs zurück, bis sie dran war. Mit den Pfeilen ändert sich die Reihenfolge, mit dem Kreuz fliegt ein Auftrag wieder heraus. Wartende Aufträge liegen in `yueui.db` und überstehen einen Neustart oder ein Deploy. Ein Textentwurf, der warten muss, landet trotzdem im Formular, sobald er fertig ist (auch nach dem Neuladen, mit Benachrichtigung).
 
-Abgespielt wird in einem Player am unteren Rand, der beim Seitenwechsel weiterläuft. Ein Song aus der Bibliothek spielt danach die folgenden Songs der Bibliothek, einer aus der Playlist die folgenden der Playlist. Titel und Vor/Zurück erscheinen auch auf dem Sperrbildschirm.
+Abgespielt wird in einem Player am unteren Rand, der beim Seitenwechsel weiterläuft. Ein Song aus der Bibliothek spielt danach die folgenden Songs der Bibliothek, einer aus einer Playlist die folgenden dieser Playlist. Titel und Vor/Zurück erscheinen auch auf dem Sperrbildschirm.
 
-Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn wieder heraus; denselben Knopf hat der Player für den Song, der gerade läuft. Auf der Playlist-Seite lässt sich die Reihenfolge ändern. Die Playlist liegt auf dem Server in `~/Library/Application Support/YuE UI/yueui.db` (SQLite), Handy und Mac sehen also dieselbe. Gelöschte Songs fallen von selbst heraus.
+Auf der Playlist-Seite wählt das Feld oben, welche Playlist sie zeigt; daneben legen Plus, Stift und Papierkorb eine neue an, benennen die gezeigte um oder löschen sie (die Songs selbst bleiben, die letzte Playlist lässt sich nicht löschen). Welche Playlist gezeigt wird, merkt sich jeder Browser selbst. Die Reihenfolge lässt sich dort ändern.
+
+Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn wieder heraus; denselben Knopf hat der Player für den Song, der gerade läuft. Gibt es mehrere Playlists, öffnet der Knopf eine Liste, in der jeder Tipp den Song in eine Playlist legt oder herausnimmt; der Haken am Knopf heißt dann, dass der Song in mindestens einer steckt. Die Playlists liegen auf dem Server in `~/Library/Application Support/YuE UI/yueui.db` (SQLite), Handy und Mac sehen also dieselben. Gelöschte Songs fallen von selbst heraus.
 
 Der Stift neben einem Lauf gibt ihm einen neuen Titel. Er gilt für Bibliothek, Player, Playlist, Warteschlange und die Dateinamen beim Herunterladen; der Ordner behält seinen Namen, damit Playlist, Links und YuE Studio den Song weiter finden. Der neue Titel liegt ebenfalls in `yueui.db`, ein leeres Feld stellt den ursprünglichen wieder her.
 
@@ -105,7 +107,7 @@ Die Bibliothek zeigt bei jedem Song mit Partitur einen Knopf **Auf der Logic-Sei
 
 **Die Seite Logic.** Sie nimmt einen Song aus der Bibliothek (Knopf beim Song, oder im Menü auswählen) oder eine eigene `score.abc`, auf Wunsch mit `audio.flac`. Dort lassen sich Spuren dazuerzeugen (Akkorde mit Muster und Umkehrung, Bass, Schlagzeug, Leittöne, Verdopplung), Oktaven, Groove (Swing, Humanize), Einzähler und eine Region je Abschnitt einstellen; Einstellungen lassen sich als Voreinstellung speichern. Die Vorschau zeigt die Noten als Pianoroll und spielt sie ab, in Chrome auf dem Mac auch über die angeschlossenen MIDI-Geräte (Web MIDI gibt es nur in Chromium-Browsern, und nur über HTTPS). In der Instrumentenliste bekommt jedes Gerät einen Namen für seinen MIDI-Ausgang und Kanal, ein Drumcomputer dazu die Noten seiner Trommeln; jede Spur kann ein Instrument spielen. Die MIDI-Datei, die Vorschau und das Logic-Projekt legen die Spur dann auf dessen Kanal, und im Projekt geht sie über Logics External Instrument an das Gerät, sofern die Vorlage den Ausgang kennt. Instrumente, Zuordnungen und Voreinstellungen liegen in `yueui.db`, Handy und Mac sehen also dieselben.
 
-**Klang im Browser.** Spuren, die im Browser klingen (Ausgang „Ton im Browser“, kein Schlagzeug), haben in der Tabelle „Ausgänge je Spur“ einen Knopf **Klang**. Er öffnet einen kleinen Synthesizer für diese Spur: zwei Oszillatoren (Wellenform, Oktave, Verstimmung, Pegel) und Rauschen, ein Filter (Tiefpass, Hochpass, Bandpass mit Frequenz, Resonanz, Hüllkurve, Keytracking), je eine ADSR-Hüllkurve für Lautstärke und Filter und ein LFO auf Tonhöhe, Filter oder Lautstärke. Jede Änderung gilt sofort, auch während der Song läuft; **Anhören** spielt eine kurze Phrase in der Lage der Spur. Der Klang bleibt der Spur zugeordnet (nach ihrem Namen, also für jeden Song) und lässt sich unter einem Namen sichern und anderen Spuren geben. Beides liegt in `yueui.db`. Der Synthesizer ist nur zum Anhören im Browser; MIDI-Datei und Logic-Projekt bleiben davon unberührt.
+**Klang im Browser.** Spuren, die im Browser klingen (Ausgang „Ton im Browser“, kein Schlagzeug), haben in der Tabelle „Ausgänge je Spur“ einen Knopf **Klang**. Er öffnet einen kleinen Synthesizer für diese Spur: zwei Oszillatoren (Wellenform, Oktave, Verstimmung, Pegel; beim Puls auch Pulsbreite und PWM, die der LFO bewegt) und Rauschen, ein Filter (Tiefpass, Hochpass, Bandpass mit Frequenz, Resonanz, Hüllkurve, Keytracking), je eine ADSR-Hüllkurve für Lautstärke und Filter und ein LFO auf Tonhöhe, Filter oder Lautstärke. Jede Änderung gilt sofort, auch während der Song läuft; **Anhören** spielt eine kurze Phrase in der Lage der Spur. Der Klang bleibt der Spur zugeordnet (nach ihrem Namen, also für jeden Song) und lässt sich unter einem Namen sichern und anderen Spuren geben. Beides liegt in `yueui.db`. Der Synthesizer ist nur zum Anhören im Browser; MIDI-Datei und Logic-Projekt bleiben davon unberührt.
 
 **Mixer.** Unter der Tabelle steht ein Mixer mit einem Kanalzug je Spur: Lautstärke (bis +6 dB), Panorama, Mute, Solo und eine Pegelanzeige, dazu der Master. Lautstärke und Panorama gelten nur für den Ton im Browser und werden sofort hörbar; Mute und Solo entscheiden, welche Spuren überhaupt spielen, auch auf MIDI-Geräten. Ein Klick auf den Wert unter dem Regler setzt ihn zurück, einer auf die rot leuchtende Pegelspitze löscht sie. Lautstärken und Panorama liegen in `yueui.db`, Solo gilt nur bis zum Neuladen.
 
@@ -165,7 +167,7 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `Voice:StemsApiKeyFile` (`Voice__StemsApiKeyFile`) | `~/.config/stemmywav/mac-api-key` | Datei mit dem Schlüssel für StemMyWav |
 | `Voice:StemModel` (`Voice__StemModel`) | `mel-roformer-kim-vocals` | Trennmodell von StemMyWav |
 | `Push:DataPath` (`Push__DataPath`) | `~/Library/Application Support/YuE UI/push.json` | VAPID-Schlüssel und Abonnements für Benachrichtigungen |
-| `Data:Path` (`Data__Path`) | `~/Library/Application Support/YuE UI/yueui.db` | SQLite-Datenbank von YuE UI (Playlist, geänderte Titel, Bewertungen) |
+| `Data:Path` (`Data__Path`) | `~/Library/Application Support/YuE UI/yueui.db` | SQLite-Datenbank von YuE UI (Playlists, geänderte Titel, Bewertungen) |
 | `Push:Subject` (`Push__Subject`) | `https://github.com/Marcel-B/YuE-UI` | Kontaktadresse (`mailto:` oder `https:`) für die Push-Dienste; Apple lehnt Adressen wie `mailto:ich@localhost` ab |
 
 ## API
@@ -221,8 +223,11 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `POST` | `/api/songs/{run}/{song}/versions` | Song mit einer Stimme neu singen: `{ voiceId, semiToneShift?: -24–24, strength?: 0–1, diffusionSteps?: 10–100, keepReverb? }`; antwortet `202`, der Fortschritt kommt als `version`-Event (`queued`, `separating`, `converting`, `mixing`, dann `done` oder `failed`); `400` für eine unbekannte Stimme, `501` ohne Einrichtung |
 | `GET` | `/api/songs/{run}/{song}/versions/{id}/audio` | fertige Fassung als FLAC (Range-fähig; `?download=true` als Download) |
 | `DELETE` | `/api/songs/{run}/{song}/versions/{id}` | Fassung abbrechen oder löschen |
-| `GET` | `/api/playlist` | `{ songIds }`: Songs der Playlist in Reihenfolge (`run/songN`), gelöschte weggelassen |
-| `PUT` | `/api/playlist` | `{ songIds }`: Playlist ersetzen; `400` für einen Song, den es nicht gibt |
+| `GET` | `/api/playlists` | `[{ id, name, songIds }]`: alle Playlists, älteste zuerst, Songs in Reihenfolge (`run/songN`), gelöschte weggelassen |
+| `POST` | `/api/playlists` | `{ name }`: neue, leere Playlist (`201`) |
+| `PUT` | `/api/playlists/{id}/name` | `{ name }`: umbenennen (1 bis 100 Zeichen) |
+| `PUT` | `/api/playlists/{id}/songs` | `{ songIds }`: Songs der Playlist ersetzen; `400` für einen Song, den es nicht gibt |
+| `DELETE` | `/api/playlists/{id}` | Playlist löschen (die Songs bleiben); `409` für die letzte |
 | `GET` | `/api/push` | `{ publicKey }`: VAPID-Schlüssel für `pushManager.subscribe` |
 | `POST` | `/api/push/subscriptions` | Browser benachrichtigen: `PushSubscription.toJSON()` plus `language` (`de`/`en`) |
 | `DELETE` | `/api/push/subscriptions` | `{ endpoint }`: Abonnement entfernen |
@@ -239,7 +244,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Bibliothek sortieren (Datum, Sterne, Dauer)
 - [x] Songtext-Entwurf mit einer kurzen Anweisung überarbeiten lassen
 - [x] Songs vom Handy teilen (kleine AAC statt FLAC)
-- [ ] Mehrere Playlists (die Tabelle `playlists` ist schon da)
+- [x] Mehrere Playlists
 - [x] Songs mit einer anderen Stimme neu singen (Stem-Trennung, Seed-VC, Remix) und Stimmen hochladen
 - [x] Gemeinsame Warteschlange: Songs, Neuberechnungen und Textentwürfe warten auf den Speicher statt abgelehnt zu werden
 - [x] Warteschlange nach Modell bündeln (gleiche Arten zusammen, solange nichts zu lange wartet)

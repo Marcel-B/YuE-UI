@@ -13,7 +13,7 @@ import Message from 'primevue/message'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
 import { current, retitle } from './player'
-import { loadPlaylist, playlistIds } from './playlist'
+import { loadPlaylists, playlistIds } from './playlist'
 import { setRatings } from './ratings'
 import { shareState } from './share'
 import { navigate, view, type View } from './view'
@@ -127,10 +127,10 @@ const unsubscribe = subscribe({
     versions.value = snapshot.versions
     jobs.value = snapshot.queue ?? []
     bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
-    // The stream (re)opened: whatever was written meanwhile is in the library now, the playlist may have changed on
+    // The stream (re)opened: whatever was written meanwhile is in the library now, the playlists may have changed on
     // another device.
     void loadLibrary()
-    loadPlaylist().catch((caught) => show(caught instanceof Error ? caught.message : String(caught), true))
+    loadPlaylists().catch((caught) => show(caught instanceof Error ? caught.message : String(caught), true))
   },
   song: upsert,
   worker(info) {

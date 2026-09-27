@@ -43,7 +43,7 @@ public sealed class LibraryEndpointTests : IDisposable
     {
         const string run = "20260921-165850-Neon-Night";
         _app.AddSong(run, "song1");
-        await _client.PutAsJsonAsync("/api/playlist", new { songIds = new[] { $"{run}/song1" } });
+        await _client.PutAsJsonAsync("/api/playlists/1/songs", new { songIds = new[] { $"{run}/song1" } });
 
         var response = await _client.PutAsJsonAsync($"/api/runs/{run}/title", new { title = "  Neonnächte  " });
 
@@ -53,7 +53,7 @@ public sealed class LibraryEndpointTests : IDisposable
         Assert.Equal(run, listed.Id);
         Assert.Equal("Neonnächte", listed.Title);
         Assert.Equal("Neon Night", listed.OriginalTitle);
-        Assert.Equal([$"{run}/song1"], (await _client.GetFromJsonAsync<PlaylistInfo>("/api/playlist"))!.SongIds);
+        Assert.Equal([$"{run}/song1"], Assert.Single((await _client.GetFromJsonAsync<List<PlaylistInfo>>("/api/playlists"))!).SongIds);
         var audio = await _client.GetAsync($"/api/songs/{run}/song1/audio?download=true");
         Assert.Equal("Neonnächte-song1.flac", audio.Content.Headers.ContentDisposition!.FileNameStar);
     }

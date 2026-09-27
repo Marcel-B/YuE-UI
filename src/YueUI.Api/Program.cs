@@ -45,7 +45,7 @@ builder.Services.AddSingleton<IPushSender, WebPushSender>();
 builder.Services.AddHttpClient(WebPushSender.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHostedService<PushNotifier>();
 
-// The app's own state (the playlist) in one SQLite file, shared by every browser.
+// The app's own state (playlists, titles, ratings, …) in one SQLite file, shared by every browser.
 builder.Services.Configure<DataOptions>(builder.Configuration.GetSection(DataOptions.Section));
 builder.Services.AddSingleton<SqliteDatabase>();
 builder.Services.AddSingleton<SqlitePlaylistStore>();

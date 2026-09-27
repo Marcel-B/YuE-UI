@@ -11,8 +11,7 @@ namespace YueUI.Api.Data;
 /// Every call opens its own connection; Microsoft.Data.Sqlite pools them, and SQLite's file lock serializes the
 /// writers. The schema carries its version in <c>PRAGMA user_version</c>: a later change is a new step in
 /// <see cref="EnsureCreated"/>, applied in order to a file an earlier release wrote; never edit an old step.
-/// Version 1: playlists and their songs. There is one playlist (<see cref="DefaultPlaylistId"/>) so far, the table
-/// is there so that more can follow without moving the songs.
+/// Version 1: playlists and their songs, with a first playlist (id 1) created along (<see cref="SqlitePlaylistStore"/>).
 /// Version 2: titles given to runs in this app (<see cref="SqliteRunTitleStore"/>).
 /// Version 3: song ratings, one to five stars (<see cref="SqliteSongRatingStore"/>).
 /// Version 4: songs sung with another voice (<see cref="SqliteVersionStore"/>).
@@ -26,8 +25,6 @@ namespace YueUI.Api.Data;
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
-    public const long DefaultPlaylistId = 1;
-
     private readonly string _connectionString = new SqliteConnectionStringBuilder
     {
         DataSource = options.Value.ResolvedPath,
