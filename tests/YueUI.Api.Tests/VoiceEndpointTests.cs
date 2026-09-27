@@ -78,6 +78,18 @@ public sealed class VoiceEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_reference_voice_answers_range_requests_as_Safari_needs_them()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/voices/v1/audio");
+        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 1);
+
+        var response = await _app.CreateClient().SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.PartialContent, response.StatusCode);
+        Assert.Equal("RI"u8.ToArray(), await response.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
     public async Task Without_a_voice_service_voices_are_off()
     {
         _app.VoiceBaseUrl = null;

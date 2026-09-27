@@ -74,13 +74,16 @@ public static class VoiceEndpoints
     }
 
     /// <summary>Passed through as it arrives, to listen to the voice again.</summary>
-    private static async Task<IResult> VoiceAudioAsync(string id, VoiceClient voices, HttpContext context, CancellationToken cancellationToken)
+    private static async Task<IResult> VoiceAudioAsync(string id, VoiceClient voices, CancellationToken cancellationToken)
     {
         try
         {
-            var response = await voices.VoiceAudioAsync(id, cancellationToken);
-            context.Response.RegisterForDispose(response);
-            return Results.Stream(await response.Content.ReadAsStreamAsync(cancellationToken), "audio/wav");
+            // Buffered rather than streamed through: Safari plays audio only from a source that answers range
+            // requests, and a reference voice is at most 25 seconds, a few megabytes.
+            using var response = await voices.VoiceAudioAsync(id, cancellationToken);
+            var audio = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            var type = response.Content.Headers.ContentType?.MediaType ?? "audio/wav";
+            return Results.File(audio, type, enableRangeProcessing: true);
         }
         catch (VoiceServiceException exception)
         {
