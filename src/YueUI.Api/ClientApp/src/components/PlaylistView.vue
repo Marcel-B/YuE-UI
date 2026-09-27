@@ -1,8 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, useTemplateRef } from 'vue'
+import { useConfirm } from 'primevue/useconfirm'
 import { formatDuration, t } from '../i18n'
 import { current, play, playing, trackOf, type Track } from '../player'
-import { playlistIds, savePlaylist } from '../playlist'
+import {
+  activePlaylist,
+  addPlaylist,
+  playlistIds,
+  playlists,
+  removeActivePlaylist,
+  renameActivePlaylist,
+  savePlaylist,
+  selectPlaylist,
+} from '../playlist'
 import type { RunInfo, SongInfo } from '../types'
 import { showSong, songHref } from '../view'
 import SongMenu from './SongMenu.vue'
@@ -50,10 +60,136 @@ function move(index: number, by: number): void {
 function remove(entry: Entry): void {
   void save(playlistIds.value.filter((id) => id !== entry.song.id))
 }
+
+// ---- Choosing, creating, renaming and deleting playlists ----------------------------------------------
+
+/** What the name field is for while it replaces the picker; null shows the picker. */
+const editing = ref<'create' | 'rename' | null>(null)
+const name = ref('')
+const savingName = ref(false)
+const nameInput = useTemplateRef<{ $el: HTMLInputElement }>('nameInput')
+
+function startEditing(mode: 'create' | 'rename'): void {
+  editing.value = mode
+  name.value = mode === 'rename' ? (activePlaylist.value?.name ?? '') : ''
+  void nextTick(() => nameInput.value?.$el.focus())
+}
+
+async function saveName(): Promise<void> {
+  const trimmed = name.value.trim()
+  if (!trimmed) {
+    return
+  }
+  savingName.value = true
+  try {
+    await (editing.value === 'create' ? addPlaylist(trimmed) : renameActivePlaylist(trimmed))
+    editing.value = null
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  } finally {
+    savingName.value = false
+  }
+}
+
+const confirm = useConfirm()
+
+/** Only the list goes; the songs stay in the library and in other playlists. */
+function askDelete(): void {
+  const playlist = activePlaylist.value
+  if (!playlist) {
+    return
+  }
+  confirm.require({
+    header: t('confirmDelete'),
+    message: t('confirmDeletePlaylist', { name: playlist.name, count: playlist.songIds.length }),
+    icon: 'pi pi-trash',
+    rejectProps: { label: t('keep'), severity: 'secondary', outlined: true },
+    acceptProps: { label: t('delete'), severity: 'danger' },
+    accept: async () => {
+      try {
+        await removeActivePlaylist()
+      } catch (caught) {
+        emit('error', caught instanceof Error ? caught.message : String(caught))
+      }
+    },
+  })
+}
 </script>
 
 <template>
   <section>
+    <form v-if="editing" class="flex items-center gap-1 mb-3" @submit.prevent="saveName">
+      <InputText
+        ref="nameInput"
+        v-model="name"
+        :placeholder="t('playlistName')"
+        :aria-label="t('playlistName')"
+        :maxlength="100"
+        class="min-w-0 flex-1"
+        @keydown.esc="editing = null"
+      />
+      <Button
+        type="submit"
+        icon="pi pi-check"
+        text
+        rounded
+        :loading="savingName"
+        :disabled="!name.trim()"
+        :aria-label="t('save')"
+      />
+      <Button
+        type="button"
+        icon="pi pi-times"
+        text
+        rounded
+        severity="secondary"
+        :aria-label="t('cancel')"
+        @click="editing = null"
+      />
+    </form>
+    <div v-else class="flex items-center gap-1 mb-3">
+      <Select
+        :model-value="activePlaylist?.id"
+        :options="playlists"
+        option-label="name"
+        option-value="id"
+        :aria-label="t('choosePlaylist')"
+        class="min-w-0 flex-1"
+        @update:model-value="selectPlaylist"
+      >
+        <template #option="{ option }">
+          <span class="flex-1 truncate">{{ option.name }}</span>
+          <span class="muted text-sm ml-2">{{ option.songIds.length }}</span>
+        </template>
+      </Select>
+      <Button
+        icon="pi pi-plus"
+        text
+        rounded
+        v-tooltip.top="t('newPlaylist')"
+        :aria-label="t('newPlaylist')"
+        @click="startEditing('create')"
+      />
+      <Button
+        icon="pi pi-pencil"
+        text
+        rounded
+        severity="secondary"
+        v-tooltip.top="t('renamePlaylist')"
+        :aria-label="t('renamePlaylist')"
+        @click="startEditing('rename')"
+      />
+      <Button
+        icon="pi pi-trash"
+        text
+        rounded
+        severity="danger"
+        :disabled="playlists.length < 2"
+        v-tooltip.top="playlists.length < 2 ? t('lastPlaylist') : t('deletePlaylist')"
+        :aria-label="t('deletePlaylist')"
+        @click="askDelete"
+      />
+    </div>
     <p v-if="entries.length === 0" class="muted">{{ t('playlistEmpty') }}</p>
     <template v-else>
       <div class="flex items-center justify-between gap-2 mb-3">

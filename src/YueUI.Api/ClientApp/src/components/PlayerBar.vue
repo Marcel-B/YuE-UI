@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, useTemplateRef, watch } from 'vue'
+import { onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import { t } from '../i18n'
 import { attach, close, current, hasNext, hasPrevious, next, playing, previous } from '../player'
-import { playlistIds, toggleInPlaylist } from '../playlist'
 import { rate, ratingOf } from '../ratings'
 import { showSong, songHref } from '../view'
+import PlaylistToggle from './PlaylistToggle.vue'
 import SongMenu from './SongMenu.vue'
 
 /** The playing song has a score, as far as the library knows. */
@@ -12,23 +12,9 @@ defineProps<{ hasScore: boolean }>()
 
 const emit = defineEmits<{ error: [message: string]; useScore: [songId: string]; newSong: [songId: string] }>()
 
-const inPlaylist = computed(() => !!current.value && playlistIds.value.includes(current.value.songId))
-
 const audio = useTemplateRef<HTMLAudioElement>('audio')
 watch(audio, (element) => attach(element), { immediate: true })
 onBeforeUnmount(() => attach(null))
-
-/** The song that is playing, into the playlist or out of it, without looking for it in the library first. */
-async function togglePlaylist(): Promise<void> {
-  if (!current.value) {
-    return
-  }
-  try {
-    await toggleInPlaylist(current.value.songId)
-  } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
-  }
-}
 
 async function rateCurrent(rating: number | null | undefined): Promise<void> {
   if (!current.value) {
@@ -70,15 +56,7 @@ function ended(): void {
           @update:model-value="rateCurrent"
         />
       </div>
-      <Button
-        :icon="inPlaylist ? 'pi pi-check-circle' : 'pi pi-plus-circle'"
-        text
-        rounded
-        v-tooltip.top="inPlaylist ? t('removeFromPlaylist') : t('addToPlaylist')"
-        :aria-label="inPlaylist ? t('removeFromPlaylist') : t('addToPlaylist')"
-        :aria-pressed="inPlaylist"
-        @click="togglePlaylist"
-      />
+      <PlaylistToggle v-if="current" :song-id="current.songId" @error="emit('error', $event)" />
       <Button
         icon="pi pi-step-backward"
         text
