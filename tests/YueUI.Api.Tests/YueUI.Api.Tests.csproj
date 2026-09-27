@@ -23,4 +23,8 @@
     <ProjectReference Include="..\..\src\YueUI.Api\YueUI.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\samples\score.abc" Link="Samples\score.abc" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

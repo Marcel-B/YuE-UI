@@ -31,9 +31,9 @@ builder.Services.Configure<LyricsOptions>(builder.Configuration.GetSection(Lyric
 builder.Services.AddSingleton<ILmStudioStarter, LmsCli>();
 builder.Services.AddSingleton<LyricsWriter>();
 builder.Services.AddHttpClient(LyricsWriter.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
-// Logic Pro projects from yue-to-logic-pro; uploading a long FLAC to it and building the project take minutes.
+// Logic Pro projects and MIDI read back into scores, by YueToLogic.Core in this process.
 builder.Services.Configure<LogicOptions>(builder.Configuration.GetSection(LogicOptions.Section));
-builder.Services.AddHttpClient(LogicEndpoints.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
+builder.Services.AddYueToLogic();
 
 // Sharing a song from the phone as a small AAC instead of the FLAC.
 builder.Services.AddSingleton<IAudioEncoder, AacEncoder>();

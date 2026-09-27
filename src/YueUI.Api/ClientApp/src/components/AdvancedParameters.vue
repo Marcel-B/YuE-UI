@@ -27,8 +27,6 @@ import SamplingFields from './SamplingFields.vue'
 defineProps<{
   /** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
   extensions: boolean | null
-  /** A yue-to-logic-pro server is configured, which reads MIDI files back into scores. */
-  midiImport: boolean
 }>()
 const emit = defineEmits<{
   notice: [message: string]
@@ -318,7 +316,6 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
             />
             <Button v-else icon="pi pi-trash" @click="form.abc = ''" text rounded v-tooltip="t('abcClear')" />
             <Button
-              v-if="midiImport"
               v-tooltip="t('abcFromMidi')"
               :aria-label="t('abcFromMidi')"
               icon="pi pi-file-arrow-up"

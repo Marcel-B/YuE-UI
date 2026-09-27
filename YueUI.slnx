@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/YueToLogic.Core/YueToLogic.Core.csproj" />
     <Project Path="src/YueUI.Api/YueUI.Api.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/YueToLogic.Core.Tests/YueToLogic.Core.Tests.csproj" />
     <Project Path="tests/YueUI.Api.Tests/YueUI.Api.Tests.csproj" />
   </Folder>
 </Solution>

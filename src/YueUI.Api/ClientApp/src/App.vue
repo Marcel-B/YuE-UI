@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
-import { getLogicExport, getStorage, getVoiceInfo, listLibrary, songRequest, songScore, subscribe } from './api'
+import { getStorage, getVoiceInfo, listLibrary, songRequest, songScore, subscribe } from './api'
 import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
 import NotificationButton from './components/NotificationButton.vue'
@@ -219,12 +219,6 @@ const storageLabel = computed(() =>
     : '',
 )
 
-/** Songs become Logic projects only when this server knows a yue-to-logic-pro; the library hides the button otherwise. */
-const logicExport = ref(false)
-getLogicExport()
-  .then((info) => (logicExport.value = info.configured))
-  .catch(() => (logicExport.value = false))
-
 async function loadLibrary(): Promise<void> {
   libraryLoading.value = true
   try {
@@ -414,7 +408,6 @@ async function useAsNewSong(songId: string): Promise<void> {
         v-model="form"
         v-model:errors="fieldErrors"
         :extensions="worker.extensions"
-        :midi-import="logicExport"
         @notice="show($event)"
         @error="show($event, true)"
       />
@@ -481,7 +474,6 @@ async function useAsNewSong(songId: string): Promise<void> {
           :loading="libraryLoading"
           :error="libraryError"
           :busy-ids="busyIds"
-          :logic-export="logicExport"
           :voices="voiceInfo.conversionConfigured"
           :live-versions="versions"
           @template="useTemplate"
