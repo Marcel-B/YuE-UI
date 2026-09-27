@@ -10,6 +10,7 @@ import divider from '@primeuix/themes/aura/divider'
 import fieldset from '@primeuix/themes/aura/fieldset'
 import floatlabel from '@primeuix/themes/aura/floatlabel'
 import iconfield from '@primeuix/themes/aura/iconfield'
+import inputgroup from '@primeuix/themes/aura/inputgroup'
 import inputnumber from '@primeuix/themes/aura/inputnumber'
 import inputtext from '@primeuix/themes/aura/inputtext'
 import menu from '@primeuix/themes/aura/menu'
@@ -22,6 +23,7 @@ import rating from '@primeuix/themes/aura/rating'
 import ripple from '@primeuix/themes/aura/ripple'
 import select from '@primeuix/themes/aura/select'
 import selectbutton from '@primeuix/themes/aura/selectbutton'
+import slider from '@primeuix/themes/aura/slider'
 import tabs from '@primeuix/themes/aura/tabs'
 import tag from '@primeuix/themes/aura/tag'
 import textarea from '@primeuix/themes/aura/textarea'
@@ -52,6 +54,7 @@ export default {
     fieldset,
     floatlabel,
     iconfield,
+    inputgroup,
     inputnumber,
     inputtext,
     menu,
@@ -64,6 +67,7 @@ export default {
     ripple,
     select,
     selectbutton,
+    slider,
     tabs,
     tag,
     textarea,

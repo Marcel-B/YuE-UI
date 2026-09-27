@@ -1,33 +1,48 @@
 import { ref } from 'vue'
 
 /** The pages the menu bar switches between. */
-export type View = 'create' | 'transcribe' | 'songs' | 'playlist' | 'voices'
+export type View = 'create' | 'transcribe' | 'songs' | 'playlist' | 'voices' | 'logic'
 
-const views: readonly View[] = ['create', 'transcribe', 'songs', 'playlist', 'voices']
+const views: readonly View[] = ['create', 'transcribe', 'songs', 'playlist', 'voices', 'logic']
 
 /**
  * The page lives in the URL's hash (`#/songs`), so the back button, a reload and a bookmark on the home screen keep it,
  * and the server needs no route per page. Only the page's content switches; the player sits outside of it.
- * A song has an address of its own on the songs page, `#/songs/<run>/songN`, which scrolls to it and marks it.
+ * A song has an address of its own on the songs page, `#/songs/<run>/songN`, which scrolls to it and marks it, and on
+ * the Logic page, `#/logic/<run>/songN`, which picks it as the score to convert.
  */
 function fromHash(): { view: View; song: string | null } {
   const [name, ...song] = location.hash.replace(/^#\/?/, '').split('/')
   if (!(views as readonly string[]).includes(name ?? '')) {
     return { view: 'create', song: null }
   }
-  return { view: name as View, song: name === 'songs' && song.length === 2 ? song.join('/') : null }
+  return {
+    view: name as View,
+    song: (name === 'songs' || name === 'logic') && song.length === 2 ? song.join('/') : null,
+  }
 }
 
 const initial = fromHash()
 export const view = ref<View>(initial.view)
 /** The song the address points to, marked on the songs page. */
-export const focusedSong = ref<string | null>(initial.song)
+export const focusedSong = ref<string | null>(initial.view === 'songs' ? initial.song : null)
+/**
+ * The song the Logic page converts, when an address named one. Only an address with a song changes it: the menu's
+ * plain `#/logic` returns to the page as it was left, like every page keeps its input.
+ */
+export const logicSong = ref<string | null>(initial.view === 'logic' ? initial.song : null)
 /** Counts requests to show a song, so that asking for the one already marked scrolls to it again. */
 export const focusRequest = ref(0)
 
 window.addEventListener('hashchange', () => {
   const target = fromHash()
   view.value = target.view
+  if (target.view === 'logic') {
+    if (target.song) {
+      logicSong.value = target.song
+    }
+    return
+  }
   if (focusedSong.value !== target.song) {
     focusedSong.value = target.song
     focusRequest.value++
@@ -57,4 +72,27 @@ export function showSong(songId: string): void {
   view.value = 'songs'
   focusedSong.value = songId
   focusRequest.value++
+}
+
+export function logicHref(songId: string): string {
+  return `#/logic/${songId}`
+}
+
+/** Opens the Logic page with the song picked as its score. */
+export function openOnLogicPage(songId: string): void {
+  setHash(logicHref(songId))
+  view.value = 'logic'
+  logicSong.value = songId
+  window.scrollTo({ top: 0 })
+}
+
+/**
+ * Keeps the address in step with the song the Logic page shows, so a reload or a bookmark returns to it. Replaced
+ * rather than pushed: picking songs one after another should not fill the back button's history.
+ */
+export function replaceLogicSong(songId: string | null): void {
+  logicSong.value = songId
+  if (view.value === 'logic') {
+    history.replaceState(history.state, '', songId ? logicHref(songId) : '#/logic')
+  }
 }

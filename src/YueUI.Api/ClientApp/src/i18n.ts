@@ -326,6 +326,7 @@ const messages = {
     shareFailed: 'Teilen ging nicht: {message}',
     zipRun: 'Alle als ZIP',
     openInLogic: 'Als Logic-Projekt laden',
+    openLogicPage: 'In Logic-Seite öffnen',
     logicWarnings: 'Logic-Projekt geladen, mit Hinweisen: {messages}',
     noAudio: 'Kein Audio',
     showLyrics: 'Text',
@@ -353,6 +354,7 @@ const messages = {
     menuSongs: 'Titel',
     menuPlaylist: 'Playlist',
     menuVoices: 'Stimmen',
+    menuLogic: 'Logic',
     voices: 'Stimmen',
     voicesIntro:
       'Referenzstimmen, mit denen ein Song neu gesungen werden kann („Mit Stimme singen“ bei den Songs). Die Sammlung liegt in ChangeMyVoice und ist dieselbe wie in yue-to-logic-pro.',
@@ -749,6 +751,7 @@ const messages = {
     shareFailed: 'Could not share: {message}',
     zipRun: 'All as ZIP',
     openInLogic: 'Download as Logic project',
+    openLogicPage: 'Open on Logic page',
     logicWarnings: 'Logic project downloaded, with warnings: {messages}',
     noAudio: 'No audio',
     showLyrics: 'Lyrics',
@@ -776,6 +779,7 @@ const messages = {
     menuSongs: 'Songs',
     menuPlaylist: 'Playlist',
     menuVoices: 'Voices',
+    menuLogic: 'Logic',
     voices: 'Voices',
     voicesIntro:
       'Reference voices a song can be sung again with (“Sing with a voice” on the songs page). The collection lives in ChangeMyVoice and is the same as in yue-to-logic-pro.',

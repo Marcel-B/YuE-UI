@@ -32,7 +32,7 @@ import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../sear
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
 import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
 import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
-import { focusedSong, focusRequest, view } from '../view'
+import { focusedSong, focusRequest, openOnLogicPage, view } from '../view'
 
 const props = defineProps<{
   runs: RunInfo[]
@@ -689,6 +689,16 @@ const severityByQuality: Record<string, string> = {
                       :loading="exporting.has(song.id)"
                       :disabled="exporting.has(song.id)"
                       @click="openInLogic(song)"
+                    />
+                    <Button
+                      v-if="song.hasScore"
+                      icon="pi pi-sliders-h"
+                      text
+                      size="small"
+                      rounded
+                      v-tooltip="t('openLogicPage')"
+                      :aria-label="t('openLogicPage')"
+                      @click="openOnLogicPage(song.id)"
                     />
                     <Button
                       v-if="song.hasAudio || song.hasScore"
