@@ -151,6 +151,17 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     PRAGMA user_version = 4;
                     """);
             }
+            if (current < 5)
+            {
+                // Null for versions made before: they used the default model of the time, which is not known here.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    ALTER TABLE song_versions ADD COLUMN stem_model TEXT NULL;
+                    PRAGMA user_version = 5;
+                    """);
+            }
             _ready = true;
         }
     }

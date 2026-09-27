@@ -18,9 +18,11 @@ public sealed class StemClient(IHttpClientFactory clients, IOptions<VoiceOptions
 {
     public const string HttpClientName = "stems";
 
-    public async Task<Stems> SeparateAsync(string flac, string directory, CancellationToken cancellationToken)
+    /// <param name="model">The model the version was asked with; the configured one where it names none.</param>
+    public async Task<Stems> SeparateAsync(string flac, string? model, string directory, CancellationToken cancellationToken)
     {
         var settings = options.Value;
+        model ??= settings.StemModel;
         if (settings.StemsBaseUri is not { } baseUri || settings.ResolvedStemsApiKey is not { } key)
         {
             throw new VoiceServiceException("No stem service is configured (Voice:StemsBaseUrl and its key).", HttpStatusCode.NotImplemented);
@@ -29,7 +31,7 @@ public sealed class StemClient(IHttpClientFactory clients, IOptions<VoiceOptions
         var content = new StreamContent(audio);
         content.Headers.ContentType = new MediaTypeHeaderValue("audio/flac");
         // Dry vocals: Seed-VC would copy the reverb into the new voice, and it is mixed back in untouched instead.
-        var path = $"api/separate?model={Uri.EscapeDataString(settings.StemModel)}&dereverb=true";
+        var path = $"api/separate?model={Uri.EscapeDataString(model)}&dereverb=true";
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, path)) { Content = content };
         request.Headers.Add("X-Api-Key", key);
         HttpResponseMessage response;
@@ -66,7 +68,7 @@ public sealed class StemClient(IHttpClientFactory clients, IOptions<VoiceOptions
         var instrumental = Stem("instrumental.wav");
         if (vocals is null || instrumental is null)
         {
-            throw new VoiceServiceException($"The stem service's model {settings.StemModel} gave no vocals and instrumental.");
+            throw new VoiceServiceException($"The stem service's model {model} gave no vocals and instrumental.");
         }
         return new Stems(vocals, instrumental, Stem("vocals_reverb.wav"));
     }

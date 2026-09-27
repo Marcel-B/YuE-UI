@@ -454,14 +454,24 @@ function removeVersion(run: RunInfo, song: SongInfo, version: VersionState): voi
   })
 }
 
-function versionLabel(version: VersionState): string {
-  const shift =
-    version.semiToneShift > 0
-      ? ` +${version.semiToneShift}`
-      : version.semiToneShift < 0
-        ? ` ${version.semiToneShift}`
-        : ''
-  return `${version.voiceLabel}${shift}`
+/**
+ * What the version was made with, so versions of one song can be told apart later: the choices of the dialog in its
+ * words where they match one, else the number, then when and with which separation model.
+ */
+function versionSettings(version: VersionState): string {
+  const shift = version.semiToneShift
+  const octave = octaves.value.find((o) => o.value === shift)
+  const strength = strengths.value.find((s) => s.value === version.strength)?.label ?? String(version.strength)
+  const quality =
+    stepChoices.value.find((s) => s.value === version.diffusionSteps)?.label ?? String(version.diffusionSteps)
+  return [
+    octave?.label ?? t('semitones', { n: shift > 0 ? `+${shift}` : String(shift).replace('-', '−') }),
+    t('settingStrength', { value: strength }),
+    t('settingSteps', { value: quality }),
+    version.keepReverb ? t('withReverb') : t('withoutReverb'),
+    ...(version.stemModel ? [t('stemModel', { model: version.stemModel })] : []),
+    formatDateTime(version.createdAt),
+  ].join(' · ')
 }
 
 const severityByQuality: Record<string, string> = {
@@ -741,7 +751,7 @@ const severityByQuality: Record<string, string> = {
                       @click="playVersion(run, song, version)"
                     />
                     <span class="pi pi-user muted px-2" v-else aria-hidden="true" />
-                    <span>{{ versionLabel(version) }}</span>
+                    <span>{{ version.voiceLabel }}</span>
                     <Tag v-if="version.stage !== 'done'" :severity="version.stage === 'failed' ? 'danger' : undefined">
                       {{ t(`versionStage_${version.stage}`) }}
                       <template v-if="version.stage === 'converting' && version.fraction > 0">
@@ -768,6 +778,7 @@ const severityByQuality: Record<string, string> = {
                         @click="removeVersion(run, song, version)"
                       />
                     </div>
+                    <span class="muted basis-full pb-1 text-xs">{{ versionSettings(version) }}</span>
                     <span v-if="version.stage === 'failed' && version.message" class="danger basis-full text-sm">
                       {{ version.message }}
                     </span>
