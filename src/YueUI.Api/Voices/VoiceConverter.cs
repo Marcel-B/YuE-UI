@@ -261,8 +261,9 @@ public sealed class VoiceConverter(
             }
             if (job.StartedAt is { } started && job.EstimatedSeconds > 0)
             {
-                var fraction = Math.Min(0.99, (time.GetUtcNow() - started).TotalSeconds / job.EstimatedSeconds);
-                Update(version, v => v with { Fraction = Math.Round(fraction, 3) });
+                // Reaching 1 means the estimate ran out; the browser says so instead of a percentage stuck at the end.
+                var fraction = Math.Min(1, (time.GetUtcNow() - started).TotalSeconds / job.EstimatedSeconds);
+                Update(version, v => v with { Fraction = Math.Round(fraction, 3), EstimatedSeconds = job.EstimatedSeconds });
             }
             await Task.Delay(options.Value.PollInterval, time, cancellationToken);
             job = await voices.GetJobAsync(job.Id, cancellationToken);

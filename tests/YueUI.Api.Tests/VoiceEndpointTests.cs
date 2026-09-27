@@ -281,6 +281,25 @@ public sealed class VoiceEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_conversion_past_its_estimate_says_so_instead_of_standing_at_99_percent()
+    {
+        _app.AddSong(Run, "song1");
+        // The fake job started a day ago and was expected to take ten minutes.
+        _app.Voice.JobStatuses.Clear();
+        _app.Voice.JobStatuses.Enqueue("RUNNING");
+        var client = _app.CreateClient();
+
+        var response = await client.PostAsJsonAsync($"/api/songs/{Run}/song1/versions", new { voiceId = "v1" });
+        var version = await response.Content.ReadFromJsonAsync<VersionState>(TestApp.Json);
+        // Progress is not stored, so it only travels with the status.
+        var status = await _app.WaitForStatus(client, s => s.Versions!.Any(v => v.Stage == "converting" && v.Fraction > 0));
+
+        var running = status.Versions!.Single();
+        Assert.Equal((1, 600), (running.Fraction, running.EstimatedSeconds));
+        await client.DeleteAsync($"/api/songs/{Run}/song1/versions/{version!.Id}");
+    }
+
+    [Fact]
     public async Task Deleting_a_running_version_stops_it()
     {
         _app.AddSong(Run, "song1");

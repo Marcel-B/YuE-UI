@@ -2,7 +2,7 @@
 import Slider from 'primevue/slider'
 import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { addVoice, deleteVoice, listVoices, voiceAudioUrl } from '../api'
-import { formatDateTime, formatDuration, locale, t } from '../i18n'
+import { formatDateTime, formatDuration, locale, t, versionProgress } from '../i18n'
 import { peaksOf } from '../waveform'
 import NumberField from './NumberField.vue'
 import WaveformView from './WaveformView.vue'
@@ -274,9 +274,7 @@ const stageSeverity: Record<string, string | undefined> = {
           <span class="muted text-sm">{{ version.voiceLabel }}</span>
           <Tag :severity="stageSeverity[version.stage]" class="ml-auto">
             {{ t(`versionStage_${version.stage}`) }}
-            <template v-if="version.stage === 'converting' && version.fraction > 0">
-              {{ Math.round(version.fraction * 100) }} %
-            </template>
+            {{ versionProgress(version) }}
           </Tag>
           <span v-if="version.stage === 'failed' && version.message" class="danger basis-full text-sm">{{
             version.message

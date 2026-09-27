@@ -108,8 +108,14 @@ public sealed record VersionState
 
     public string Stage { get; init; } = "queued";
 
-    /// <summary>Progress of the conversion, 0–1, estimated from the time ChangeMyVoice expects; not stored.</summary>
+    /// <summary>
+    /// Progress of the conversion, 0–1, estimated from the time ChangeMyVoice expects; 1 once that time has passed,
+    /// since the service reports no progress of its own. Not stored.
+    /// </summary>
     public double Fraction { get; init; }
+
+    /// <summary>How long ChangeMyVoice expects the conversion to take, for when it takes longer; not stored.</summary>
+    public double EstimatedSeconds { get; init; }
 
     /// <summary>Why it failed.</summary>
     public string? Message { get; init; }

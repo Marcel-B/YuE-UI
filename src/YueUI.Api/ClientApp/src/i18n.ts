@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { Stage, WorkerStatus } from './types'
+import type { Stage, VersionState, WorkerStatus } from './types'
 
 export type Locale = 'de' | 'en'
 
@@ -436,6 +436,7 @@ const messages = {
     versionStage_done: 'Fertig',
     versionStage_failed: 'Fehlgeschlagen',
     versionStage_cancelled: 'Abgebrochen',
+    versionOverdue: 'länger als geschätzt (≈ {minutes} min)',
     deleteVersion: 'Fassung löschen',
     confirmDeleteVersion: 'Die Fassung mit {voice} von „{title}“, {song}, löschen?',
     menu: 'Menü',
@@ -896,6 +897,7 @@ const messages = {
     versionStage_done: 'Done',
     versionStage_failed: 'Failed',
     versionStage_cancelled: 'Cancelled',
+    versionOverdue: 'longer than estimated (≈ {minutes} min)',
     deleteVersion: 'Delete version',
     confirmDeleteVersion: 'Delete the version with {voice} of “{title}”, {song}?',
     menu: 'Menu',
@@ -965,6 +967,20 @@ export function stageLabel(stage: Stage): string {
 /** The short name of a stage in the song timeline; `stageLabel` says the same in full. */
 export function stepLabel(stage: Stage): string {
   return t(`step_${stage}`)
+}
+
+/**
+ * How far a conversion is, e.g. "45 %". The voice service reports no progress, only an estimate of the whole
+ * duration, so the fraction is the time since the start against it; once that has run out, a percentage would
+ * stand still at the end, so it says the estimate was exceeded instead.
+ */
+export function versionProgress(version: VersionState): string {
+  if (version.stage !== 'converting' || version.fraction <= 0) {
+    return ''
+  }
+  return version.fraction >= 1
+    ? t('versionOverdue', { minutes: Math.max(1, Math.round(version.estimatedSeconds / 60)) })
+    : `${Math.min(99, Math.round(version.fraction * 100))} %`
 }
 
 export function workerLabel(status: WorkerStatus, busy: boolean): string {
