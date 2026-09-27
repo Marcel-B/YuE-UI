@@ -20,6 +20,8 @@ namespace YueUI.Api.Data;
 /// Version 6: songs, renders and lyrics drafts waiting for their turn (<see cref="SqliteJobStore"/>).
 /// Version 7: the Logic page's instruments, which track plays which, and its presets (<see cref="SqliteInstrumentStore"/>,
 /// <see cref="SqliteLogicPresetStore"/>), as yue-to-logic-pro kept them, without its users.
+/// Version 8: the Logic page's browser synthesizer: the sound each track plays in the preview and named sounds to reuse
+/// (<see cref="SqliteSynthStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -217,6 +219,30 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                     );
                     PRAGMA user_version = 7;
+                    """);
+            }
+            if (current < 8)
+            {
+                // A track's sound is a copy, not a reference to a preset: changing or deleting the preset leaves the
+                // tracks that took it as they are. `preset` only names where the sound came from.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE synth_presets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        name_key TEXT NOT NULL UNIQUE,
+                        patch TEXT NOT NULL,
+                        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    );
+                    CREATE TABLE track_synths (
+                        track TEXT NOT NULL COLLATE NOCASE PRIMARY KEY,
+                        patch TEXT NOT NULL,
+                        preset TEXT,
+                        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    );
+                    PRAGMA user_version = 8;
                     """);
             }
             _ready = true;
