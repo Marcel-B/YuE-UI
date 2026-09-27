@@ -1,7 +1,6 @@
 import type {
   GenerateRequest,
   LogEntry,
-  LogicDiagnostic,
   LyricsLanguage,
   LyricsModels,
   LyricsState,
@@ -181,23 +180,6 @@ export function songZipUrl(songId: string): string {
 /** Audio and score of every song of the run. */
 export function runZipUrl(runId: string): string {
   return `${apiBase}/api/runs/${runId}/zip`
-}
-
-/**
- * Builds a Logic Pro project from the song's audio and score and saves the ZIP. Fetched rather
- * than linked: building takes a while, a refusal should become a message rather than a page of JSON, and the
- * warnings travel in a header a link cannot read.
- */
-export async function downloadLogicProject(songId: string): Promise<LogicDiagnostic[]> {
-  const response = await send(`/api/songs/${songId}/logic`)
-  const blob = await response.blob()
-  saveBlob(blob, fileName(response.headers.get('Content-Disposition')) ?? 'YuE.logicx.zip')
-  const header = response.headers.get('X-YueToLogic-Diagnostics')
-  try {
-    return header ? (JSON.parse(header) as LogicDiagnostic[]) : []
-  } catch {
-    return []
-  }
 }
 
 /**

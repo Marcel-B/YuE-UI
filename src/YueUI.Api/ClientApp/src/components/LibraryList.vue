@@ -11,7 +11,6 @@ import {
   deleteVersion,
   deleteRun,
   deleteSong,
-  downloadLogicProject,
   listVoices,
   midiToAbc,
   renameRun,
@@ -205,23 +204,6 @@ async function renderFull(song: SongInfo): Promise<void> {
     await render(song.id, 'full')
   } catch (caught) {
     emit('error', caught instanceof Error ? caught.message : String(caught))
-  }
-}
-
-/** Songs whose Logic project is being built; uploading a long FLAC and building take a while. */
-const exporting = ref(new Set<string>())
-
-async function openInLogic(song: SongInfo): Promise<void> {
-  exporting.value.add(song.id)
-  try {
-    const warnings = await downloadLogicProject(song.id)
-    if (warnings.length > 0) {
-      emit('notice', t('logicWarnings', { messages: warnings.map((w) => w.message).join(' ') }))
-    }
-  } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
-  } finally {
-    exporting.value.delete(song.id)
   }
 }
 
@@ -679,25 +661,13 @@ const severityByQuality: Record<string, string> = {
                       @click="useMidi(run, song)"
                     />
                     <Button
-                      v-if="song.hasAudio && song.hasScore"
+                      v-if="song.hasScore"
                       icon="pi pi-file-export"
                       text
                       size="small"
                       rounded
                       v-tooltip="t('openInLogic')"
                       :aria-label="t('openInLogic')"
-                      :loading="exporting.has(song.id)"
-                      :disabled="exporting.has(song.id)"
-                      @click="openInLogic(song)"
-                    />
-                    <Button
-                      v-if="song.hasScore"
-                      icon="pi pi-sliders-h"
-                      text
-                      size="small"
-                      rounded
-                      v-tooltip="t('openLogicPage')"
-                      :aria-label="t('openLogicPage')"
                       @click="openOnLogicPage(song.id)"
                     />
                     <Button
