@@ -27,8 +27,8 @@ public sealed class SqliteVersionStore(SqliteDatabase database)
             null,
             """
             INSERT INTO song_versions (id, song_id, title, voice_id, voice_label, semi_tone_shift, strength, diffusion_steps,
-                keep_reverb, stage, message, created_at, updated_at)
-            VALUES ($id, $song, $title, $voice, $label, $shift, $strength, $steps, $reverb, $stage, $message, $created, $updated)
+                keep_reverb, stem_model, stage, message, created_at, updated_at)
+            VALUES ($id, $song, $title, $voice, $label, $shift, $strength, $steps, $reverb, $stem, $stage, $message, $created, $updated)
             """,
             ("$id", version.Id),
             ("$song", version.SongId),
@@ -39,6 +39,7 @@ public sealed class SqliteVersionStore(SqliteDatabase database)
             ("$strength", version.Strength),
             ("$steps", version.DiffusionSteps),
             ("$reverb", version.KeepReverb ? 1 : 0),
+            ("$stem", (object?)version.StemModel ?? DBNull.Value),
             ("$stage", version.Stage),
             ("$message", (object?)version.Message ?? DBNull.Value),
             ("$created", Time(version.CreatedAt)),
@@ -128,6 +129,7 @@ public sealed class SqliteVersionStore(SqliteDatabase database)
         Strength = reader.GetDouble(reader.GetOrdinal("strength")),
         DiffusionSteps = reader.GetInt32(reader.GetOrdinal("diffusion_steps")),
         KeepReverb = reader.GetInt64(reader.GetOrdinal("keep_reverb")) != 0,
+        StemModel = reader.IsDBNull(reader.GetOrdinal("stem_model")) ? null : reader.GetString(reader.GetOrdinal("stem_model")),
         Stage = reader.GetString(reader.GetOrdinal("stage")),
         Message = reader.IsDBNull(reader.GetOrdinal("message")) ? null : reader.GetString(reader.GetOrdinal("message")),
         CreatedAt = DateTimeOffset.Parse(reader.GetString(reader.GetOrdinal("created_at")), CultureInfo.InvariantCulture),

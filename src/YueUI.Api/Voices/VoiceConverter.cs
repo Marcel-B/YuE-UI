@@ -59,6 +59,7 @@ public sealed class VoiceConverter(
             Strength = request.Strength,
             DiffusionSteps = request.DiffusionSteps,
             KeepReverb = request.KeepReverb,
+            StemModel = options.Value.StemModel,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -145,7 +146,7 @@ public sealed class VoiceConverter(
             await host.ShutdownWorkerAsync();
 
             version = Update(version, v => v with { Stage = "separating" });
-            var separated = await stems.SeparateAsync(Path.Combine(directory, "audio.flac"), work, cancel.Token);
+            var separated = await stems.SeparateAsync(Path.Combine(directory, "audio.flac"), version.StemModel, work, cancel.Token);
 
             version = Update(version, v => v with { Stage = "converting", Fraction = 0 });
             var started = await voices.StartJobAsync(version, separated.Vocals, cancel.Token);

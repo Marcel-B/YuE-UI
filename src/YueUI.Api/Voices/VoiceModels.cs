@@ -81,6 +81,12 @@ public sealed record VersionState
 
     public bool KeepReverb { get; init; }
 
+    /// <summary>
+    /// StemMyWav's model that separated the vocals, taken from <see cref="VoiceOptions.StemModel"/> when the version
+    /// is asked for, so a version can be told apart after the setting changed. Null for versions made before it was kept.
+    /// </summary>
+    public string? StemModel { get; init; }
+
     public string Stage { get; init; } = "queued";
 
     /// <summary>Progress of the conversion, 0–1, estimated from the time ChangeMyVoice expects; not stored.</summary>
