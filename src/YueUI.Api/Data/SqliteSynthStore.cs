@@ -114,6 +114,32 @@ public sealed class SqliteSynthStore(SqliteDatabase database)
         return SqliteDatabase.Execute(connection, null, "DELETE FROM track_synths WHERE track = $track", ("$track", track)) > 0;
     }
 
+    /// <summary>The mixer's settings, or <c>null</c> before they were first saved.</summary>
+    public MixerSettings GetMixer()
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT settings, updated_at FROM logic_mixer WHERE id = 1";
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? new MixerSettings(Parse(reader.GetString(0)), reader.GetString(1)) : new MixerSettings(null, null);
+    }
+
+    public MixerSettings SetMixer(JsonElement settings)
+    {
+        using (var connection = database.Open())
+        {
+            SqliteDatabase.Execute(
+                connection,
+                null,
+                """
+                INSERT INTO logic_mixer (id, settings) VALUES (1, $settings)
+                ON CONFLICT (id) DO UPDATE SET settings = excluded.settings, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                """,
+                ("$settings", settings.GetRawText()));
+        }
+        return GetMixer();
+    }
+
     private static string Key(string name) => name.ToUpperInvariant();
 
     /// <summary>The patch is parsed so that it goes out as JSON, not as a string of JSON.</summary>

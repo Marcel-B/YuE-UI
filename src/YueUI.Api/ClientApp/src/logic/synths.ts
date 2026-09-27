@@ -1,7 +1,9 @@
 import { ref } from 'vue'
 import {
+  getMixer,
   listSynthPresets,
   listTrackSynths,
+  putMixer,
   putSynthPreset,
   putTrackSynth,
   removeSynthPreset,
@@ -31,6 +33,70 @@ export const trackSounds = ref<Record<string, TrackSound>>({})
 export const namedSounds = ref<NamedSound[]>([])
 export const soundsError = ref<string | null>(null)
 
+/** Volume (linear, 1 = unchanged) and pan (-1 to 1) of one track in the preview's mixer. */
+export interface TrackMix {
+  volume: number
+  pan: number
+}
+
+export interface MixerState {
+  master: number
+  /** Keyed like `trackSounds`; a track missing here sits at 1 and centre. */
+  tracks: Record<string, TrackMix>
+}
+
+/** The fader's top: about +6 dB, room to lift a quiet track above the rest. */
+export const MAX_VOLUME = 2
+
+export const mixer = ref<MixerState>({ master: 1, tracks: {} })
+
+function level(value: unknown, fallback: number, max = MAX_VOLUME): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(0, value)) : fallback
+}
+
+/** Whatever the server kept, made safe to play: out-of-range values clamped, anything broken dropped. */
+export function normalizeMixer(raw: unknown): MixerState {
+  const value = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const tracks = value.tracks && typeof value.tracks === 'object' ? (value.tracks as Record<string, unknown>) : {}
+  return {
+    master: level(value.master, 1),
+    tracks: Object.fromEntries(
+      Object.entries(tracks).map(([track, entry]) => {
+        const mix = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {}
+        const pan = typeof mix.pan === 'number' && Number.isFinite(mix.pan) ? Math.min(1, Math.max(-1, mix.pan)) : 0
+        return [trackKey(track), { volume: level(mix.volume, 1), pan }]
+      }),
+    ),
+  }
+}
+
+export function trackMix(track: string): TrackMix {
+  return mixer.value.tracks[trackKey(track)] ?? { volume: 1, pan: 0 }
+}
+
+let mixerTimer = 0
+
+/** Applies at once and saves shortly after, so a fader drag sends one request. */
+function saveMixer(): void {
+  window.clearTimeout(mixerTimer)
+  mixerTimer = window.setTimeout(() => {
+    putMixer(mixer.value).then(() => (soundsError.value = null), failed)
+  }, 500)
+}
+
+export function setTrackMix(track: string, mix: Partial<TrackMix>): void {
+  mixer.value = {
+    ...mixer.value,
+    tracks: { ...mixer.value.tracks, [trackKey(track)]: { ...trackMix(track), ...mix } },
+  }
+  saveMixer()
+}
+
+export function setMasterVolume(volume: number): void {
+  mixer.value = { ...mixer.value, master: volume }
+  saveMixer()
+}
+
 let loading: Promise<void> | null = null
 
 export function trackKey(track: string): string {
@@ -45,7 +111,8 @@ function failed(caught: unknown): void {
 export function loadSounds(): Promise<void> {
   loading ??= (async () => {
     try {
-      const [tracks, presets] = await Promise.all([listTrackSynths(), listSynthPresets()])
+      const [tracks, presets, stored] = await Promise.all([listTrackSynths(), listSynthPresets(), getMixer()])
+      mixer.value = normalizeMixer(stored.settings)
       trackSounds.value = Object.fromEntries(
         tracks.map((entry) => [trackKey(entry.track), { patch: entry.patch, preset: entry.preset }]),
       )

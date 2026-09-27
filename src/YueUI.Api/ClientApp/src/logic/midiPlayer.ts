@@ -97,7 +97,27 @@ export interface Output {
   /** Stops everything sounding right now - the panic button, and what every stop needs. */
   silence(): void
   close(): void
+  /** Takes over changed mixer settings; only the browser's own output has a mixer. */
+  mixChanged?(): void
+  /** Peak levels since the last call, 0 to 1 and above for clipping; only the browser's own output has meters. */
+  levels?(): Levels
 }
+
+/** The mixer's settings as the browser output reads them, looked up whenever they change. */
+export interface MixLookup {
+  /** Linear gain, 1 = unchanged. */
+  volume(track: string): number
+  /** -1 left to 1 right. */
+  pan(track: string): number
+  master(): number
+}
+
+export interface Levels {
+  tracks: Map<string, number>
+  master: number
+}
+
+const NEUTRAL_MIX: MixLookup = { volume: () => 1, pan: () => 0, master: () => 1 }
 
 /** Percussion on an oscillator stays an imitation, but filtered noise at least reads as a drum kit. */
 const DRUM_VOICES: Record<number, { frequency: number; decay: number; noise: number; highpass: number }> = {
@@ -121,11 +141,51 @@ const DEFAULT_DRUM = { frequency: 160, decay: 0.16, noise: 0.8, highpass: 800 }
 export type PatchLookup = (track: string) => SynthPatch | null
 
 /** The browser synthesizer (see synth.ts) for pitched notes, filtered noise for the drum channel. */
-export function createAudioOutput(patchFor: PatchLookup = () => null): Output {
+export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLookup = NEUTRAL_MIX): Output {
   const context = new AudioContext()
+  /** Headroom: a few voices at full level stay below clipping. */
+  const HEADROOM = 0.2
   const master = context.createGain()
-  master.gain.value = 0.2
+  master.gain.value = HEADROOM * mix.master()
+  const masterMeter = context.createAnalyser()
+  masterMeter.fftSize = 512
+  master.connect(masterMeter)
   master.connect(context.destination)
+
+  /** One channel strip per track, made on its first note: fader, pan and a meter after both, as on a desk. */
+  interface Strip {
+    fader: GainNode
+    panner: StereoPannerNode
+    meter: AnalyserNode
+  }
+  const strips = new Map<string, Strip>()
+  const samples = new Float32Array(512)
+
+  function strip(track: string): AudioNode {
+    let found = strips.get(track)
+    if (!found) {
+      const fader = context.createGain()
+      fader.gain.value = mix.volume(track)
+      const panner = context.createStereoPanner()
+      panner.pan.value = mix.pan(track)
+      const meter = context.createAnalyser()
+      meter.fftSize = 512
+      fader.connect(panner).connect(meter)
+      panner.connect(master)
+      found = { fader, panner, meter }
+      strips.set(track, found)
+    }
+    return found.fader
+  }
+
+  function peak(analyser: AnalyserNode): number {
+    analyser.getFloatTimeDomainData(samples)
+    let max = 0
+    for (const sample of samples) {
+      max = Math.max(max, Math.abs(sample))
+    }
+    return max
+  }
 
   /** One second of noise, reused by every drum hit instead of building a buffer per note. */
   const noise = noiseBuffer(context)
@@ -145,7 +205,7 @@ export function createAudioOutput(patchFor: PatchLookup = () => null): Output {
     const gain = context.createGain()
     gain.gain.setValueAtTime(level * 0.9, start)
     gain.gain.exponentialRampToValueAtTime(0.0001, start + shape.decay)
-    gain.connect(master)
+    gain.connect(strip(note.track))
 
     if (shape.noise > 0) {
       const source = context.createBufferSource()
@@ -189,7 +249,7 @@ export function createAudioOutput(patchFor: PatchLookup = () => null): Output {
       const patch = patchFor(note.track) ?? defaultPatch(undefined)
       playSynthNote(
         context,
-        master,
+        strip(note.track),
         patch,
         { pitch: note.pitch, level, start, end: start + note.duration },
         (source, onEnded) => {
@@ -214,6 +274,22 @@ export function createAudioOutput(patchFor: PatchLookup = () => null): Output {
     close() {
       this.silence()
       void context.close()
+    },
+    mixChanged() {
+      // A short glide, so dragging a fader does not click.
+      const now = context.currentTime
+      master.gain.setTargetAtTime(HEADROOM * mix.master(), now, 0.02)
+      for (const [track, { fader, panner }] of strips) {
+        fader.gain.setTargetAtTime(mix.volume(track), now, 0.02)
+        panner.pan.setTargetAtTime(mix.pan(track), now, 0.02)
+      }
+    },
+    levels() {
+      // The master meter reads before the headroom, so a full mix shows as full.
+      return {
+        tracks: new Map([...strips].map(([track, entry]) => [track, peak(entry.meter)])),
+        master: peak(masterMeter) / HEADROOM,
+      }
     },
   }
 }
@@ -310,6 +386,7 @@ export class OutputPool {
   constructor(
     private access: MIDIAccess | null,
     private readonly patchFor: PatchLookup = () => null,
+    private readonly mix: MixLookup = NEUTRAL_MIX,
   ) {}
 
   setAccess(access: MIDIAccess | null): void {
@@ -323,9 +400,31 @@ export class OutputPool {
     }
     // A port that has gone away falls back to the oscillator rather than leaving the track silent.
     const port = key === AUDIO_OUTPUT ? null : (this.access?.outputs.get(key) ?? null)
-    const output = port ? createMidiOutput(port) : createAudioOutput(this.patchFor)
+    const output = port ? createMidiOutput(port) : createAudioOutput(this.patchFor, this.mix)
     this.open.set(key, output)
     return output
+  }
+
+  mixChanged(): void {
+    for (const output of this.open.values()) {
+      output.mixChanged?.()
+    }
+  }
+
+  /**
+   * The meters of every output that sounds in the browser: its own, and any that stands in for a port that is gone.
+   * Empty while nothing has sounded yet.
+   */
+  levels(): Levels {
+    const all: Levels = { tracks: new Map(), master: 0 }
+    for (const output of this.open.values()) {
+      const levels = output.levels?.()
+      if (levels) {
+        levels.tracks.forEach((level, track) => all.tracks.set(track, Math.max(level, all.tracks.get(track) ?? 0)))
+        all.master = Math.max(all.master, levels.master)
+      }
+    }
+    return all
   }
 
   silence(): void {

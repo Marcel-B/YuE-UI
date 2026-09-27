@@ -34,8 +34,9 @@ import {
 } from '../../logic/midiPlayer'
 import { playableVoices } from '../../logic/score'
 import { hasSynth, normalizePatch, type SynthPatch } from '../../logic/synth'
-import { loadSounds, trackKey, trackSounds } from '../../logic/synths'
+import { loadSounds, mixer, trackKey, trackMix, trackSounds } from '../../logic/synths'
 import type { Assignments, Instrument, ScoreDocument, VoiceTrack } from '../../logic/types'
+import MixerPanel, { type MixerTrack } from './MixerPanel.vue'
 import SynthDialog from './SynthDialog.vue'
 
 const props = defineProps<{
@@ -99,7 +100,45 @@ const patches = computed(
       ]),
     ),
 )
-const pool = new OutputPool(null, (track) => patches.value.get(trackKey(track)) ?? null)
+const pool = new OutputPool(null, (track) => patches.value.get(trackKey(track)) ?? null, {
+  volume: (track) => trackMix(track).volume,
+  pan: (track) => trackMix(track).pan,
+  master: () => mixer.value.master,
+})
+// Fader and pan are heard at once; the schedule stays as it is.
+watch(mixer, () => pool.mixChanged(), { deep: true })
+
+/** Tracks on solo; while any is, only those play. Not saved: a solo is for listening now. */
+const solos = ref<boolean[]>([])
+/** The routing the player uses, with mute and solo applied; a muted track's notes are not scheduled at all. */
+const audible = computed(() => {
+  const anySolo = solos.value.some(Boolean)
+  return effective.value.map((entry, index) => ({
+    ...entry.routing,
+    muted: entry.routing.muted || (anySolo && !solos.value[index]),
+  }))
+})
+const mixerTracks = computed<MixerTrack[]>(() =>
+  trackIds.value.map((id, index) => ({
+    id,
+    inBrowser: effective.value[index]?.routing.output === AUDIO_OUTPUT,
+    muted: routings.value[index]?.muted ?? false,
+    solo: solos.value[index] ?? false,
+  })),
+)
+
+function setMute(index: number, muted: boolean): void {
+  const routing = routings.value[index]
+  if (routing) {
+    routing.muted = muted
+  }
+}
+
+function setSolo(index: number, solo: boolean): void {
+  const next = [...solos.value]
+  next[index] = solo
+  solos.value = next
+}
 const synthDialog = ref<InstanceType<typeof SynthDialog> | null>(null)
 
 /** The middle of a track's range, so a test note or phrase sounds where the track plays. */
@@ -210,19 +249,11 @@ function release(): void {
 
 function play(fromTicks = playhead.value ?? 0): void {
   if (!player) {
-    player = createPlayer(
-      scheduleOf(
-        props.score,
-        voices.value,
-        effective.value.map((entry) => entry.routing),
-      ),
-      pool,
-      () => {
-        playing.value = false
-        playhead.value = null
-        render()
-      },
-    )
+    player = createPlayer(scheduleOf(props.score, voices.value, audible.value), pool, () => {
+      playing.value = false
+      playhead.value = null
+      render()
+    })
   }
   player.play(fromTicks * secondsPerTick.value)
   playing.value = true
@@ -348,6 +379,7 @@ watch(
     voices.value = playableVoices(score, includeChords)
     lanes.value = lanesOf(voices.value)
     routings.value = loadRoutings(trackIds.value, defaultRoutings(voices.value))
+    solos.value = []
     scrollTicks = 0
     if (viewport.value) {
       viewport.value.scrollLeft = 0
@@ -361,7 +393,7 @@ watch(routings, (value) => saveRoutings(trackIds.value, value), { deep: true })
 // Re-routing - by hand, by instrument or by a port coming or going - rebuilds the schedule; playback picks up
 // where it was rather than jumping back to the start. Compared as text, so a refreshed port list alone changes nothing.
 watch(
-  () => JSON.stringify(effective.value.map((entry) => entry.routing)),
+  () => JSON.stringify(audible.value),
   () => {
     const resume = playing.value ? (playhead.value ?? 0) : null
     release()
@@ -603,6 +635,11 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
             </tbody>
           </table>
         </div>
+      </Panel>
+
+      <Panel :header="t('mixerTitle')" toggleable class="mt-3" :pt="{ contentWrapper: { class: 'min-w-0' } }">
+        <MixerPanel :tracks="mixerTracks" :pool="pool" @mute="setMute" @solo="setSolo" />
+        <p class="muted hint mb-0">{{ t('mixerHint') }}</p>
       </Panel>
 
       <p class="muted hint">{{ note ?? (hasInstruments ? t('previewInstrumentHint') : t('previewHint')) }}</p>

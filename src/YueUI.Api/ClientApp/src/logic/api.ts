@@ -186,6 +186,20 @@ export async function removeTrackSynth(track: string): Promise<void> {
   await request(`/api/logic/synths/tracks/${encodeURIComponent(track)}`, { method: 'DELETE' })
 }
 
+/** The preview's mixer as the server keeps it; `settings` is null before it was first saved. */
+export interface StoredMixer {
+  settings: unknown
+  updatedAt: string | null
+}
+
+export async function getMixer(): Promise<StoredMixer> {
+  return (await request('/api/logic/synths/mixer')).json() as Promise<StoredMixer>
+}
+
+export async function putMixer(settings: unknown): Promise<void> {
+  await request('/api/logic/synths/mixer', json('PUT', { settings }))
+}
+
 // ---- Instruments -------------------------------------------------------------------------------
 
 export async function listInstruments(): Promise<Instrument[]> {

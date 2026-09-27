@@ -22,6 +22,7 @@ namespace YueUI.Api.Data;
 /// <see cref="SqliteLogicPresetStore"/>), as yue-to-logic-pro kept them, without its users.
 /// Version 8: the Logic page's browser synthesizer: the sound each track plays in the preview and named sounds to reuse
 /// (<see cref="SqliteSynthStore"/>).
+/// Version 9: the preview's mixer (volume and pan per track, master), one row (<see cref="SqliteSynthStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -243,6 +244,21 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                     );
                     PRAGMA user_version = 8;
+                    """);
+            }
+            if (current < 9)
+            {
+                // One mixer for the page, like the one playlist: a single row whose settings the browser alone reads.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE logic_mixer (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        settings TEXT NOT NULL,
+                        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    );
+                    PRAGMA user_version = 9;
                     """);
             }
             _ready = true;

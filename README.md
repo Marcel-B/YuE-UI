@@ -107,6 +107,8 @@ Die Bibliothek zeigt bei jedem Song mit Partitur einen Knopf **Auf der Logic-Sei
 
 **Klang im Browser.** Spuren, die im Browser klingen (Ausgang „Ton im Browser“, kein Schlagzeug), haben in der Tabelle „Ausgänge je Spur“ einen Knopf **Klang**. Er öffnet einen kleinen Synthesizer für diese Spur: zwei Oszillatoren (Wellenform, Oktave, Verstimmung, Pegel) und Rauschen, ein Filter (Tiefpass, Hochpass, Bandpass mit Frequenz, Resonanz, Hüllkurve, Keytracking), je eine ADSR-Hüllkurve für Lautstärke und Filter und ein LFO auf Tonhöhe, Filter oder Lautstärke. Jede Änderung gilt sofort, auch während der Song läuft; **Anhören** spielt eine kurze Phrase in der Lage der Spur. Der Klang bleibt der Spur zugeordnet (nach ihrem Namen, also für jeden Song) und lässt sich unter einem Namen sichern und anderen Spuren geben. Beides liegt in `yueui.db`. Der Synthesizer ist nur zum Anhören im Browser; MIDI-Datei und Logic-Projekt bleiben davon unberührt.
 
+**Mixer.** Unter der Tabelle steht ein Mixer mit einem Kanalzug je Spur: Lautstärke (bis +6 dB), Panorama, Mute, Solo und eine Pegelanzeige, dazu der Master. Lautstärke und Panorama gelten nur für den Ton im Browser und werden sofort hörbar; Mute und Solo entscheiden, welche Spuren überhaupt spielen, auch auf MIDI-Geräten. Ein Klick auf den Wert unter dem Regler setzt ihn zurück, einer auf die rot leuchtende Pegelspitze löscht sie. Lautstärken und Panorama liegen in `yueui.db`, Solo gilt nur bis zum Neuladen.
+
 **Instrumente aus yue-to-logic-pro übernehmen.** Solange der alte Server noch läuft, holt dieser Befehl (etwa auf dem Proxmox-Host, der beide erreicht) seine Instrumente, Zuordnungen und Voreinstellungen und gibt sie YuE UI; zweimal ausgeführt ändert er nichts:
 
 ```sh
@@ -198,6 +200,7 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `GET` / `PUT` / `DELETE` | `/api/logic/presets[/{name}]` | Voreinstellungen der Seite Logic (`PUT` mit `{ form }`) |
 | `GET` / `PUT` / `DELETE` | `/api/logic/synths/presets[/{name}]` | Gespeicherte Klänge des Browser-Synthesizers (`PUT` mit `{ patch }`) |
 | `GET` / `PUT` / `DELETE` | `/api/logic/synths/tracks[/{track}]` | Klang je Spur (`PUT` mit `{ patch, preset }`; `DELETE` gibt der Spur den Standardklang zurück) |
+| `GET` / `PUT` | `/api/logic/synths/mixer` | Mixer der Vorschau (`PUT` mit `{ settings }`: Master und Lautstärke/Panorama je Spur) |
 | `POST` | `/api/logic/import` | Instrumente, Zuordnungen und Voreinstellungen aus yue-to-logic-pro übernehmen (`{ instruments, assignments, presets }`, wie dessen `GET`-Routen sie liefern) |
 | `GET` / `POST` | `/api/instruments` | Instrumente der Seite Logic (Name, Port, Kanal, `kind` `Synth` oder `DrumMachine`, `drums`); `409` bei doppeltem Namen |
 | `PUT` / `DELETE` | `/api/instruments/{id}` | Instrument ändern oder löschen (mit seinen Zuordnungen) |
@@ -242,6 +245,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Warteschlange nach Modell bündeln (gleiche Arten zusammen, solange nichts zu lange wartet)
 - [x] yue-to-logic-pro aufgenommen: Logic-Export im eigenen Prozess, Seite Logic mit Optionen, Instrumenten und Web MIDI
 - [x] Synthesizer im Browser für die Vorschau der Seite Logic, Klang je Spur und gespeicherte Klänge
+- [x] Mixer für die Vorschau im Browser
 - [x] Stimme schon im Formular wählen; die Fassung entsteht dann von selbst, sobald der Song fertig ist
 - [ ] Eine Fassung statt der Originalstimme ins Logic-Projekt
 - [x] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)

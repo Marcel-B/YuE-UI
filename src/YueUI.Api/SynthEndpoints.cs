@@ -28,6 +28,12 @@ public static class SynthEndpoints
             store.RemoveTrack(track.Trim());
             return Results.NoContent();
         });
+
+        synths.MapGet("/mixer", (SqliteSynthStore store) => Results.Ok(store.GetMixer()));
+        synths.MapPut("/mixer", ([FromBody] MixerInput input, SqliteSynthStore store) =>
+            input.Problems() is { Count: > 0 } problems
+                ? BadRequest("Invalid mixer", problems)
+                : Results.Ok(store.SetMixer(input.Settings!.Value)));
         return api;
     }
 
