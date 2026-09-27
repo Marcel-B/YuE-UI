@@ -12,7 +12,7 @@ namespace YueUI.Api;
 /// </summary>
 public static class VoiceEndpoints
 {
-    /// <summary>A reference voice is a few seconds of singing; ChangeMyVoice keeps only the first 25 anyway.</summary>
+    /// <summary>A reference voice is a few seconds of singing; ChangeMyVoice keeps only 25 anyway (the first, or from the chosen start).</summary>
     public const long MaxVoiceBytes = 64L * 1024 * 1024;
 
     public static RouteGroupBuilder MapVoiceEndpoints(this RouteGroupBuilder api)
@@ -50,7 +50,12 @@ public static class VoiceEndpoints
     }
 
     private static async Task<IResult> AddVoiceAsync(
-        [FromForm] string? label, IFormFile? file, VoiceClient voices, CancellationToken cancellationToken)
+        [FromForm] string? label,
+        IFormFile? file,
+        [FromForm] double? startSeconds,
+        [FromForm] double? endSeconds,
+        VoiceClient voices,
+        CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(label) || label.Trim().Length > 100)
@@ -61,6 +66,15 @@ public static class VoiceEndpoints
         {
             errors["file"] = ["A recording of the voice: WAV, MP3, FLAC, M4A or OGG."];
         }
+        // Checked here too so the form hears it in its own words; ChangeMyVoice refuses the same.
+        if (startSeconds is { } start && (!double.IsFinite(start) || start < 0))
+        {
+            errors["startSeconds"] = ["The start, in seconds from 0."];
+        }
+        if (endSeconds is { } end && (!double.IsFinite(end) || end <= (startSeconds ?? 0)))
+        {
+            errors["endSeconds"] = ["The end, in seconds after the start."];
+        }
         if (errors.Count > 0)
         {
             return Results.ValidationProblem(errors);
@@ -68,7 +82,7 @@ public static class VoiceEndpoints
         return await Call(async () =>
         {
             await using var audio = file!.OpenReadStream();
-            var voice = await voices.AddVoiceAsync(label!.Trim(), audio, file.FileName, cancellationToken);
+            var voice = await voices.AddVoiceAsync(label!.Trim(), audio, file.FileName, startSeconds, endSeconds, cancellationToken);
             return Results.Created($"/api/voices/{voice.Id}", voice);
         });
     }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
+import Slider from 'primevue/slider'
+import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { addVoice, deleteVoice, listVoices, voiceAudioUrl } from '../api'
-import { formatDateTime, formatDuration, t } from '../i18n'
+import { formatDateTime, formatDuration, locale, t } from '../i18n'
+import NumberField from './NumberField.vue'
 import type { ReferenceVoice, VersionState } from '../types'
 import { showSong } from '../view'
 
@@ -58,17 +60,20 @@ function chosen(event: Event): void {
   if (file.value && !label.value.trim()) {
     label.value = file.value.name.replace(/\.[^.]+$/, '')
   }
+  setPreview(file.value)
 }
 
 async function add(): Promise<void> {
-  if (!label.value.trim() || !file.value || adding.value) {
+  if (!label.value.trim() || !file.value || adding.value || tooShort.value) {
     return
   }
   adding.value = true
   try {
-    await addVoice(label.value.trim(), file.value)
+    const [start, end] = trimmed.value
+    await addVoice(label.value.trim(), file.value, start, end)
     label.value = ''
     file.value = null
+    setPreview(null)
     if (fileInput.value) {
       fileInput.value.value = ''
     }
@@ -78,6 +83,100 @@ async function add(): Promise<void> {
   } finally {
     adding.value = false
   }
+}
+
+// ---- Trimming --------------------------------------------------------------------------------------
+
+/**
+ * The chosen file, played in the browser, so the part to keep can be found by ear: a recording often starts with
+ * talking or silence, and ChangeMyVoice keeps only 25 seconds. Only the numbers go to the server, the whole file
+ * with them; ChangeMyVoice cuts it (since its #20).
+ */
+const preview = useTemplateRef<HTMLAudioElement>('preview')
+const previewUrl = ref<string | null>(null)
+/** Known once the browser has read the file's header; without it (a format it cannot play) there is no trimming. */
+const duration = ref<number | null>(null)
+/** Start and end in seconds, as the slider's range. */
+const clip = ref<[number, number]>([0, 0])
+/** Set while "play the part" runs, so playback stops at the end. */
+const playingClip = ref(false)
+
+/** ChangeMyVoice's limits: it keeps 25 seconds from the start and refuses a part shorter than 3. */
+const keptSeconds = 25
+const minSeconds = 3
+
+onBeforeUnmount(() => setPreview(null))
+
+function setPreview(chosen: File | null): void {
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+  }
+  previewUrl.value = chosen ? URL.createObjectURL(chosen) : null
+  duration.value = null
+  playingClip.value = false
+}
+
+function metadata(): void {
+  const seconds = preview.value?.duration ?? NaN
+  duration.value = Number.isFinite(seconds) && seconds > 0 ? round(seconds) : null
+  if (duration.value !== null) {
+    clip.value = [0, Math.min(duration.value, keptSeconds)]
+  }
+}
+
+const start = computed({
+  get: () => clip.value[0],
+  set: (value: number) => (clip.value = [Math.min(value, clip.value[1]), clip.value[1]]),
+})
+const end = computed({
+  get: () => clip.value[1],
+  set: (value: number) => (clip.value = [clip.value[0], Math.max(value, clip.value[0])]),
+})
+
+const clipSeconds = computed(() => round(clip.value[1] - clip.value[0]))
+const tooShort = computed(() => duration.value !== null && clipSeconds.value < minSeconds)
+
+/** What is sent: only what differs from the whole file, so an untouched choice is the plain upload it was before. */
+const trimmed = computed<[number | undefined, number | undefined]>(() =>
+  duration.value === null
+    ? [undefined, undefined]
+    : [clip.value[0] > 0 ? clip.value[0] : undefined, clip.value[1] < duration.value ? clip.value[1] : undefined],
+)
+
+function here(which: 'start' | 'end'): void {
+  const position = round(preview.value?.currentTime ?? 0)
+  if (which === 'start') {
+    start.value = position
+  } else {
+    end.value = position
+  }
+}
+
+function playClip(): void {
+  const element = preview.value
+  if (!element) {
+    return
+  }
+  element.currentTime = clip.value[0]
+  playingClip.value = true
+  // Inside the click, as iOS wants it.
+  void element.play().catch(() => (playingClip.value = false))
+}
+
+function timeUpdate(): void {
+  const element = preview.value
+  if (playingClip.value && element && element.currentTime >= clip.value[1]) {
+    element.pause()
+    playingClip.value = false
+  }
+}
+
+function round(seconds: number): number {
+  return Math.round(seconds * 10) / 10
+}
+
+function formatSeconds(seconds: number): string {
+  return seconds.toLocaleString(locale.value, { maximumFractionDigits: 1 })
 }
 
 /** Refused (409) while a job of the service still waits for the voice. */
@@ -215,12 +314,66 @@ const stageSeverity: Record<string, string | undefined> = {
           @change="chosen"
         />
       </div>
+      <div v-if="previewUrl" class="flex min-w-0 basis-full flex-col gap-3">
+        <!-- The browser's own controls: seeking by finger works on the phone without anything built here. -->
+        <audio
+          ref="preview"
+          :src="previewUrl"
+          controls
+          preload="metadata"
+          class="w-full"
+          @loadedmetadata="metadata"
+          @timeupdate="timeUpdate"
+          @pause="playingClip = false"
+        ></audio>
+        <template v-if="duration !== null">
+          <Slider v-model="clip" range :min="0" :max="duration" :step="0.1" :disabled="adding" class="mx-2" />
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="flex w-32 flex-col gap-1">
+              <label for="voice-start" class="muted text-sm">{{ t('voiceTrimStart') }}</label>
+              <div class="flex items-center gap-1">
+                <NumberField id="voice-start" v-model="start" :min="0" :max="duration" :fraction-digits="1" />
+                <Button
+                  icon="pi pi-map-marker"
+                  text
+                  rounded
+                  size="small"
+                  v-tooltip="t('voiceTrimStartHere')"
+                  :aria-label="t('voiceTrimStartHere')"
+                  @click="here('start')"
+                />
+              </div>
+            </div>
+            <div class="flex w-32 flex-col gap-1">
+              <label for="voice-end" class="muted text-sm">{{ t('voiceTrimEnd') }}</label>
+              <div class="flex items-center gap-1">
+                <NumberField id="voice-end" v-model="end" :min="0" :max="duration" :fraction-digits="1" />
+                <Button
+                  icon="pi pi-map-marker"
+                  text
+                  rounded
+                  size="small"
+                  v-tooltip="t('voiceTrimEndHere')"
+                  :aria-label="t('voiceTrimEndHere')"
+                  @click="here('end')"
+                />
+              </div>
+            </div>
+            <Button :label="t('voiceTrimPlay')" icon="pi pi-play" outlined size="small" @click="playClip" />
+          </div>
+          <p class="m-0 text-sm" :class="tooShort ? 'danger' : 'muted'">
+            {{ t('voiceTrimLength', { seconds: formatSeconds(clipSeconds) })
+            }}<template v-if="tooShort">, {{ t('voiceTrimTooShort') }}</template
+            ><template v-else-if="clipSeconds > keptSeconds">, {{ t('voiceTrimTooLong') }}</template>
+          </p>
+        </template>
+      </div>
       <Button
         type="submit"
         :label="adding ? t('voiceAdding') : t('voiceAdd')"
         icon="pi pi-upload"
         :loading="adding"
-        :disabled="adding || !label.trim() || !file"
+        :disabled="adding || !label.trim() || !file || tooShort"
       />
     </form>
     <p class="muted m-0 text-sm">{{ t('voiceFileHint') }}</p>

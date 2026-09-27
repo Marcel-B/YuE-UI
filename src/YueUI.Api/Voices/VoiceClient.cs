@@ -29,13 +29,25 @@ public sealed class VoiceClient(IHttpClientFactory clients, IOptions<VoiceOption
         return [.. voices.OfType<JsonObject>().Select(ToVoice)];
     }
 
-    public async Task<ReferenceVoice> AddVoiceAsync(string label, Stream audio, string fileName, CancellationToken cancellationToken)
+    /// <param name="startSeconds">Where the part to keep begins, null for the beginning.</param>
+    /// <param name="endSeconds">Where it ends, null for the end; ChangeMyVoice keeps at most 25 seconds from the start.</param>
+    public async Task<ReferenceVoice> AddVoiceAsync(
+        string label, Stream audio, string fileName, double? startSeconds, double? endSeconds, CancellationToken cancellationToken)
     {
         using var form = new MultipartFormDataContent
         {
             { new StringContent(label), "label" },
             { new StreamContent(audio), "file", fileName },
         };
+        // Sent only when set, with a point as ChangeMyVoice expects: a ChangeMyVoice from before trimming ignores them.
+        if (startSeconds is { } start)
+        {
+            form.Add(new StringContent(start.ToString("0.###", CultureInfo.InvariantCulture)), "startSeconds");
+        }
+        if (endSeconds is { } end)
+        {
+            form.Add(new StringContent(end.ToString("0.###", CultureInfo.InvariantCulture)), "endSeconds");
+        }
         using var response = await SendAsync(HttpMethod.Post, "api/v1/voices", form, cancellationToken);
         return ToVoice(await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken) ?? []);
     }
