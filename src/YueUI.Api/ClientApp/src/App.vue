@@ -399,6 +399,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           v-model:errors="fieldErrors"
           :queued-ids="queuedIds"
           :lyrics-draft="lyricsDraft"
+          :voices="voiceInfo.conversionConfigured"
         />
       </template>
     </Card>

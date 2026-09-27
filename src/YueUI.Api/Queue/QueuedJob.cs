@@ -19,6 +19,7 @@ public enum JobKind
 /// <param name="Batch">How many songs a new run makes.</param>
 /// <param name="Quality">"draft" or "full", for songs and renders.</param>
 /// <param name="Revision">A lyrics job that revises the lyrics rather than drafting new ones.</param>
+/// <param name="VoiceLabel">The voice a new run's songs are sung with once they are ready.</param>
 public sealed record QueuedJob(
     string Id,
     JobKind Kind,
@@ -27,4 +28,5 @@ public sealed record QueuedJob(
     string? SongId = null,
     int? Batch = null,
     string? Quality = null,
-    bool Revision = false);
+    bool Revision = false,
+    string? VoiceLabel = null);

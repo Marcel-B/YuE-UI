@@ -117,6 +117,8 @@ YuE2 singt mit einer Stimme, die es selbst wählt. Mit [ChangeMyVoice](https://g
 
 Das Ergebnis ist eine **Fassung** des Songs: eine FLAC im Datenordner von YuE UI (`versions/` neben `yueui.db`), nicht im Song-Ordner von YuE Studio. Die Bibliothek zeigt die Fassungen unter dem Song, zum Abspielen, Herunterladen und Löschen; wird der Song gelöscht, gehen seine Fassungen mit. Gestartet wird sie über den Knopf **Mit Stimme singen** beim Song (Stimme, Tonlage, Stärke der Stimme, Qualität, Hall). Ist sie fertig, kommt eine Benachrichtigung.
 
+Soll ein neuer Song gleich mit einer Stimme gesungen werden, wählt man sie schon im Formular unter **Danach mit Stimme singen** (mit Tonlage und Stärke; Qualität „Normal“ und der Hall des Originals wie im Dialog). Jeder Song des Laufs kommt dann, sobald er fertig ist, von selbst als Fassung in die Reihe; die Warteschlange zeigt die Stimme am Auftrag und am Song. Eine Neuberechnung (etwa ein Entwurf in voller Qualität) macht keine zweite Fassung.
+
 Die Seite **Stimmen** zeigt die Sammlung von ChangeMyVoice (dieselbe wie in yue-to-logic-pro): anhören, löschen und neue Aufnahmen hochladen. Am besten 10 bis 25 Sekunden trockener Gesang ohne Musik; ChangeMyVoice behält nur die ersten 25 Sekunden. Darunter stehen die Fassungen, die gerade entstehen.
 
 Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für YuE2, Stem-Trennung und Seed-VC zugleich, deshalb geht immer nur eine Fassung, und erst wenn YuE2 nichts rechnet und kein Textentwurf läuft; ein untätiger YuE-Worker wird vorher beendet. Solange eine Fassung entsteht, warten neue Songs, Neuberechnungen und Textentwürfe in der Warteschlange.
@@ -157,7 +159,7 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 |---|---|---|
 | `GET` | `/api/status` | Worker-Zustand, Songs in Arbeit, Protokoll |
 | `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `transcription`, `lyrics`, `version`, `ping`) |
-| `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–15000, abc?, fullSteps?: 1–64, abcSampling?, semanticSampling? }`; `abc` braucht `cot` "full" oder "melody", Sampling ist `{ temperature?, topP?, topK?, repetitionPenalty?, penaltyWindow? }`, über 9000 Tokens, `fullSteps` und Sampling nur mit der Worker-Erweiterung; antwortet `202`, ohne Inhalt, wenn der Lauf an den Worker ging, sonst mit dem wartenden Auftrag `{ id, kind, title, createdAt, songId, batch, quality, revision }` |
+| `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–15000, abc?, fullSteps?: 1–64, abcSampling?, semanticSampling?, voice? }`; `voice` ist `{ voiceId, semiToneShift?, strength?, diffusionSteps?, keepReverb? }` wie bei den Fassungen und singt jeden fertigen Song danach mit dieser Stimme (`400` für eine unbekannte Stimme, `501` ohne Einrichtung); `abc` braucht `cot` "full" oder "melody", Sampling ist `{ temperature?, topP?, topK?, repetitionPenalty?, penaltyWindow? }`, über 9000 Tokens, `fullSteps` und Sampling nur mit der Worker-Erweiterung; antwortet `202`, ohne Inhalt, wenn der Lauf an den Worker ging, sonst mit dem wartenden Auftrag `{ id, kind, title, createdAt, songId, batch, quality, revision, voiceLabel }` |
 | `POST` | `/api/songs/{run}/{song}/render` | Song aus seinen Tokens neu synthetisieren, z. B. einen Entwurf in voller Qualität; `202` wie bei `generate` |
 | `GET` | `/api/queue` | wartende Aufträge in Reihenfolge (auch im Snapshot und als `queue`-Event) |
 | `DELETE` | `/api/queue/{id}` | wartenden Auftrag herausnehmen; `404`, wenn er nicht (mehr) wartet |
@@ -216,7 +218,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Songs mit einer anderen Stimme neu singen (Stem-Trennung, Seed-VC, Remix) und Stimmen hochladen
 - [x] Gemeinsame Warteschlange: Songs, Neuberechnungen und Textentwürfe warten auf den Speicher statt abgelehnt zu werden
 - [ ] Warteschlange nach Modell bündeln (gleiche Arten zusammen, solange nichts zu lange wartet)
-- [ ] Stimme schon im Formular wählen; die Fassung entsteht dann von selbst, sobald der Song fertig ist
+- [x] Stimme schon im Formular wählen; die Fassung entsteht dann von selbst, sobald der Song fertig ist
 - [ ] Eine Fassung statt der Originalstimme ins Logic-Projekt
 - [x] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
 - [x] Restliche Oberfläche auf PrimeVue umstellen (`.button`, `.card`, `.link` und Eingabefelder aus `style.css` ablösen)

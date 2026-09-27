@@ -2,7 +2,9 @@ using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using YueUI.Api.Library;
+using Microsoft.Extensions.Options;
 using YueUI.Api.Queue;
+using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api;
@@ -45,14 +47,44 @@ public static class WorkerEndpoints
     /// While a lyrics draft or a voice conversion holds the memory the song waits in the <see cref="JobQueue"/>; the
     /// answer then carries the waiting job.
     /// </summary>
-    private static async Task<IResult> Generate(GenerateRequest request, JobQueue queue, CancellationToken cancellationToken)
+    /// <remarks>
+    /// A voice is looked up now rather than when the song is ready, as for a version asked for in the library: a wrong
+    /// id or an unreachable voice service is refused before the song takes its minutes.
+    /// </remarks>
+    private static async Task<IResult> Generate(
+        GenerateRequest request,
+        JobQueue queue,
+        VoiceClient voices,
+        IOptions<VoiceOptions> options,
+        CancellationToken cancellationToken)
     {
         var errors = request.Validate();
         if (errors.Count > 0)
         {
             return Results.ValidationProblem(errors);
         }
-        return await Send(() => queue.GenerateAsync(request, cancellationToken));
+        SongVoice? voice = null;
+        if (request.Voice is { } choice)
+        {
+            if (!options.Value.ConversionConfigured)
+            {
+                return Results.Problem(title: "Voices are not configured (Voice:BaseUrl, the stem service and their keys).", statusCode: StatusCodes.Status501NotImplemented);
+            }
+            try
+            {
+                var found = (await voices.ListVoicesAsync(cancellationToken)).FirstOrDefault(v => v.Id == choice.VoiceId);
+                if (found is null)
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["voice.voiceId"] = ["No such reference voice."] });
+                }
+                voice = SongVoice.From(found, choice);
+            }
+            catch (VoiceServiceException exception)
+            {
+                return Results.Problem(title: exception.Message, statusCode: (int)exception.Status);
+            }
+        }
+        return await Send(() => queue.GenerateAsync(request, voice, cancellationToken));
     }
 
     private static async Task<IResult> Render(

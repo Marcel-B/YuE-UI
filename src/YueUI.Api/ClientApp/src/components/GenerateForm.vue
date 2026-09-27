@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
-import { ApiError, draftLyrics, generate, getLyricsModels, reviseLyrics } from '../api'
+import { ApiError, draftLyrics, generate, getLyricsModels, listVoices, reviseLyrics } from '../api'
 import { defaultFormState, toGenerateRequest, type FormState } from '../form'
 import { formatBytes, t } from '../i18n'
 import { photoDataUrl } from '../photo'
 import { hasTag } from '../styleTags'
-import type { LyricsModels, LyricsState } from '../types'
+import type { LyricsModels, LyricsState, ReferenceVoice } from '../types'
+import { octaveOptions, strengthOptions } from '../voiceChoices'
 import FieldHelp from './FieldHelp.vue'
 import StyleBlocks from './StyleBlocks.vue'
 import Checkbox from 'primevue/checkbox'
@@ -17,6 +18,8 @@ const props = defineProps<{
   queuedIds: Set<string>
   /** The last lyrics draft from the event stream, from any browser. */
   lyricsDraft: LyricsState | null
+  /** Songs can be sung with another voice (ChangeMyVoice and StemMyWav are configured). */
+  voices: boolean
 }>()
 const form = defineModel<FormState>({ required: true })
 /** Shared with the advanced parameters, which show the errors of their own fields. */
@@ -36,7 +39,12 @@ async function submit(): Promise<void> {
   message.value = null
   fieldErrors.value = {}
   try {
-    const waiting = await generate(toGenerateRequest(form.value))
+    const request = toGenerateRequest(form.value)
+    // A voice kept in the form from when the server still had voices would be refused.
+    if (!props.voices || voiceList.value === null) {
+      request.voice = null
+    }
+    const waiting = await generate(request)
     message.value = { text: t(waiting ? 'waiting' : 'queued'), error: false }
   } catch (caught) {
     if (caught instanceof ApiError) {
@@ -230,6 +238,36 @@ onMounted(async () => {
     // LM Studio is not there; a draft says so with its own message.
   }
 })
+
+/** Null until the voice service answered; without it the choice stays hidden and songs keep their own voice. */
+const voiceList = ref<ReferenceVoice[] | null>(null)
+
+watch(
+  () => props.voices,
+  async (configured) => {
+    if (!configured || voiceList.value !== null) {
+      return
+    }
+    try {
+      const voices = await listVoices()
+      // A voice deleted since it was picked: back to none rather than a song that is refused.
+      if (form.value.voiceId && !voices.some((v) => v.id === form.value.voiceId)) {
+        form.value.voiceId = ''
+      }
+      voiceList.value = voices
+    } catch {
+      // The voice service is not there; the library says so when a voice is asked for there.
+    }
+  },
+  { immediate: true },
+)
+
+const voiceOptions = computed(() => [
+  { value: '', label: t('voiceAfterNone') },
+  ...(voiceList.value ?? []).map((v) => ({ value: v.id, label: v.label })),
+])
+const octaves = computed(octaveOptions)
+const strengths = computed(strengthOptions)
 
 // The size is shown because on 24 GB it decides whether a model fits beside the open apps.
 const lyricsModelOptions = computed(() =>
@@ -486,6 +524,43 @@ const batchOptions = [
         <small v-if="fieldErrors.batch" class="danger">{{ fieldErrors.batch.join(' ') }}</small>
       </div>
     </div>
+
+    <template v-if="voices && voiceList && voiceList.length > 0">
+      <FloatLabel variant="on" class="mt-5">
+        <Select
+          id="gen-voice"
+          v-model="form.voiceId"
+          option-label="label"
+          option-value="value"
+          :options="voiceOptions"
+          fluid
+          aria-describedby="gen-voice-help"
+        />
+        <label for="gen-voice">{{ t('voiceAfter') }}</label>
+      </FloatLabel>
+      <div v-if="form.voiceId" class="mt-2 flex flex-wrap gap-2">
+        <SelectButton
+          v-model="form.voiceShift"
+          :options="octaves"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          :aria-label="t('octave')"
+          size="small"
+        />
+        <SelectButton
+          v-model="form.voiceStrength"
+          :options="strengths"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          :aria-label="t('strength')"
+          size="small"
+        />
+      </div>
+      <FieldHelp id="gen-voice-help" :hint="t('voiceAfterHint')" />
+      <small v-if="fieldErrors['voice.voiceId']" class="danger">{{ fieldErrors['voice.voiceId'].join(' ') }}</small>
+    </template>
 
     <Divider />
     <div>

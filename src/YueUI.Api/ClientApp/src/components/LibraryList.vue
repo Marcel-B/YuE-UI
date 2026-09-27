@@ -31,6 +31,7 @@ import { shareSong } from '../share'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
 import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
+import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
 import { focusedSong, focusRequest, view } from '../view'
 
 const props = defineProps<{
@@ -369,22 +370,9 @@ const steps = ref(50)
 const keepReverb = ref(true)
 const queueing = ref(false)
 
-/** Whole octaves only: any other shift would sing out of key over the song's own accompaniment. */
-const octaves = computed(() => [
-  { value: -12, label: t('octaveDown') },
-  { value: 0, label: t('octaveNone') },
-  { value: 12, label: t('octaveUp') },
-])
-const strengths = computed(() => [
-  { value: 0.5, label: t('strengthLight') },
-  { value: 0.7, label: t('strengthMedium') },
-  { value: 0.9, label: t('strengthStrong') },
-])
-const stepChoices = computed(() => [
-  { value: 25, label: t('stepsFast') },
-  { value: 50, label: t('stepsNormal') },
-  { value: 100, label: t('stepsFine') },
-])
+const octaves = computed(octaveOptions)
+const strengths = computed(strengthOptions)
+const stepChoices = computed(stepOptions)
 
 async function startSinging(run: RunInfo, song: SongInfo): Promise<void> {
   singing.value = { run, song }

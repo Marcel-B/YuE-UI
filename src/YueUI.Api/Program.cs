@@ -63,6 +63,7 @@ builder.Services.AddHttpClient(VoiceClient.HttpClientName, client => client.Time
 builder.Services.AddHttpClient(StemClient.HttpClientName, client => client.Timeout = TimeSpan.FromHours(2));
 builder.Services.AddSingleton<VoiceConverter>();
 builder.Services.AddHostedService(services => services.GetRequiredService<VoiceConverter>());
+builder.Services.AddHostedService<AutoVersions>();
 
 // Songs, renders and lyrics drafts wait here for the memory instead of being refused; kept in the database.
 builder.Services.AddSingleton<SqliteJobStore>();

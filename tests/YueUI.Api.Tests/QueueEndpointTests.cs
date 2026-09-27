@@ -103,6 +103,25 @@ public sealed class QueueEndpointTests : IDisposable
         Assert.Contains("Doomed", status.Log.Last(l => l.Level == "error").Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_waiting_song_keeps_its_voice()
+    {
+        var client = _app.CreateClient();
+        var lyrics = await HoldLyricsAsync(client);
+
+        var response = await client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa", title = "Sung", voice = new { voiceId = "v1" } });
+
+        var job = (await response.Content.ReadFromJsonAsync<QueuedJob>(TestApp.Json))!;
+        Assert.Equal("Eurobecca", job.VoiceLabel);
+        lyrics.SetResult();
+        var command = await (await _app.StartedWorker()).NextCommand();
+        Assert.Equal("Sung", (string?)command["title"]);
+        Assert.False(command.ContainsKey("yueui_voice"));
+        _app.Worker.Emit(new { @event = "started", job = Run, songs = new[] { new { index = 1, path = _app.AudioPath(Run, "song1") } } });
+        var song = Assert.Single((await _app.WaitForStatus(client, s => s.Songs.Count == 1)).Songs);
+        Assert.Equal(("v1", 0, 0.7), (song.Voice?.VoiceId, song.Voice?.SemiToneShift, song.Voice?.Strength));
+    }
+
     public void Dispose() => _app.Dispose();
 
     /// <summary>A draft that holds the memory until the returned gate opens, so that what follows has to wait.</summary>
