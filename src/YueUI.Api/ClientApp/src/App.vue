@@ -69,6 +69,8 @@ const lyricsDraft = ref<LyricsState | null>(null)
 const versions = ref<VersionState[]>([])
 /** Songs, renders and drafts waiting for the memory. */
 const jobs = ref<QueuedJob[]>([])
+/** How long songs may pass a waiting draft or version (Queue:BundleWindow). */
+const bundleWindowSeconds = ref<number | null>(null)
 /** Lyrics drafts among them, so that the form knows its own is still on its way. */
 const queuedIds = computed(() => new Set(jobs.value.map((j) => j.id)))
 /** Starts optimistic: the warning is for a stream that broke, not for one that is still opening. */
@@ -124,6 +126,7 @@ const unsubscribe = subscribe({
     lyricsDraft.value = snapshot.lyrics
     versions.value = snapshot.versions
     jobs.value = snapshot.queue ?? []
+    bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
     // The stream (re)opened: whatever was written meanwhile is in the library now, the playlist may have changed on
     // another device.
     void loadLibrary()
@@ -447,6 +450,9 @@ async function useAsNewSong(songId: string): Promise<void> {
             :jobs="jobs"
             :listed="listedIds"
             :worker="worker"
+            :lyrics-draft="lyricsDraft"
+            :versions="versions"
+            :bundle-window-seconds="bundleWindowSeconds"
             :log="log"
             @hide-finished="hideFinished"
             @error="show($event, true)"
