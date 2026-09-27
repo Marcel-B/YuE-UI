@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using YueUI.Api.Data;
+using Microsoft.Extensions.DependencyInjection;
 using YueUI.Api.Queue;
+using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Tests;
@@ -176,7 +178,8 @@ public sealed class QueueEndpointTests : IDisposable
         var client = _app.CreateClient();
         await StartSongAsync(client, "One");
         await client.PostAsJsonAsync($"/api/songs/{Run}/song2/versions", new { voiceId = "v1" });
-        await TestApp.WaitUntil(() => _app.Voice.Requests.Count > 0);
+        var converter = _app.Services.GetRequiredService<VoiceConverter>();
+        await TestApp.WaitUntil(() => converter.WaitingSince is not null);
 
         var held = await Generate(client, "Two");
 

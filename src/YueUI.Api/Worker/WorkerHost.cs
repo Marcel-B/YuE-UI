@@ -309,8 +309,10 @@ public sealed class WorkerHost(
             if (connection is not null)
             {
                 AddLog("info", "Stopping the worker");
-                // The pump notices the end of the output and marks what was still running as failed.
                 await connection.DisposeAsync();
+                // Right away rather than when the pump notices the end of the output: a command sent in between
+                // would otherwise go to the process that is ending and be lost. Marks what was still running as failed.
+                Exited(connection);
             }
         }
         finally
