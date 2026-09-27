@@ -253,19 +253,14 @@ export interface LyricsState {
 }
 
 /** The volume the songs are written to (LibraryEndpoints.cs). */
-/** Whether a yue-to-logic-pro server is configured, i.e. whether songs can become Logic projects. */
-export interface LogicExportInfo {
-  configured: boolean
-}
-
-/** A MIDI file read back into a score by yue-to-logic-pro (MidiScore in LogicEndpoints.cs). */
+/** A MIDI file read back into a score (MidiScore in LogicEndpoints.cs). */
 export interface MidiScore {
   abc: string
   /** What could not be carried over, e.g. a track it ignored. */
   warnings: string[]
 }
 
-/** A warning yue-to-logic-pro gave with a Logic project (its own record, PascalCase severity). */
+/** A warning of a Logic export (YueToLogic.Core's Diagnostic, PascalCase severity). */
 export interface LogicDiagnostic {
   severity: 'Info' | 'Warning' | 'Error'
   code: string

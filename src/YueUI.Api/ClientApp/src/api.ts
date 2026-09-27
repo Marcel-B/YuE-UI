@@ -2,7 +2,6 @@ import type {
   GenerateRequest,
   LogEntry,
   LogicDiagnostic,
-  LogicExportInfo,
   LyricsLanguage,
   LyricsModels,
   LyricsState,
@@ -184,12 +183,8 @@ export function runZipUrl(runId: string): string {
   return `${apiBase}/api/runs/${runId}/zip`
 }
 
-export async function getLogicExport(): Promise<LogicExportInfo> {
-  return (await send('/api/logic')).json() as Promise<LogicExportInfo>
-}
-
 /**
- * Has yue-to-logic-pro build a Logic Pro project from the song's audio and score and saves the ZIP. Fetched rather
+ * Builds a Logic Pro project from the song's audio and score and saves the ZIP. Fetched rather
  * than linked: building takes a while, a refusal should become a message rather than a page of JSON, and the
  * warnings travel in a header a link cannot read.
  */
@@ -238,7 +233,7 @@ function fileName(disposition: string | null): string | null {
 }
 
 /** Uploads a recording for SheetSage2; its progress then arrives as `transcription` events. */
-/** A MIDI file, typically a song edited in Logic, read back into a score by yue-to-logic-pro. */
+/** A MIDI file, typically a song edited in Logic, read back into a score. */
 export async function midiToAbc(file: File): Promise<MidiScore> {
   const form = new FormData()
   form.append('file', file)

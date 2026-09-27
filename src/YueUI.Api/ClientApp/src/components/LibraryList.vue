@@ -39,8 +39,6 @@ const props = defineProps<{
   error: string | null
   /** Songs the worker is working on; they cannot be rendered again meanwhile. */
   busyIds: Set<string>
-  /** A yue-to-logic-pro server is configured, so songs can be opened in Logic Pro. */
-  logicExport: boolean
   /** ChangeMyVoice and StemMyWav are configured, so songs can be sung with another voice. */
   voices: boolean
   /** Versions as the event stream reports them, newer than the listing while they are in the works. */
@@ -682,7 +680,6 @@ const severityByQuality: Record<string, string> = {
                       @click="useScore(run, song)"
                     />
                     <Button
-                      v-if="logicExport"
                       icon="pi pi-file-arrow-up"
                       text
                       size="small"
@@ -694,7 +691,7 @@ const severityByQuality: Record<string, string> = {
                       @click="useMidi(run, song)"
                     />
                     <Button
-                      v-if="logicExport && song.hasAudio && song.hasScore"
+                      v-if="song.hasAudio && song.hasScore"
                       icon="pi pi-file-export"
                       text
                       size="small"

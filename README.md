@@ -101,13 +101,11 @@ LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet
 
 ## Als Logic-Projekt laden
 
-Steht unter `Logic:BaseUrl` ein Server von [yue-to-logic-pro](https://github.com/Marcel-B/yue-to-logic-pro), zeigt die Bibliothek bei jedem Song mit Audio und Partitur einen Knopf **Als Logic-Projekt laden**. YuE UI schickt `audio.flac` und `score.abc` direkt von Server zu Server dorthin; der Browser muss die FLAC also nicht erst herunter- und wieder hochladen. Zurück kommt ein ZIP mit dem `.logicx`-Projekt: Audio auf der ersten Spur, Gesang, Instrument und Akkorde als MIDI, Tempo, Takt und Abschnitte aus der Partitur. Hinweise von yue-to-logic-pro zeigt die Oberfläche nach dem Download an; lehnt es einen Song ab (etwa eine Partitur, die es nicht lesen kann), steht der Grund in der Fehlermeldung.
+Die Bibliothek zeigt bei jedem Song mit Audio und Partitur einen Knopf **Als Logic-Projekt laden**. YuE UI baut das Projekt selbst, mit der Bibliothek `YueToLogic.Core` (früher der eigene Dienst [yue-to-logic-pro](https://github.com/Marcel-B/yue-to-logic-pro)); der Browser muss die FLAC also nicht erst herunter- und wieder hochladen. Zurück kommt ein ZIP mit dem `.logicx`-Projekt: Audio auf der ersten Spur, Gesang, Instrument und Akkorde als MIDI, Tempo, Takt und Abschnitte aus der Partitur. Hinweise (etwa eine Partitur, die länger ist als das Audio) zeigt die Oberfläche nach dem Download an; wird aus einem Song kein Projekt (eine Partitur, die sich nicht lesen lässt, Audio ohne 48 kHz), steht der Grund in der Fehlermeldung.
 
-**Zurück aus Logic.** Wer den Song in Logic weiterbearbeitet hat (Melodie, Akkorde, Tempo), wählt dort alle MIDI-Regionen aus und exportiert sie als MIDI-Datei (*Ablage → Exportieren → Auswahl als MIDI-Datei*); die Spurnamen `Vocal`, `Ins` und `Chords` müssen bleiben, an ihnen erkennt yue-to-logic-pro die Stimmen. Der Knopf **MIDI aus Logic als Partitur** beim Song schickt sie an yue-to-logic-pro, das daraus wieder eine `score.abc` macht; die steht dann mit Stil, Text und Seed des Songs im Formular, bereit für einen neuen Song. Dasselbe geht ohne Song über den Knopf neben dem Partiturfeld unter „Erweiterte Parameter“, etwa für eine Melodie, die in Logic entstanden ist. Spuren, die yue-to-logic-pro nicht zuordnen kann, nennt die Oberfläche als Hinweis.
+**Zurück aus Logic.** Wer den Song in Logic weiterbearbeitet hat (Melodie, Akkorde, Tempo), wählt dort alle MIDI-Regionen aus und exportiert sie als MIDI-Datei (*Ablage → Exportieren → Auswahl als MIDI-Datei*); die Spurnamen `Vocal`, `Ins` und `Chords` müssen bleiben, an ihnen erkennt YuE UI die Stimmen. Der Knopf **MIDI aus Logic als Partitur** beim Song macht daraus wieder eine `score.abc`; die steht dann mit Stil, Text und Seed des Songs im Formular, bereit für einen neuen Song. Dasselbe geht ohne Song über den Knopf neben dem Partiturfeld unter „Erweiterte Parameter“, etwa für eine Melodie, die in Logic entstanden ist. Spuren, die sich nicht zuordnen lassen, nennt die Oberfläche als Hinweis.
 
 **Tonart ändern.** Ist der Gesang zu hoch oder zu tief, verschieben **−** und **+** unter dem Partiturfeld die ganze Partitur um je einen Halbton: Melodie, Begleitung, Akkordsymbole und Tonart (`K:`), in der neuen Tonart neu notiert. Daneben lässt sich die Tonart auch direkt wählen; die Partitur wandert dann auf dem kürzeren Weg dorthin (höchstens sechs Halbtöne tiefer oder fünf höher), − und + gehen von da aus weiter. Der Umfang der Stimme `Vocal` steht dabei (etwa „Gesang A3–A4“). Ein Song mit anderer Tonart klingt auch mit gleichem Seed anders, denn die Partitur ist Teil der Eingabe. YuE2 singt diese Stimme in der notierten Lage; wie tief eine Stimme klingen kann, hängt aber auch vom Stil ab („male vocal“, „deep voice“). Das Transponieren passiert im Browser und braucht keinen Server.
-
-yue-to-logic-pro verlangt keinen Schlüssel. Läuft es hinter einem Proxy, muss der Uploads in FLAC-Größe durchlassen (bei Nginx Proxy Manager `client_max_body_size 300m;`). Ohne `Logic:BaseUrl` gibt es den Knopf nicht.
 
 ## Mit anderer Stimme singen
 
@@ -141,7 +139,6 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `Lyrics:MinContextLength` (`Lyrics__MinContextLength`) | `8192` | Kleinster Kontext, auf den YuE UI zurückgeht, wenn LM Studio das Modell wegen zu wenig Speicher ablehnt |
 | `Lyrics:ApiToken` (`Lyrics__ApiToken`) | – | nur nötig, wenn in LM Studio „Require Authentication“ an ist |
 | `Lyrics:Lms` (`Lyrics__Lms`) | `~/.lmstudio/bin/lms` | Kommandozeilenwerkzeug, mit dem YuE UI den Server von LM Studio startet |
-| `Logic:BaseUrl` (`Logic__BaseUrl`) | – | Server von yue-to-logic-pro ohne `/api`, z. B. `https://music.idsrv.info`; leer schaltet den Logic-Export ab |
 | `Logic:SplitSections` (`Logic__SplitSections`) | `false` | eine Region je Songabschnitt statt einer je Spur |
 | `Voice:BaseUrl` (`Voice__BaseUrl`) | – | ChangeMyVoice ohne `/api`, z. B. `http://100.93.85.52:5080`; leer schaltet Stimmen und Fassungen ab |
 | `Voice:ApiKey` (`Voice__ApiKey`) | – | Schlüssel für ChangeMyVoice (`X-Api-Key`) |
@@ -180,9 +177,8 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `GET` | `/api/songs/{run}/{song}/share` | Song als kleine AAC (`.m4a`, 128 kbit/s) zum Teilen; `501`, wenn weder `afconvert` noch `ffmpeg` da ist |
 | `GET` | `/api/songs/{run}/{song}/zip` | FLAC und ABC des Songs als ZIP |
 | `GET` | `/api/runs/{run}/zip` | FLAC und ABC aller Songs des Laufs als ZIP |
-| `GET` | `/api/logic` | `{ configured }`: ob ein Server von yue-to-logic-pro eingetragen ist |
-| `GET` | `/api/songs/{run}/{song}/logic` | Song als Logic-Projekt (ZIP mit `.logicx`), gebaut von yue-to-logic-pro; Hinweise im Header `X-YueToLogic-Diagnostics`; `422`, wenn yue-to-logic-pro den Song ablehnt, `501` ohne Server, `502`/`504`, wenn er nicht oder zu spät antwortet |
-| `POST` | `/api/midi/abc` | Multipart-Feld `file`: MIDI-Datei (bis 4 MB), von yue-to-logic-pro zurück in eine Partitur gewandelt: `{ abc, warnings }`; `422`, wenn keine Partitur daraus wird, `413` für zu große Dateien, `501` ohne Server, `502`, wenn er nicht antwortet |
+| `GET` | `/api/songs/{run}/{song}/logic` | Song als Logic-Projekt (ZIP mit `.logicx`), Hinweise im Header `X-YueToLogic-Diagnostics`; `422`, wenn daraus kein Projekt wird, mit dem Grund |
+| `POST` | `/api/midi/abc` | Multipart-Feld `file`: MIDI-Datei (bis 4 MB), zurück in eine Partitur gewandelt: `{ abc, warnings }`; `422`, wenn keine Partitur daraus wird, `413` für zu große Dateien |
 | `DELETE` | `/api/songs/{run}/{song}` | Song löschen, mit dem letzten auch den Lauf; `409`, solange der Worker daran arbeitet |
 | `PUT` | `/api/songs/{run}/{song}/rating` | Song bewerten (`{"rating": 1…5}`, `null` oder `0` nimmt die Bewertung weg); `400` außerhalb von 1 bis 5 |
 | `PUT` | `/api/runs/{run}/title` | Lauf umbenennen (`{"title": "…"}`, leer = ursprünglicher Titel); Ordner und Song-IDs bleiben |

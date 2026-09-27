@@ -1,23 +1,29 @@
+using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
-using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using YueToLogic.Core.Conversion;
 
 namespace YueUI.Api.Tests;
 
+/// <summary>The export runs the real <c>YueToLogic.Core</c>; its own tests cover what goes into the project.</summary>
 public sealed class LogicEndpointTests : IDisposable
 {
     private const string Run = "20260921-165850-Neon-Night";
+
+    /// <summary>The official YuE2 example (samples/score.abc); 1 047 273 samples at 48 kHz is its length.</summary>
+    private static readonly string SampleScore = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Samples", "score.abc"));
 
     private readonly TestApp _app = new();
 
     public void Dispose() => _app.Dispose();
 
     [Fact]
-    public async Task Song_goes_to_yue_to_logic_and_its_project_comes_back()
+    public async Task A_song_becomes_a_logic_project()
     {
-        _app.AddSong(Run, "song2", title: "Neon: Night?");
-        _app.Logic.Diagnostics = """[{"severity":"Warning","code":"YTL053","message":"No template track for Guide."}]""";
+        AddSong("song2", title: "Neon: Night?", Flac(48000, 1_047_273));
         var client = _app.CreateClient();
 
         var response = await client.GetAsync($"/api/songs/{Run}/song2/logic");
@@ -25,41 +31,24 @@ public sealed class LogicEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/zip", response.Content.Headers.ContentType!.MediaType);
         Assert.Equal("Neon Night-song2.logicx.zip", response.Content.Headers.ContentDisposition!.FileNameStar);
-        Assert.Equal(_app.Logic.Zip, await response.Content.ReadAsByteArrayAsync());
-        Assert.Equal(_app.Logic.Diagnostics, Assert.Single(response.Headers.GetValues(LogicEndpoints.DiagnosticsHeader)));
-
-        Assert.Equal("http://logic.test/api/convert/logic", _app.Logic.RequestUri!.ToString());
-        Assert.Equal(File.ReadAllBytes(_app.AudioPath(Run, "song2")), _app.Logic.Form["audio"]);
-        Assert.Equal("X:1\n", _app.Logic.Field("file"));
-        Assert.Equal("score.abc", _app.Logic.FileNames["file"]);
-        Assert.Equal("audio.flac", _app.Logic.FileNames["audio"]);
-        Assert.Equal("Neon Night-song2", _app.Logic.Field("name"));
-        Assert.Equal("false", _app.Logic.Field("splitSections"));
-        // The score keeps its own tempo: fitting it to the audio's length rarely matched the recording.
-        Assert.False(_app.Logic.Form.ContainsKey("options"));
+        using var zip = new ZipArchive(await response.Content.ReadAsStreamAsync());
+        Assert.Contains(zip.Entries, e => e.FullName.StartsWith("Neon Night-song2.logicx/", StringComparison.Ordinal) && e.Name == "ProjectData");
+        Assert.Contains(zip.Entries, e => e.FullName.EndsWith(".flac", StringComparison.Ordinal));
+        Assert.False(response.Headers.Contains(LogicEndpoints.DiagnosticsHeader));
     }
 
     [Fact]
-    public async Task Without_a_server_the_export_is_off()
+    public async Task Warnings_travel_in_a_header()
     {
-        _app.LogicBaseUrl = null;
-        _app.AddSong(Run, "song1");
-        var client = _app.CreateClient();
+        // Ten seconds of audio for a score of more than twenty: the project is built, with a warning about it.
+        AddSong("song1", audio: Flac(48000, 480_000));
 
-        var info = await client.GetFromJsonAsync<LogicExportInfo>("/api/logic", TestApp.Json);
-        var response = await client.GetAsync($"/api/songs/{Run}/song1/logic");
+        var response = await _app.CreateClient().GetAsync($"/api/songs/{Run}/song1/logic");
 
-        Assert.False(info!.Configured);
-        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
-        Assert.Empty(_app.Logic.Form);
-    }
-
-    [Fact]
-    public async Task A_configured_server_is_announced()
-    {
-        var info = await _app.CreateClient().GetFromJsonAsync<LogicExportInfo>("/api/logic", TestApp.Json);
-
-        Assert.True(info!.Configured);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var header = Assert.Single(response.Headers.GetValues(LogicEndpoints.DiagnosticsHeader));
+        var diagnostics = System.Text.Json.JsonSerializer.Deserialize<List<Warning>>(header, TestApp.Json)!;
+        Assert.Contains(diagnostics, d => d.Code == "YTL052" && d.Severity == "Warning");
     }
 
     [Theory]
@@ -67,18 +56,17 @@ public sealed class LogicEndpointTests : IDisposable
     [InlineData("..")]
     public async Task Unknown_songs_are_not_found(string song)
     {
-        _app.AddSong(Run, "song1");
+        AddSong("song1");
 
         var response = await _app.CreateClient().GetAsync($"/api/songs/{Run}/{song}/logic");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Empty(_app.Logic.Form);
     }
 
     [Fact]
     public async Task A_song_without_its_score_is_not_found()
     {
-        var directory = _app.AddSong(Run, "song1");
+        var directory = AddSong("song1");
         File.Delete(Path.Combine(directory, "score.abc"));
 
         var response = await _app.CreateClient().GetAsync($"/api/songs/{Run}/song1/logic");
@@ -87,104 +75,88 @@ public sealed class LogicEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task A_refused_song_says_why()
+    public async Task Audio_logic_cannot_take_says_why()
     {
-        _app.AddSong(Run, "song1");
-        _app.Logic.Status = HttpStatusCode.UnprocessableEntity;
-        _app.Logic.Body = """
-            {"success":false,"diagnostics":[
-              {"severity":"Warning","code":"YTL010","message":"Unknown field."},
-              {"severity":"Error","code":"YTL052","message":"The mix has 44100 Hz; the Logic project needs 48000 Hz."}]}
-            """;
+        AddSong("song1", audio: Flac(44100, 1_000_000));
 
         var response = await _app.CreateClient().GetAsync($"/api/songs/{Run}/song1/logic");
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.EndsWith("The mix has 44100 Hz; the Logic project needs 48000 Hz.", problem!.Detail);
-        Assert.DoesNotContain("Unknown field", problem.Detail);
+        Assert.StartsWith("This song cannot become a Logic project.", problem!.Detail);
+        Assert.Contains("44100", problem.Detail);
     }
 
     [Fact]
-    public async Task Another_refusal_is_a_bad_gateway()
+    public async Task A_score_that_cannot_be_read_says_why()
     {
-        _app.AddSong(Run, "song1");
-        _app.Logic.Status = HttpStatusCode.BadRequest;
-        _app.Logic.Body = """{"title":"Missing score file"}""";
+        var directory = AddSong("song1");
+        File.WriteAllText(Path.Combine(directory, "score.abc"), "X:1\n");
 
         var response = await _app.CreateClient().GetAsync($"/api/songs/{Run}/song1/logic");
 
-        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.Equal("yue-to-logic-pro answered 400. Missing score file", problem!.Detail);
-    }
-
-    [Fact]
-    public async Task An_unreachable_server_is_a_bad_gateway()
-    {
-        _app.AddSong(Run, "song1");
-        _app.Logic.Running = false;
-
-        var response = await _app.CreateClient().GetAsync($"/api/songs/{Run}/song1/logic");
-
-        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.StartsWith("This song cannot become a Logic project.", problem!.Detail);
     }
 
     [Fact]
     public async Task A_midi_file_comes_back_as_a_score()
     {
-        _app.Logic.Abc = """
-            {"success":true,"abc":"X:1\nK:C\n","diagnostics":[
-              {"severity":"Info","code":"YTL060","message":"Track 3 read as chords."},
-              {"severity":"Warning","code":"YTL061","message":"Track Strings ignored."}]}
-            """;
-        byte[] midi = [.. "MThd"u8, 0, 0, 0, 6];
+        // The example as MIDI, the way Logic would export it, reads back into the example.
+        var midi = _app.Services.GetRequiredService<IScoreConverter>().Convert(SampleScore).Midi!;
 
         var response = await PostMidi(midi);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var score = await response.Content.ReadFromJsonAsync<MidiScore>(TestApp.Json);
-        Assert.Equal("X:1\nK:C\n", score!.Abc);
-        Assert.Equal(["Track Strings ignored."], score.Warnings);
-        Assert.Equal("http://logic.test/api/midi/abc", _app.Logic.RequestUri!.ToString());
-        Assert.Equal(midi, _app.Logic.Form["file"]);
+        Assert.Equal(SampleScore.ReplaceLineEndings("\n"), score!.Abc.ReplaceLineEndings("\n"));
     }
 
     [Fact]
-    public async Task A_midi_file_without_a_score_says_why()
+    public async Task A_file_that_is_no_midi_says_why()
     {
-        _app.Logic.Status = HttpStatusCode.UnprocessableEntity;
-        _app.Logic.Body = """
-            {"success":false,"tracks":[],"diagnostics":[{"severity":"Error","code":"YTL062","message":"No melody track found."}]}
-            """;
-
         var response = await PostMidi([.. "MThd"u8]);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.EndsWith("No melody track found.", problem!.Detail);
+        Assert.StartsWith("No score can be read from this MIDI file.", problem!.Detail);
     }
 
     [Fact]
-    public async Task Without_a_server_midi_files_are_not_read()
-    {
-        _app.LogicBaseUrl = null;
-
-        var response = await PostMidi([.. "MThd"u8]);
-
-        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
-        Assert.Empty(_app.Logic.Form);
-    }
-
-    [Fact]
-    public async Task A_large_file_is_not_passed_on()
+    public async Task A_large_file_is_refused()
     {
         var response = await PostMidi(new byte[LogicEndpoints.MaxMidiBytes + 1]);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
-        Assert.Empty(_app.Logic.Form);
+    }
+
+    private sealed record Warning(string Severity, string Code, string Message);
+
+    private string AddSong(string song, string title = "Neon Night", byte[]? audio = null)
+    {
+        var directory = _app.AddSong(Run, song, title);
+        File.WriteAllText(Path.Combine(directory, "score.abc"), SampleScore);
+        File.WriteAllBytes(Path.Combine(directory, "audio.flac"), audio ?? Flac(48000, 1_047_273));
+        return directory;
     }
 
     private Task<HttpResponseMessage> PostMidi(byte[] midi) =>
         _app.CreateClient().PostAsync("/api/midi/abc", new MultipartFormDataContent { { new ByteArrayContent(midi), "file", "song.mid" } });
+
+    /// <summary>A FLAC header with its STREAMINFO block (stereo, 24 bit), followed by some bytes standing for the frames.</summary>
+    private static byte[] Flac(int sampleRate, long samples)
+    {
+        var data = new byte[42 + 256];
+        "fLaC"u8.CopyTo(data);
+        data[4] = 0x80; // last metadata block, type STREAMINFO
+        data[7] = 34;
+        var body = data.AsSpan(8, 34);
+        body[10] = (byte)(sampleRate >> 12);
+        body[11] = (byte)(sampleRate >> 4);
+        body[12] = (byte)(((sampleRate & 0x0F) << 4) | (1 << 1) | (23 >> 4));
+        body[13] = (byte)(((23 & 0x0F) << 4) | (int)((samples >> 32) & 0x0F));
+        BinaryPrimitives.WriteUInt32BigEndian(body[14..], (uint)samples);
+        return data;
+    }
 }
