@@ -23,7 +23,6 @@ import {
 } from '../api'
 import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
 import { current, libraryTracks, play, playing, trackOf, versionTrack } from '../player'
-import { playlistIds, toggleInPlaylist } from '../playlist'
 import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
 import { shareSong } from '../share'
@@ -32,6 +31,7 @@ import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort
 import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
 import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
 import { focusedSong, focusRequest, openOnLogicPage, view } from '../view'
+import PlaylistToggle from './PlaylistToggle.vue'
 
 const props = defineProps<{
   runs: RunInfo[]
@@ -189,14 +189,6 @@ async function rateSong(song: SongInfo, rating: number | null | undefined): Prom
 
 function isPlaying(song: SongInfo): boolean {
   return current.value?.id === song.id && playing.value
-}
-
-async function togglePlaylist(song: SongInfo): Promise<void> {
-  try {
-    await toggleInPlaylist(song.id)
-  } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
-  }
 }
 
 async function renderFull(song: SongInfo): Promise<void> {
@@ -629,15 +621,11 @@ const severityByQuality: Record<string, string> = {
                       :aria-label="t('share')"
                       @click="shareSong(song.id)"
                     />
-                    <Button
+                    <PlaylistToggle
                       v-if="song.hasAudio"
-                      :icon="playlistIds.includes(song.id) ? 'pi pi-check-circle' : 'pi pi-plus-circle'"
-                      text
+                      :song-id="song.id"
                       size="small"
-                      rounded
-                      v-tooltip="playlistIds.includes(song.id) ? t('removeFromPlaylist') : t('addToPlaylist')"
-                      :aria-label="playlistIds.includes(song.id) ? t('removeFromPlaylist') : t('addToPlaylist')"
-                      @click="togglePlaylist(song)"
+                      @error="emit('error', $event)"
                     />
                     <Button
                       v-if="song.hasScore"

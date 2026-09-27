@@ -139,14 +139,27 @@ export async function rateSong(songId: string, rating: number | null): Promise<v
   await send(`/api/songs/${songId}/rating`, json('PUT', { rating }))
 }
 
-/** The playlist's song ids in order; songs deleted since are left out. */
-export async function getPlaylist(): Promise<PlaylistInfo> {
-  return (await send('/api/playlist')).json() as Promise<PlaylistInfo>
+/** Every playlist, oldest first, with its song ids in order; songs deleted since are left out. */
+export async function getPlaylists(): Promise<PlaylistInfo[]> {
+  return (await send('/api/playlists')).json() as Promise<PlaylistInfo[]>
 }
 
-/** Replaces the whole playlist; answers with what was stored (each song once). */
-export async function putPlaylist(songIds: string[]): Promise<PlaylistInfo> {
-  return (await send('/api/playlist', json('PUT', { songIds }))).json() as Promise<PlaylistInfo>
+export async function createPlaylist(name: string): Promise<PlaylistInfo> {
+  return (await send('/api/playlists', json('POST', { name }))).json() as Promise<PlaylistInfo>
+}
+
+export async function renamePlaylist(id: number, name: string): Promise<PlaylistInfo> {
+  return (await send(`/api/playlists/${id}/name`, json('PUT', { name }))).json() as Promise<PlaylistInfo>
+}
+
+/** Replaces the playlist's songs; answers with what was stored (each song once). */
+export async function putPlaylistSongs(id: number, songIds: string[]): Promise<PlaylistInfo> {
+  return (await send(`/api/playlists/${id}/songs`, json('PUT', { songIds }))).json() as Promise<PlaylistInfo>
+}
+
+/** The server keeps the last playlist (409), so "add to playlist" always has somewhere to go. */
+export async function deletePlaylist(id: number): Promise<void> {
+  await send(`/api/playlists/${id}`, { method: 'DELETE' })
 }
 
 /** Free and total space of the volume the songs are written to. */

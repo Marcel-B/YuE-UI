@@ -220,8 +220,10 @@ export interface RunInfo {
   bytes: number
 }
 
-/** The playlist (PlaylistEndpoints.cs): song ids (`run/songN`) in the order they play. */
+/** A playlist (PlaylistEndpoints.cs): song ids (`run/songN`) in the order they play. */
 export interface PlaylistInfo {
+  id: number
+  name: string
   songIds: string[]
 }
 
