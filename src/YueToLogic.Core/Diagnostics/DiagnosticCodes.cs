@@ -39,14 +39,10 @@ public static class DiagnosticCodes
     public const string AudioLengthMismatch = "YTL052";
     public const string LogicTemplateLimitation = "YTL053";
 
-    /// <summary>The stems of a separation could not be put into the project.</summary>
-    public const string StemsUnavailable = "YTL054";
+    // YTL054 and YTL056 were the stem and voice imports of yue-to-logic-pro's own API; not to be reused.
 
     /// <summary>An instrument names a MIDI output the Logic template does not know, so its track is not routed.</summary>
     public const string MidiPortUnknown = "YTL055";
-
-    /// <summary>The converted vocals of a voice job could not be put into the project.</summary>
-    public const string VoiceUnavailable = "YTL056";
 
     // MIDI file read back into a score (MIDI → ABC)
 
