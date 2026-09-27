@@ -105,6 +105,8 @@ Die Bibliothek zeigt bei jedem Song mit Partitur einen Knopf **Auf der Logic-Sei
 
 **Die Seite Logic.** Sie nimmt einen Song aus der Bibliothek (Knopf beim Song, oder im Menü auswählen) oder eine eigene `score.abc`, auf Wunsch mit `audio.flac`. Dort lassen sich Spuren dazuerzeugen (Akkorde mit Muster und Umkehrung, Bass, Schlagzeug, Leittöne, Verdopplung), Oktaven, Groove (Swing, Humanize), Einzähler und eine Region je Abschnitt einstellen; Einstellungen lassen sich als Voreinstellung speichern. Die Vorschau zeigt die Noten als Pianoroll und spielt sie ab, in Chrome auf dem Mac auch über die angeschlossenen MIDI-Geräte (Web MIDI gibt es nur in Chromium-Browsern, und nur über HTTPS). In der Instrumentenliste bekommt jedes Gerät einen Namen für seinen MIDI-Ausgang und Kanal, ein Drumcomputer dazu die Noten seiner Trommeln; jede Spur kann ein Instrument spielen. Die MIDI-Datei, die Vorschau und das Logic-Projekt legen die Spur dann auf dessen Kanal, und im Projekt geht sie über Logics External Instrument an das Gerät, sofern die Vorlage den Ausgang kennt. Instrumente, Zuordnungen und Voreinstellungen liegen in `yueui.db`, Handy und Mac sehen also dieselben.
 
+**Klang im Browser.** Spuren, die im Browser klingen (Ausgang „Ton im Browser“, kein Schlagzeug), haben in der Tabelle „Ausgänge je Spur“ einen Knopf **Klang**. Er öffnet einen kleinen Synthesizer für diese Spur: zwei Oszillatoren (Wellenform, Oktave, Verstimmung, Pegel) und Rauschen, ein Filter (Tiefpass, Hochpass, Bandpass mit Frequenz, Resonanz, Hüllkurve, Keytracking), je eine ADSR-Hüllkurve für Lautstärke und Filter und ein LFO auf Tonhöhe, Filter oder Lautstärke. Jede Änderung gilt sofort, auch während der Song läuft; **Anhören** spielt eine kurze Phrase in der Lage der Spur. Der Klang bleibt der Spur zugeordnet (nach ihrem Namen, also für jeden Song) und lässt sich unter einem Namen sichern und anderen Spuren geben. Beides liegt in `yueui.db`. Der Synthesizer ist nur zum Anhören im Browser; MIDI-Datei und Logic-Projekt bleiben davon unberührt.
+
 **Instrumente aus yue-to-logic-pro übernehmen.** Solange der alte Server noch läuft, holt dieser Befehl (etwa auf dem Proxmox-Host, der beide erreicht) seine Instrumente, Zuordnungen und Voreinstellungen und gibt sie YuE UI; zweimal ausgeführt ändert er nichts:
 
 ```sh
@@ -194,6 +196,8 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `POST` | `/api/logic/convert` | Multipart: `song` (`<run>/songN`) oder `file` (`score.abc`), dazu `options` (ConversionOptions als JSON): die umgewandelte Partitur mit Noten und MIDI-Datei (Base64) für die Seite Logic; `422` mit den Diagnosen, wenn sie sich nicht lesen lässt |
 | `POST` | `/api/logic/export` | Multipart wie oben, dazu `audio` (FLAC, nur mit `file`), `name`, `splitSections`, `instruments` (Spur → Name, Port, Kanal als JSON): Logic-Projekt als ZIP, Hinweise im Header; `422` mit den Diagnosen |
 | `GET` / `PUT` / `DELETE` | `/api/logic/presets[/{name}]` | Voreinstellungen der Seite Logic (`PUT` mit `{ form }`) |
+| `GET` / `PUT` / `DELETE` | `/api/logic/synths/presets[/{name}]` | Gespeicherte Klänge des Browser-Synthesizers (`PUT` mit `{ patch }`) |
+| `GET` / `PUT` / `DELETE` | `/api/logic/synths/tracks[/{track}]` | Klang je Spur (`PUT` mit `{ patch, preset }`; `DELETE` gibt der Spur den Standardklang zurück) |
 | `POST` | `/api/logic/import` | Instrumente, Zuordnungen und Voreinstellungen aus yue-to-logic-pro übernehmen (`{ instruments, assignments, presets }`, wie dessen `GET`-Routen sie liefern) |
 | `GET` / `POST` | `/api/instruments` | Instrumente der Seite Logic (Name, Port, Kanal, `kind` `Synth` oder `DrumMachine`, `drums`); `409` bei doppeltem Namen |
 | `PUT` / `DELETE` | `/api/instruments/{id}` | Instrument ändern oder löschen (mit seinen Zuordnungen) |
@@ -237,6 +241,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Gemeinsame Warteschlange: Songs, Neuberechnungen und Textentwürfe warten auf den Speicher statt abgelehnt zu werden
 - [x] Warteschlange nach Modell bündeln (gleiche Arten zusammen, solange nichts zu lange wartet)
 - [x] yue-to-logic-pro aufgenommen: Logic-Export im eigenen Prozess, Seite Logic mit Optionen, Instrumenten und Web MIDI
+- [x] Synthesizer im Browser für die Vorschau der Seite Logic, Klang je Spur und gespeicherte Klänge
 - [x] Stimme schon im Formular wählen; die Fassung entsteht dann von selbst, sobald der Song fertig ist
 - [ ] Eine Fassung statt der Originalstimme ins Logic-Projekt
 - [x] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)

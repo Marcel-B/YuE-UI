@@ -18,6 +18,7 @@ import {
 } from '../../logic/pianoRoll'
 import {
   AUDIO_OUTPUT,
+  auditionPhrase,
   createPlayer,
   defaultRoutings,
   listMidiPorts,
@@ -32,7 +33,10 @@ import {
   type Routing,
 } from '../../logic/midiPlayer'
 import { playableVoices } from '../../logic/score'
-import type { Assignments, Instrument, ScoreDocument } from '../../logic/types'
+import { hasSynth, normalizePatch, type SynthPatch } from '../../logic/synth'
+import { loadSounds, trackKey, trackSounds } from '../../logic/synths'
+import type { Assignments, Instrument, ScoreDocument, VoiceTrack } from '../../logic/types'
+import SynthDialog from './SynthDialog.vue'
 
 const props = defineProps<{
   score: ScoreDocument
@@ -82,7 +86,49 @@ const effective = computed(() =>
   ),
 )
 
-const pool = new OutputPool(null)
+/**
+ * Every track's sound on the browser synthesizer, checked once per change rather than per note: its own where it has
+ * one, the default of its kind otherwise. The pool looks it up for every note, so an edit is heard at once.
+ */
+const patches = computed(
+  () =>
+    new Map<string, SynthPatch>(
+      voices.value.map((voice) => [
+        trackKey(voice.id),
+        normalizePatch(trackSounds.value[trackKey(voice.id)]?.patch, voice.kind),
+      ]),
+    ),
+)
+const pool = new OutputPool(null, (track) => patches.value.get(trackKey(track)) ?? null)
+const synthDialog = ref<InstanceType<typeof SynthDialog> | null>(null)
+
+/** The middle of a track's range, so a test note or phrase sounds where the track plays. */
+function registerOf(voice: VoiceTrack | undefined): number {
+  const pitches = (voice?.notes ?? []).map((entry) => entry.noteNumber).sort((a, b) => a - b)
+  return pitches.length > 0 ? pitches[Math.floor(pitches.length / 2)]! : 60
+}
+
+/** The synthesizer is for tracks that sound in the browser; drums keep their kit, hardware its own sound. */
+function editableSound(index: number): boolean {
+  return hasSynth(voices.value[index]?.kind) && effective.value[index]?.routing.output === AUDIO_OUTPUT
+}
+
+function editSound(index: number): void {
+  const voice = voices.value[index]
+  if (voice) {
+    synthDialog.value?.open(voice.id, voice.kind, registerOf(voice))
+  }
+}
+
+function audition(track: string, pitch: number): void {
+  const index = trackIds.value.findIndex((id) => id === track)
+  const routing = effective.value[index]?.routing
+  if (routing) {
+    // A phrase, not the song: pool.silence() first, so it is not buried under notes still sounding.
+    pool.silence()
+    auditionPhrase(pool, { ...routing, output: AUDIO_OUTPUT }, track, pitch)
+  }
+}
 /** Channels are 0-based in the routing and shown 1-based, as every MIDI device labels them. */
 const channels = Array.from({ length: 16 }, (_, index) => ({ label: `${index + 1}`, value: index }))
 /** The browser's own synth first, then whatever MIDI outputs are known right now. */
@@ -267,6 +313,7 @@ async function loadPorts(): Promise<void> {
 }
 
 onMounted(async () => {
+  void loadSounds()
   if (viewport.value) {
     observer.observe(viewport.value)
     viewportWidth.value = viewport.value.clientWidth
@@ -410,7 +457,8 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
         </div>
       </div>
 
-      <Panel :header="t('previewRouting')" toggleable class="mt-3">
+      <!-- The panel's content sits in a grid (for its collapse animation), whose item would grow to the table's width. -->
+      <Panel :header="t('previewRouting')" toggleable class="mt-3" :pt="{ contentWrapper: { class: 'min-w-0' } }">
         <div class="mb-2 flex flex-wrap items-center gap-3">
           <Button
             v-if="canAskForMidi"
@@ -523,13 +571,33 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
                   </td>
                 </template>
                 <td class="py-1 align-middle">
-                  <Button
-                    size="small"
-                    severity="secondary"
-                    outlined
-                    :label="t('previewTest')"
-                    @click="testTone(pool, effective[index]!.routing, voices[index]?.kind === 'Drums')"
-                  />
+                  <div class="flex gap-1">
+                    <Button
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      :label="t('previewTest')"
+                      @click="
+                        testTone(
+                          pool,
+                          effective[index]!.routing,
+                          trackIds[index]!,
+                          voices[index]?.kind === 'Drums',
+                          registerOf(voices[index]),
+                        )
+                      "
+                    />
+                    <Button
+                      v-if="editableSound(index)"
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      icon="pi pi-sliders-h"
+                      :label="t('previewSound')"
+                      :title="t('previewSoundTitle')"
+                      @click="editSound(index)"
+                    />
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -538,6 +606,7 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
       </Panel>
 
       <p class="muted hint">{{ note ?? (hasInstruments ? t('previewInstrumentHint') : t('previewHint')) }}</p>
+      <SynthDialog ref="synthDialog" :playing="playing" @audition="audition" @toggle="toggle" />
     </template>
   </Card>
 </template>

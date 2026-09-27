@@ -1,3 +1,4 @@
+import { defaultPatch, noiseBuffer, playSynthNote, type SynthPatch } from './synth'
 import type { ScoreDocument, VoiceTrack } from './types'
 
 /**
@@ -55,6 +56,8 @@ export interface ScheduledNote {
    * is routed to, otherwise moving the drums to another channel would turn them into melodic notes.
    */
   percussive: boolean
+  /** The track's id, which picks its sound on the browser synthesizer. */
+  track: string
 }
 
 /** The routed voices as a flat list of notes in playing order; muted tracks are left out. */
@@ -81,6 +84,7 @@ export function scheduleOf(
         channel: routing.channel,
         output: routing.output,
         percussive,
+        track: voice.id,
       })
     }
   })
@@ -110,19 +114,21 @@ const DRUM_VOICES: Record<number, { frequency: number; decay: number; noise: num
 
 const DEFAULT_DRUM = { frequency: 160, decay: 0.16, noise: 0.8, highpass: 800 }
 
-/** A sawtooth with an envelope for pitched notes, filtered noise for the drum channel. */
-export function createAudioOutput(): Output {
+/**
+ * The sound of a track on the browser synthesizer, looked up for every note, so a change in the editor is heard from
+ * the next note on without rebuilding the schedule. Null plays the default.
+ */
+export type PatchLookup = (track: string) => SynthPatch | null
+
+/** The browser synthesizer (see synth.ts) for pitched notes, filtered noise for the drum channel. */
+export function createAudioOutput(patchFor: PatchLookup = () => null): Output {
   const context = new AudioContext()
   const master = context.createGain()
-  master.gain.value = 0.16
+  master.gain.value = 0.2
   master.connect(context.destination)
 
   /** One second of noise, reused by every drum hit instead of building a buffer per note. */
-  const noise = context.createBuffer(1, context.sampleRate, context.sampleRate)
-  const samples = noise.getChannelData(0)
-  for (let i = 0; i < samples.length; i++) {
-    samples[i] = Math.random() * 2 - 1
-  }
+  const noise = noiseBuffer(context)
 
   let live: AudioScheduledSourceNode[] = []
 
@@ -180,20 +186,20 @@ export function createAudioOutput(): Output {
         return
       }
 
-      const oscillator = context.createOscillator()
-      oscillator.type = 'sawtooth'
-      oscillator.frequency.value = 440 * 2 ** ((note.pitch - 69) / 12)
-
-      const gain = context.createGain()
-      const end = start + note.duration
-      gain.gain.setValueAtTime(0, start)
-      gain.gain.linearRampToValueAtTime(level, start + 0.008)
-      gain.gain.setTargetAtTime(0, Math.max(start + 0.01, end - 0.05), 0.03)
-
-      oscillator.connect(gain).connect(master)
-      oscillator.start(start)
-      oscillator.stop(end + 0.2)
-      track(oscillator, gain)
+      const patch = patchFor(note.track) ?? defaultPatch(undefined)
+      playSynthNote(
+        context,
+        master,
+        patch,
+        { pitch: note.pitch, level, start, end: start + note.duration },
+        (source, onEnded) => {
+          live.push(source)
+          source.onended = () => {
+            live = live.filter((node) => node !== source)
+            onEnded()
+          }
+        },
+      )
     },
     silence() {
       for (const source of live) {
@@ -301,7 +307,10 @@ export async function listMidiPorts(): Promise<{ ports: MidiPort[]; access: MIDI
 export class OutputPool {
   private readonly open = new Map<string, Output>()
 
-  constructor(private access: MIDIAccess | null) {}
+  constructor(
+    private access: MIDIAccess | null,
+    private readonly patchFor: PatchLookup = () => null,
+  ) {}
 
   setAccess(access: MIDIAccess | null): void {
     this.access = access
@@ -314,7 +323,7 @@ export class OutputPool {
     }
     // A port that has gone away falls back to the oscillator rather than leaving the track silent.
     const port = key === AUDIO_OUTPUT ? null : (this.access?.outputs.get(key) ?? null)
-    const output = port ? createMidiOutput(port) : createAudioOutput()
+    const output = port ? createMidiOutput(port) : createAudioOutput(this.patchFor)
     this.open.set(key, output)
     return output
   }
@@ -392,16 +401,53 @@ export function createPlayer(notes: ScheduledNote[], pool: OutputPool, onEnd: ()
   }
 }
 
-/** A short note for checking that a track reaches the instrument it is routed to. */
-export function testTone(pool: OutputPool, routing: Routing, percussive = false): void {
+/**
+ * A short note for checking that a track reaches the instrument it is routed to, on the track's own sound. `pitch`
+ * lets a bass be tried where it plays rather than at middle C.
+ */
+export function testTone(pool: OutputPool, routing: Routing, track: string, percussive = false, pitch = 60): void {
   const note: ScheduledNote = {
     time: 0,
     duration: 0.4,
-    pitch: percussive ? 38 : 60,
+    pitch: percussive ? 38 : pitch,
     velocity: 100,
     channel: routing.channel,
     output: routing.output,
     percussive,
+    track,
   }
   pool.get(routing.output).play(note, 0)
+}
+
+/**
+ * A few bars for shaping a sound: a held note, then a short phrase, around `pitch`, so attack, decay and release
+ * each get heard. Returns how long it lasts in seconds.
+ */
+export function auditionPhrase(pool: OutputPool, routing: Routing, track: string, pitch: number): number {
+  const phrase: [offset: number, time: number, duration: number][] = [
+    [0, 0, 1.2],
+    [0, 1.5, 0.15],
+    [4, 1.75, 0.15],
+    [7, 2, 0.15],
+    [12, 2.25, 0.5],
+    [7, 3, 0.25],
+    [0, 3.3, 0.9],
+  ]
+  const output = pool.get(routing.output)
+  for (const [offset, time, duration] of phrase) {
+    output.play(
+      {
+        time,
+        duration,
+        pitch: pitch + offset,
+        velocity: 100,
+        channel: routing.channel,
+        output: routing.output,
+        percussive: false,
+        track,
+      },
+      time,
+    )
+  }
+  return 4.2
 }

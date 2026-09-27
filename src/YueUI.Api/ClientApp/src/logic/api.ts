@@ -138,6 +138,54 @@ export async function removePreset(name: string): Promise<void> {
   await request(`/api/logic/presets/${encodeURIComponent(name)}`, { method: 'DELETE' })
 }
 
+// ---- Browser synthesizer ----------------------------------------------------------------------
+
+/** A named sound as the server keeps it; the patch is checked by `normalizePatch` before it is played. */
+export interface StoredSynthPreset {
+  id: number
+  name: string
+  patch: unknown
+  updatedAt: string
+}
+
+/** The sound a track plays in the preview, and the preset it was taken from, if any. */
+export interface StoredTrackSynth {
+  track: string
+  patch: unknown
+  preset: string | null
+  updatedAt: string
+}
+
+export async function listSynthPresets(): Promise<StoredSynthPreset[]> {
+  return (await request('/api/logic/synths/presets')).json() as Promise<StoredSynthPreset[]>
+}
+
+/** Saves the sound under the name, replacing one of that name. */
+export async function putSynthPreset(name: string, patch: unknown): Promise<StoredSynthPreset> {
+  return (
+    await request(`/api/logic/synths/presets/${encodeURIComponent(name)}`, json('PUT', { patch }))
+  ).json() as Promise<StoredSynthPreset>
+}
+
+export async function removeSynthPreset(name: string): Promise<void> {
+  await request(`/api/logic/synths/presets/${encodeURIComponent(name)}`, { method: 'DELETE' })
+}
+
+export async function listTrackSynths(): Promise<StoredTrackSynth[]> {
+  return (await request('/api/logic/synths/tracks')).json() as Promise<StoredTrackSynth[]>
+}
+
+export async function putTrackSynth(track: string, patch: unknown, preset: string | null): Promise<StoredTrackSynth> {
+  return (
+    await request(`/api/logic/synths/tracks/${encodeURIComponent(track)}`, json('PUT', { patch, preset }))
+  ).json() as Promise<StoredTrackSynth>
+}
+
+/** Gives the track back the default sound of its kind. */
+export async function removeTrackSynth(track: string): Promise<void> {
+  await request(`/api/logic/synths/tracks/${encodeURIComponent(track)}`, { method: 'DELETE' })
+}
+
 // ---- Instruments -------------------------------------------------------------------------------
 
 export async function listInstruments(): Promise<Instrument[]> {
