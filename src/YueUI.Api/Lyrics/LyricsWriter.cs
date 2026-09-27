@@ -85,6 +85,11 @@ public sealed partial class LyricsWriter(
     /// <param name="model">A model id from <see cref="ListModelsAsync"/>; null for <see cref="LyricsOptions.Model"/>.</param>
     /// <param name="image">A photo as a <c>data:image/…;base64,</c> URL for a model that can see; the lyrics are about it.</param>
     /// <param name="revision">Lyrics to change as instructed, instead of new ones.</param>
+    /// <param name="id">The id the draft was promised under while it waited in the queue; a new one otherwise.</param>
+    /// <param name="memoryTaken">
+    /// Whatever else holds the memory besides YuE2 (a voice conversion, which cannot be asked from here without a
+    /// dependency cycle); checked once this draft has claimed it.
+    /// </param>
     /// <exception cref="LyricsBusyException">Another draft is in progress, or YuE2 is generating.</exception>
     public LyricsState Start(
         string? keywords,
@@ -92,24 +97,34 @@ public sealed partial class LyricsWriter(
         LyricsLanguage language = LyricsLanguage.English,
         string? model = null,
         string? image = null,
-        LyricsRevision? revision = null)
+        LyricsRevision? revision = null,
+        string? id = null,
+        Func<bool>? memoryTaken = null)
     {
         if (!_gate.Wait(0))
         {
             throw new LyricsBusyException("Lyrics are already being written.");
         }
         // Checked inside the gate: from here on no song can start (see IsWriting).
-        if (worker.Snapshot().Worker.Busy)
+        if (worker.IsBusy)
         {
             _gate.Release();
             throw new LyricsBusyException("YuE2 is generating; the lyrics model would not fit into memory beside it.");
         }
-        var state = new LyricsState { Id = Guid.NewGuid().ToString("N")[..12], UpdatedAt = time.GetUtcNow() };
+        if (memoryTaken?.Invoke() == true)
+        {
+            _gate.Release();
+            throw new LyricsBusyException("Another model holds the memory.");
+        }
+        var state = new LyricsState { Id = id ?? NewId(), UpdatedAt = time.GetUtcNow() };
         worker.UpdateLyrics(state);
         var brief = new Brief(keywords?.Trim() ?? "", style, language, image, revision);
         _ = Task.Run(() => RunAsync(state, brief, string.IsNullOrWhiteSpace(model) ? options.Value.Model : model.Trim()));
         return state;
     }
+
+    /// <summary>The id of a <see cref="LyricsState"/>, which the form keeps to take the result.</summary>
+    public static string NewId() => Guid.NewGuid().ToString("N")[..12];
 
     /// <summary>What the song is to be about, as the form sent it.</summary>
     private sealed record Brief(string Keywords, string? Style, LyricsLanguage Language, string? Image, LyricsRevision? Revision);

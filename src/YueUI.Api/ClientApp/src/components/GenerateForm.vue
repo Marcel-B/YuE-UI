@@ -13,8 +13,8 @@ import Checkbox from 'primevue/checkbox'
 import SelectButton from 'primevue/selectbutton'
 
 const props = defineProps<{
-  /** YuE2 is generating, so there is no memory for the lyrics model. */
-  busy: boolean
+  /** Jobs waiting in the server's queue; a draft among them is still on its way. */
+  queuedIds: Set<string>
   /** The last lyrics draft from the event stream, from any browser. */
   lyricsDraft: LyricsState | null
 }>()
@@ -36,8 +36,8 @@ async function submit(): Promise<void> {
   message.value = null
   fieldErrors.value = {}
   try {
-    await generate(toGenerateRequest(form.value))
-    message.value = { text: t('queued'), error: false }
+    const waiting = await generate(toGenerateRequest(form.value))
+    message.value = { text: t(waiting ? 'waiting' : 'queued'), error: false }
   } catch (caught) {
     if (caught instanceof ApiError) {
       fieldErrors.value = caught.errors
@@ -51,8 +51,19 @@ async function submit(): Promise<void> {
 const confirm = useConfirm()
 const starting = ref(false)
 const draftMessage = ref<{ text: string; error: boolean } | null>(null)
-/** Whichever browser asked: while a draft is written there is no room for a second one, nor for a song. */
-const drafting = computed(() => starting.value || props.lyricsDraft?.stage === 'writing')
+/**
+ * The draft this browser asked for, waiting or being written. Another one can be asked meanwhile, e.g. from another
+ * browser: it waits in the queue.
+ */
+const drafting = computed(() => {
+  const id = form.value.lyricsDraftId
+  return (
+    starting.value ||
+    (id !== '' && (props.queuedIds.has(id) || (props.lyricsDraft?.id === id && props.lyricsDraft.stage === 'writing')))
+  )
+})
+/** Said while the draft waits for the memory, so that the spinner does not look stuck. */
+const draftWaiting = computed(() => form.value.lyricsDraftId !== '' && props.queuedIds.has(form.value.lyricsDraftId))
 
 /** The draft this browser asked for lands in the field when it arrives, also after a reload or a locked phone. */
 function take(draft: LyricsState | null): void {
@@ -100,7 +111,7 @@ watch(() => props.lyricsDraft, take, { immediate: true })
 /** Changes the lyrics in the field as instructed, rather than rolling a whole new draft. */
 async function revise(): Promise<void> {
   const text = instruction.value.trim()
-  if (!text || drafting.value || props.busy) {
+  if (!text || drafting.value) {
     return
   }
   starting.value = true
@@ -362,8 +373,7 @@ const batchOptions = [
         text
         size="large"
         :loading="drafting"
-        :disabled="drafting || busy || !canDraft || blind"
-        v-tooltip.bottom="busy ? t('draftBusy') : undefined"
+        :disabled="drafting || !canDraft || blind"
         @click="askDraft"
       />
     </div>
@@ -396,6 +406,7 @@ const batchOptions = [
     <small v-if="draftMessage" :class="['block', draftMessage.error ? 'danger' : 'muted']" role="status">{{
       draftMessage.text
     }}</small>
+    <small v-else-if="draftWaiting" class="block muted" role="status">{{ t('lyricsWaiting') }}</small>
 
     <FloatLabel variant="on" class="mt-6">
       <Textarea
@@ -432,9 +443,9 @@ const batchOptions = [
         text
         size="large"
         :loading="drafting"
-        :disabled="drafting || busy || instruction.trim() === ''"
+        :disabled="drafting || instruction.trim() === ''"
         :aria-label="t('revise')"
-        v-tooltip.bottom="busy ? t('draftBusy') : t('revise')"
+        v-tooltip.bottom="t('revise')"
         @click="revise"
       />
     </div>

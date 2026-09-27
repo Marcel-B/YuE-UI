@@ -61,6 +61,25 @@ export interface StatusSnapshot {
   lyrics: LyricsState | null
   /** Songs being sung with another voice, and the last one that finished. */
   versions: VersionState[]
+  /** Songs, renders and lyrics drafts waiting for the memory, in the order they start. */
+  queue: QueuedJob[]
+}
+
+export type JobKind = 'song' | 'render' | 'lyrics'
+
+/** A job waiting in the server's queue (Queue/QueuedJob.cs) until no other model holds the memory. */
+export interface QueuedJob {
+  id: string
+  kind: JobKind
+  /** The run's title (empty when the worker is to name it), the song's for a render, the keywords for lyrics. */
+  title: string
+  createdAt: string
+  /** The song a render is for. */
+  songId: string | null
+  batch: number | null
+  quality: 'draft' | 'full' | null
+  /** A lyrics job that revises lyrics rather than drafting new ones. */
+  revision: boolean
 }
 
 /** melody-full: the Vocal and Ins melodies; melody-vocal: only the sung one. */
@@ -224,7 +243,8 @@ export interface LyricsModels {
 /** The last lyrics draft from the local language model (Worker/WorkerModels.cs); it arrives as `lyrics` events. */
 export interface LyricsState {
   id: string
-  stage: 'writing' | 'done' | 'failed'
+  /** queued only in the answer to the request, while the draft waits for the memory. */
+  stage: 'queued' | 'writing' | 'done' | 'failed'
   lyrics: string | null
   /** Why it failed, e.g. LM Studio's own message. */
   message: string | null

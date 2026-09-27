@@ -188,7 +188,7 @@ public sealed class VoiceEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task While_a_voice_is_made_no_song_or_lyrics_start()
+    public async Task While_a_voice_is_made_songs_and_lyrics_wait()
     {
         _app.AddSong(Run, "song1");
         _app.Stems.Gate = new TaskCompletionSource();
@@ -201,11 +201,17 @@ public sealed class VoiceEndpointTests : IDisposable
         var lyrics = await client.PostAsJsonAsync("/api/lyrics", new { keywords = "sea" });
         var delete = await client.DeleteAsync($"/api/songs/{Run}/song1");
 
-        Assert.Equal(HttpStatusCode.Conflict, generate.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, lyrics.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, generate.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, lyrics.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, delete.StatusCode);
+        Assert.Equal(2, _app.Snapshot().Queue!.Count);
+        Assert.Equal(0, _app.Launcher.Launches);
+        Assert.Empty(_app.LmStudio.Requests);
+
         _app.Stems.Gate.SetResult();
         Assert.Equal("done", (await WaitForVersion(client, $"{Run}/song1", v => v.Finished)).Stage);
+        Assert.Equal("generate", (string?)(await (await _app.StartedWorker()).NextCommand())["cmd"]);
+        Assert.Single((await _app.WaitForStatus(client, s => s.Queue is { Count: 1 })).Queue!, j => j.Kind == Queue.JobKind.Lyrics);
     }
 
     [Fact]

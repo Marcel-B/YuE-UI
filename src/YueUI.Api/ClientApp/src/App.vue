@@ -26,6 +26,7 @@ import type {
   StorageInfo,
   TranscriptionState,
   VersionState,
+  QueuedJob,
   VoiceInfo,
   WorkerInfo,
 } from './types'
@@ -64,6 +65,10 @@ const transcriptions = ref<TranscriptionState[]>([])
 const lyricsDraft = ref<LyricsState | null>(null)
 /** Versions in the works, and those finished while the page was open; by id. */
 const versions = ref<VersionState[]>([])
+/** Songs, renders and drafts waiting for the memory. */
+const jobs = ref<QueuedJob[]>([])
+/** Lyrics drafts among them, so that the form knows its own is still on its way. */
+const queuedIds = computed(() => new Set(jobs.value.map((j) => j.id)))
 /** Starts optimistic: the warning is for a stream that broke, not for one that is still opening. */
 const connected = ref(true)
 /** Finished songs the user put away; the server keeps them, so they would come back with the next snapshot. */
@@ -73,7 +78,11 @@ const queue = computed(() => songs.value.filter((s) => !(s.finished && hidden.va
 // Kept as the same Set while the busy songs stay the same: a progress event replaces a song, and a new Set would
 // re-render the whole library with every one.
 const busyIds = computed<Set<string>>((previous) => {
-  const next = new Set(songs.value.filter((s) => !s.finished).map((s) => s.id))
+  // A render waiting in the queue counts too: the library offers it once, not a second time.
+  const next = new Set([
+    ...songs.value.filter((s) => !s.finished).map((s) => s.id),
+    ...jobs.value.flatMap((j) => (j.songId ? [j.songId] : [])),
+  ])
   return previous && previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next
 })
 
@@ -112,6 +121,7 @@ const unsubscribe = subscribe({
     transcriptions.value = snapshot.transcriptions
     lyricsDraft.value = snapshot.lyrics
     versions.value = snapshot.versions
+    jobs.value = snapshot.queue ?? []
     // The stream (re)opened: whatever was written meanwhile is in the library now, the playlist may have changed on
     // another device.
     void loadLibrary()
@@ -140,6 +150,9 @@ const unsubscribe = subscribe({
     lyricsDraft.value = lyrics
   },
   version: upsertVersion,
+  queue(queue) {
+    jobs.value = queue
+  },
   connection(open) {
     connected.value = open
   },
@@ -157,11 +170,11 @@ const pages: { view: View; label: MessageKey; icon: string }[] = [
 ]
 
 /**
- * The badge counts what the page holds that is worth a look: songs and transcriptions in the works, songs in the
- * playlist.
+ * The badge counts what the page holds that is worth a look: songs and transcriptions in the works or waiting, songs
+ * in the playlist.
  */
 const badges = computed<Partial<Record<View, number>>>(() => ({
-  create: busyIds.value.size,
+  create: songs.value.filter((s) => !s.finished).length + jobs.value.length,
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
   playlist: playlistIds.value.length,
   voices: versions.value.filter((v) => !v.finished).length,
@@ -390,7 +403,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           ref="generateForm"
           v-model="form"
           v-model:errors="fieldErrors"
-          :busy="worker.busy"
+          :queued-ids="queuedIds"
           :lyrics-draft="lyricsDraft"
         />
       </template>
@@ -423,6 +436,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           <QueueList
             ref="queueList"
             :songs="queue"
+            :jobs="jobs"
             :listed="listedIds"
             :worker="worker"
             :log="log"

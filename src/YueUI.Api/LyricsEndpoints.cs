@@ -1,4 +1,5 @@
 using YueUI.Api.Lyrics;
+using YueUI.Api.Queue;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api;
@@ -25,7 +26,8 @@ public sealed record LyricsRequest(
 
 /// <summary>
 /// Drafting lyrics with a local language model (LM Studio), see <see cref="LyricsWriter"/>. Like the worker's
-/// commands it answers 202; the draft arrives as a <c>lyrics</c> event.
+/// commands it answers 202; the draft arrives as a <c>lyrics</c> event. While another draft, songs or a voice
+/// conversion hold the memory it waits in the <see cref="JobQueue"/> (stage <c>queued</c> in the answer).
 /// </summary>
 public static class LyricsEndpoints
 {
@@ -58,13 +60,8 @@ public static class LyricsEndpoints
             }
         });
 
-        api.MapPost("/lyrics", (LyricsRequest request, LyricsWriter writer, Voices.VoiceConverter voices) =>
+        api.MapPost("/lyrics", async (LyricsRequest request, JobQueue queue, CancellationToken cancellationToken) =>
         {
-            // The lyrics model would not fit beside a separation or Seed-VC either.
-            if (voices.IsConverting)
-            {
-                return Results.Problem(title: "A song is being sung with another voice; draft the lyrics once that is done.", statusCode: StatusCodes.Status409Conflict);
-            }
             if (request.Image is { } image && !IsImage(image))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -74,7 +71,7 @@ public static class LyricsEndpoints
             }
             if (request.Lyrics is not null || request.Instruction is not null)
             {
-                return Revise(request, writer);
+                return Revise(request) ?? Results.Accepted(value: await queue.LyricsAsync(request, cancellationToken));
             }
             if ((string.IsNullOrWhiteSpace(request.Keywords) && request.Image is null) || request.Keywords?.Length > MaxKeywordsLength)
             {
@@ -87,7 +84,7 @@ public static class LyricsEndpoints
             {
                 return invalid;
             }
-            return Start(() => writer.Start(request.Keywords, request.Style, request.Language ?? LyricsLanguage.English, request.Model, request.Image));
+            return Results.Accepted(value: await queue.LyricsAsync(request with { Lyrics = null, Instruction = null }, cancellationToken));
         });
         return api;
     }
@@ -96,7 +93,8 @@ public static class LyricsEndpoints
     /// A revision works on the lyrics as they are rather than drafting anew; the keywords, if sent, tell the model what
     /// the song is about. A photo would add nothing the lyrics do not already carry, and cost a vision model.
     /// </summary>
-    private static IResult Revise(LyricsRequest request, LyricsWriter writer)
+    /// <returns>Why the revision cannot be made, or null.</returns>
+    private static IResult? Revise(LyricsRequest request)
     {
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(request.Lyrics) || request.Lyrics.Length > MaxLyricsLength)
@@ -119,12 +117,7 @@ public static class LyricsEndpoints
         {
             return Results.ValidationProblem(errors);
         }
-        if (InvalidModel(request.Model) is { } invalid)
-        {
-            return invalid;
-        }
-        var revision = new LyricsRevision(request.Lyrics!, request.Instruction!);
-        return Start(() => writer.Start(request.Keywords, request.Style, request.Language ?? LyricsLanguage.English, request.Model, revision: revision));
+        return InvalidModel(request.Model);
     }
 
     /// <summary>Unknown ids are left to LM Studio, which refuses them with its own message.</summary>
@@ -135,18 +128,6 @@ public static class LyricsEndpoints
                 ["model"] = [$"A model id as GET /api/lyrics/models lists it, up to {MaxModelLength} characters."],
             })
             : null;
-
-    private static IResult Start(Func<LyricsState> start)
-    {
-        try
-        {
-            return Results.Accepted(value: start());
-        }
-        catch (LyricsBusyException exception)
-        {
-            return Results.Problem(title: exception.Message, statusCode: StatusCodes.Status409Conflict);
-        }
-    }
 
     /// <summary>Checked here so that LM Studio is not loaded for a request it cannot read.</summary>
     private static bool IsImage(string image)

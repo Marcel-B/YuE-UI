@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using YueUI.Api.Queue;
 using YueUI.Api.Voices;
 
 namespace YueUI.Api.Worker;
@@ -90,13 +91,15 @@ public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunni
 
 /// <summary>Everything a client needs to draw the queue; also the first event of every event stream.</summary>
 /// <param name="Versions">Songs being sung with another voice, and the last one that finished.</param>
+/// <param name="Queue">Songs, renders and lyrics drafts waiting for their turn (Queue/JobQueue.cs), in order.</param>
 public sealed record StatusSnapshot(
     WorkerInfo Worker,
     IReadOnlyList<SongState> Songs,
     IReadOnlyList<LogEntry> Log,
     IReadOnlyList<TranscriptionState>? Transcriptions = null,
     LyricsState? Lyrics = null,
-    IReadOnlyList<VersionState>? Versions = null);
+    IReadOnlyList<VersionState>? Versions = null,
+    IReadOnlyList<QueuedJob>? Queue = null);
 
 /// <summary>
 /// The last lyrics draft (Lyrics/LyricsWriter.cs). It arrives as an event rather than as the answer to the request:
@@ -106,7 +109,7 @@ public sealed record LyricsState
 {
     public required string Id { get; init; }
 
-    /// <summary>writing, done or failed.</summary>
+    /// <summary>queued (only in the answer to the request; see Queue/JobQueue.cs), writing, done or failed.</summary>
     public string Stage { get; init; } = "writing";
 
     public string? Lyrics { get; init; }
