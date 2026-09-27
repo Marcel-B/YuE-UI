@@ -293,10 +293,36 @@ function transposeMusic(line: string, semitones: number, oldKey: Key, newKey: Ke
   return { text: out, oldKey: before.key, newKey: after.key }
 }
 
-/** The key the score starts in, for the label beside the buttons. */
+/** The key the score starts in, spelled as in `keyChoices` (Gb as F#), so the picker finds it. */
 export function abcKey(abc: string): string | null {
   const field = /^\s*K:\s*(.*)$/m.exec(abc)
-  return field ? (parseKey(field[1]!)?.name ?? null) : null
+  const key = field ? parseKey(field[1]!) : null
+  if (!key) {
+    return null
+  }
+  return (key.minor ? minorKeys : majorKeys)[keyRoot(key)]!
+}
+
+/** The twelve keys in the score's mode (major or minor), to pick a target from. */
+export function keyChoices(abc: string): string[] {
+  const field = /^\s*K:\s*(.*)$/m.exec(abc)
+  const key = field ? parseKey(field[1]!) : null
+  return key?.minor ? [...minorKeys] : [...majorKeys]
+}
+
+/**
+ * Transposes the score into the named key (one of `keyChoices`) by the shorter way, at most six semitones down or
+ * five up, so the voice stays near where it was; − and + go on from there.
+ */
+export function transposeToKey(abc: string, target: string): Transposition {
+  const field = /^\s*K:\s*(.*)$/m.exec(abc)
+  const from = (field ? parseKey(field[1]!) : null) ?? cMajor
+  const to = parseKey(target)
+  if (!to) {
+    return { abc, key: from.name }
+  }
+  const up = mod12(keyRoot(to) - keyRoot(from))
+  return transposeAbc(abc, up > 5 ? up - 12 : up)
 }
 
 const noteNames = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B']
