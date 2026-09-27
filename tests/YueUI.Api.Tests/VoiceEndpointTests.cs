@@ -46,6 +46,47 @@ public sealed class VoiceEndpointTests : IDisposable
         Assert.Equal(("v2", "Dark Female"), (voice!.Id, voice.Label));
         Assert.Equal("Dark Female", _app.Voice.Form["label"]);
         Assert.Equal("6 bytes", _app.Voice.Form["file"]);
+        // Untrimmed: the fields stay out, so an older ChangeMyVoice sees the request it knows.
+        Assert.False(_app.Voice.Form.ContainsKey("startSeconds"));
+        Assert.False(_app.Voice.Form.ContainsKey("endSeconds"));
+    }
+
+    [Fact]
+    public async Task A_trimmed_recording_passes_start_and_end_on()
+    {
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent("Dark Female"), "label" },
+            { new ByteArrayContent([.. "RIFF"u8, 1, 2]), "file", "dark.wav" },
+            { new StringContent("4.5"), "startSeconds" },
+            { new StringContent("21.25"), "endSeconds" },
+        };
+
+        var response = await _app.CreateClient().PostAsync("/api/voices", form);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("4.5", _app.Voice.Form["startSeconds"]);
+        Assert.Equal("21.25", _app.Voice.Form["endSeconds"]);
+    }
+
+    [Theory]
+    [InlineData("-1", "10")]
+    [InlineData("10", "10")]
+    [InlineData("12", "3")]
+    public async Task A_trim_that_ends_before_it_starts_is_refused_here(string start, string end)
+    {
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent("Dark Female"), "label" },
+            { new ByteArrayContent([1]), "file", "a.wav" },
+            { new StringContent(start), "startSeconds" },
+            { new StringContent(end), "endSeconds" },
+        };
+
+        var response = await _app.CreateClient().PostAsync("/api/voices", form);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(_app.Voice.Requests);
     }
 
     [Fact]

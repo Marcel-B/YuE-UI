@@ -301,11 +301,20 @@ export async function listVoices(): Promise<ReferenceVoice[]> {
   return (await send('/api/voices')).json() as Promise<ReferenceVoice[]>
 }
 
-/** Stores a recording as a reference voice; the service keeps its first 25 seconds. */
-export async function addVoice(label: string, file: File): Promise<ReferenceVoice> {
+/**
+ * Stores a recording as a reference voice; the service keeps at most 25 seconds, from `start` if given, up to `end`.
+ * Both in seconds, sent with a point whatever the language.
+ */
+export async function addVoice(label: string, file: File, start?: number, end?: number): Promise<ReferenceVoice> {
   const form = new FormData()
   form.append('label', label)
   form.append('file', file)
+  if (start !== undefined) {
+    form.append('startSeconds', String(start))
+  }
+  if (end !== undefined) {
+    form.append('endSeconds', String(end))
+  }
   return (await send('/api/voices', { method: 'POST', body: form })).json() as Promise<ReferenceVoice>
 }
 
