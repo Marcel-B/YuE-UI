@@ -306,6 +306,8 @@ export interface VersionState {
   strength: number
   diffusionSteps: number
   keepReverb: boolean
+  /** StemMyWav's model that separated the vocals; null for versions made before it was kept. */
+  stemModel: string | null
   stage: VersionStage
   /** Progress of the conversion, 0–1, estimated from the time the voice service expects. */
   fraction: number

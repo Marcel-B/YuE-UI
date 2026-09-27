@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Data.Sqlite;
 using YueUI.Api.Library;
 using YueUI.Api.Voices;
 
@@ -121,6 +122,10 @@ public sealed class VoiceEndpointTests : IDisposable
 
         var done = await WaitForVersion(client, $"{Run}/song2", v => v.Finished);
         Assert.Equal("done", done.Stage);
+        // What it was made with stays with it, to tell versions apart later.
+        Assert.Equal(
+            ("v1", "Eurobecca", -12, 0.8, 30, true, "mel-roformer-kim-vocals"),
+            (done.VoiceId, done.VoiceLabel, done.SemiToneShift, done.Strength, done.DiffusionSteps, done.KeepReverb, done.StemModel));
 
         // Dry vocals from the stem service, with its model; the reverb goes back into the mix untouched.
         Assert.Equal("/api/separate", _app.Stems.RequestUri!.AbsolutePath);
@@ -270,6 +275,38 @@ public sealed class VoiceEndpointTests : IDisposable
 
         Assert.False(File.Exists(file));
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/songs/{Run}/song1/versions/{done.Id}/audio")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Versions_from_before_the_stem_model_was_kept_are_still_listed()
+    {
+        _app.AddSong(Run, "song1");
+        // The schema as it was before the stem model was kept, with one version made then.
+        using (var connection = new SqliteConnection($"Data Source={Path.Combine(_app.Root, "yueui.db")};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = $$"""
+                CREATE TABLE playlists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT '');
+                CREATE TABLE playlist_songs (playlist_id INTEGER NOT NULL, position INTEGER NOT NULL, song_id TEXT NOT NULL,
+                    PRIMARY KEY (playlist_id, position), UNIQUE (playlist_id, song_id));
+                INSERT INTO playlists (id, name) VALUES (1, 'Playlist');
+                CREATE TABLE run_titles (run_id TEXT PRIMARY KEY, title TEXT NOT NULL);
+                CREATE TABLE song_ratings (song_id TEXT PRIMARY KEY, rating INTEGER NOT NULL);
+                CREATE TABLE song_versions (id TEXT PRIMARY KEY, song_id TEXT NOT NULL, title TEXT NOT NULL, voice_id TEXT NOT NULL,
+                    voice_label TEXT NOT NULL, semi_tone_shift INTEGER NOT NULL, strength REAL NOT NULL, diffusion_steps INTEGER NOT NULL,
+                    keep_reverb INTEGER NOT NULL, stage TEXT NOT NULL, message TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+                INSERT INTO song_versions VALUES ('old', '{{Run}}/song1', 'Neon Night', 'v1', 'Eurobecca', 12, 0.5, 100, 0, 'done', NULL,
+                    '2026-09-26T10:00:00.0000000+00:00', '2026-09-26T10:20:00.0000000+00:00');
+                PRAGMA user_version = 4;
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var version = (await Library(_app.CreateClient())).SelectMany(r => r.Songs).Single(s => s.Id == $"{Run}/song1").Versions.Single();
+
+        Assert.Equal(("old", 12, 0.5, 100, false), (version.Id, version.SemiToneShift, version.Strength, version.DiffusionSteps, version.KeepReverb));
+        Assert.Null(version.StemModel);
     }
 
     private static async Task<RunInfo[]> Library(HttpClient client) =>
