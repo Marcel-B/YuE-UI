@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import Message from 'primevue/message'
+import ProgressBar from 'primevue/progressbar'
 import { computed, ref } from 'vue'
 import { formatDuration, formatNumber, t, type MessageKey } from '../../logic/i18n'
 import { barAt, barCount, download, jsonBlob, midiBlob } from '../../logic/score'
+import type { LogicProgress } from '../../logic/api'
 import type { ConversionResult, Diagnostic, ScoreDocument } from '../../logic/types'
 
 const props = defineProps<{
@@ -11,12 +13,36 @@ const props = defineProps<{
   stale: boolean
   hasAudio: boolean
   logicBusy: boolean
+  logicProgress: LogicProgress | null
   logicError: string | null
   logicWarnings: Diagnostic[]
 }>()
 
 const logicNote = computed(() => (props.hasAudio ? t('logicHint') : t('logicWithoutAudio')))
 const emit = defineEmits<{ exportLogic: [] }>()
+
+/** Percent of the upload or download, or null while building or when the size is unknown. */
+const logicPercent = computed(() => {
+  const progress = props.logicProgress
+  return progress && progress.phase !== 'build' && progress.total
+    ? Math.floor((progress.loaded / progress.total) * 100)
+    : null
+})
+
+/** What the export is doing, so a long wait for a big FLAC does not look stuck. */
+const logicLabel = computed(() => {
+  const progress = props.logicProgress
+  if (!props.logicBusy || !progress) {
+    return props.logicBusy ? t('buildingLogic') : t('downloadLogic')
+  }
+  if (progress.phase === 'build') {
+    return t('buildingLogic')
+  }
+  const key = progress.phase === 'upload' ? 'uploadingLogic' : 'receivingLogic'
+  return logicPercent.value !== null
+    ? t(key, { amount: `${logicPercent.value} %` })
+    : t(key, { amount: `${formatNumber(progress.loaded / (1024 * 1024))} MB` })
+})
 
 const showInfos = ref(false)
 
@@ -149,7 +175,7 @@ function downloadJson(): void {
             @click="downloadJson"
           />
           <Button
-            :label="logicBusy ? t('buildingLogic') : t('downloadLogic')"
+            :label="logicLabel"
             icon="pi pi-box"
             severity="secondary"
             outlined
@@ -158,6 +184,13 @@ function downloadJson(): void {
             @click="emit('exportLogic')"
           />
         </div>
+        <ProgressBar
+          v-if="logicBusy && logicPercent !== null"
+          :value="logicPercent"
+          :show-value="false"
+          class="logic-progress"
+          :aria-label="logicLabel"
+        />
         <p class="hint muted">{{ logicNote }}</p>
         <p v-if="logicError" class="hint danger" role="alert">{{ logicError }}</p>
         <div v-if="logicWarnings.length" class="logic-warnings">
@@ -205,6 +238,11 @@ function downloadJson(): void {
 </template>
 
 <style scoped>
+.logic-progress {
+  height: 0.375rem;
+  margin-top: 0.75rem;
+}
+
 h3 {
   margin: 1.25rem 0 0.5rem;
   font-size: 0.95rem;

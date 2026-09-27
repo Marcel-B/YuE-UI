@@ -8,6 +8,7 @@ import {
   assignInstrument,
   convertScore,
   exportLogicProject,
+  type LogicProgress,
   listAssignments,
   listInstruments,
   LogicExportError,
@@ -270,6 +271,7 @@ async function removePreset(): Promise<void> {
 // ---- Conversion and export --------------------------------------------------------------------------
 
 const logicBusy = ref(false)
+const logicProgress = ref<LogicProgress | null>(null)
 const logicError = ref<string | null>(null)
 const logicWarnings = ref<Diagnostic[]>([])
 const form = ref(loadFormState())
@@ -346,6 +348,7 @@ async function exportLogic(): Promise<void> {
       outputName.value,
       form.value.splitSections,
       instrumentsForExport(assignments.value, instruments.value),
+      (progress) => (logicProgress.value = progress),
     )
     logicWarnings.value = exported.warnings
     download(exported.zip, exported.fileName)
@@ -358,6 +361,7 @@ async function exportLogic(): Promise<void> {
           : `${t('logicFailed')}: ${caught instanceof Error ? caught.message : String(caught)}`
   } finally {
     logicBusy.value = false
+    logicProgress.value = null
   }
 }
 
@@ -554,6 +558,7 @@ function reset(): void {
       :stale="stale"
       :has-audio="hasAudio"
       :logic-busy="logicBusy"
+      :logic-progress="logicProgress"
       :logic-error="logicError"
       :logic-warnings="logicWarnings"
       @export-logic="exportLogic"

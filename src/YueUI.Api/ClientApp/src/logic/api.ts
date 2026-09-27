@@ -77,7 +77,17 @@ export interface LogicExport {
   warnings: Diagnostic[]
 }
 
-/** Builds a zipped Logic Pro project (.logicx) from the score, the options and, if there is one, its audio.flac. */
+/**
+ * Where an export stands: the upload of a score and recording the user picked, the build on the server, the ZIP on
+ * its way back. `total` is null when the size is unknown; building has no measurable progress.
+ */
+export type LogicProgress = { phase: 'upload' | 'download'; loaded: number; total: number | null } | { phase: 'build' }
+
+/**
+ * Builds a zipped Logic Pro project (.logicx) from the score, the options and, if there is one, its audio.flac.
+ * Through XMLHttpRequest rather than fetch, since only it reports upload and download progress: the ZIP is as large
+ * as the FLAC and takes a while to reach a phone, which a bare spinner made look stuck.
+ */
 export async function exportLogicProject(
   source: ScoreSource,
   options: ConversionOptions,
@@ -86,7 +96,7 @@ export async function exportLogicProject(
   splitSections: boolean,
   /** The instrument each track plays; the track then sits on its channel and is named after it. */
   instruments: Record<string, LogicInstrument> = {},
-  signal?: AbortSignal,
+  onProgress: (progress: LogicProgress) => void = () => {},
 ): Promise<LogicExport> {
   const form = new FormData()
   appendSource(form, source, true)
@@ -97,17 +107,43 @@ export async function exportLogicProject(
     form.append('instruments', JSON.stringify(instruments))
   }
 
-  const response = await post('/api/logic/export', form, signal)
-  if (response.status === 422) {
-    throw new LogicExportError(((await response.json()) as ConversionResult).diagnostics)
+  const xhr = await new Promise<XMLHttpRequest>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', `${apiBase}/api/logic/export`)
+    request.responseType = 'blob'
+    // A library song sends only a few fields; its FLAC is on the server already, so there is nothing to show.
+    const uploads = !('song' in source) && source.audio !== null
+    if (uploads) {
+      request.upload.onprogress = (event) =>
+        onProgress({ phase: 'upload', loaded: event.loaded, total: event.lengthComputable ? event.total : null })
+    }
+    request.upload.onload = () => onProgress({ phase: 'build' })
+    request.onprogress = (event) => {
+      if (request.status === 200) {
+        onProgress({ phase: 'download', loaded: event.loaded, total: event.lengthComputable ? event.total : null })
+      }
+    }
+    request.onload = () => resolve(request)
+    request.onerror = () => reject(new ApiError('network', 0))
+    onProgress(uploads ? { phase: 'upload', loaded: 0, total: null } : { phase: 'build' })
+    request.send(form)
+  })
+
+  const body = xhr.response as Blob
+  if (xhr.status === 422) {
+    throw new LogicExportError((JSON.parse(await body.text()) as ConversionResult).diagnostics)
   }
-  if (!response.ok) {
-    throw await problem(response)
+  if (xhr.status < 200 || xhr.status >= 300) {
+    const problem = (await body
+      .text()
+      .then((text) => JSON.parse(text) as { title?: string; detail?: string })
+      .catch(() => null)) as { title?: string; detail?: string } | null
+    throw new ApiError(problem?.detail ?? problem?.title ?? `HTTP ${xhr.status}`, xhr.status)
   }
 
-  const header = response.headers.get('X-YueToLogic-Diagnostics')
+  const header = xhr.getResponseHeader('X-YueToLogic-Diagnostics')
   return {
-    zip: await response.blob(),
+    zip: body,
     fileName: `${name}.logicx.zip`,
     warnings: header ? (JSON.parse(header) as Diagnostic[]) : [],
   }
