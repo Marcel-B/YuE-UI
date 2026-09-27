@@ -12,7 +12,7 @@ import {
   type FormState,
   type SamplingPhase,
 } from '../form'
-import { abcKey, transposeAbc, vocalRange } from '../abcTranspose'
+import { abcKey, keyChoices, transposeAbc, transposeToKey, vocalRange } from '../abcTranspose'
 import { midiToAbc } from '../api'
 import { formatDuration, t } from '../i18n'
 import { pickMidiFile } from '../midi'
@@ -66,18 +66,20 @@ const steps = computed({
   },
 })
 
-const scoreKey = computed(() => {
-  const key = abcKey(form.value.abc)
-  if (key === null) {
-    return null
-  }
+const scoreKey = computed(() => abcKey(form.value.abc))
+const keyOptions = computed(() => keyChoices(form.value.abc))
+const scoreRange = computed(() => {
   const range = vocalRange(form.value.abc)
-  return range ? t('abcKeyRange', { key, ...range }) : t('abcKeyOnly', { key })
+  return range ? t('abcVocalRange', range) : null
 })
 
 /** YuE2 sings the score's "Vocal" voice at its written pitch, so this is how a song gets lower or higher. */
 function transpose(semitones: number): void {
   form.value = { ...form.value, abc: transposeAbc(form.value.abc, semitones).abc }
+}
+
+function changeKey(key: string): void {
+  form.value = { ...form.value, abc: transposeToKey(form.value.abc, key).abc }
 }
 
 const importingMidi = ref(false)
@@ -290,7 +292,16 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
                 rounded
                 @click="transpose(1)"
               />
-              <small v-if="scoreKey" class="muted">{{ scoreKey }}</small>
+              <Select
+                v-if="scoreKey"
+                :model-value="scoreKey"
+                :options="keyOptions"
+                size="small"
+                :aria-label="t('abcKeyLabel')"
+                v-tooltip="t('abcKeyLabel')"
+                @update:model-value="changeKey"
+              />
+              <small v-if="scoreRange" class="muted ml-1">{{ scoreRange }}</small>
             </div>
             <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
             <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
