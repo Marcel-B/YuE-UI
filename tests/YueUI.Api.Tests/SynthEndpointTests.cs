@@ -63,6 +63,22 @@ public sealed class SynthEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync(path, new { })).StatusCode);
     }
 
+    [Fact]
+    public async Task The_mixer_is_empty_until_saved_and_then_replaced_whole()
+    {
+        var empty = await Json(await _client.GetAsync("/api/logic/synths/mixer"));
+        Assert.Null(empty["settings"]);
+
+        await _client.PutAsJsonAsync("/api/logic/synths/mixer", new { settings = new { master = 0.8, tracks = new { VOCAL = new { volume = 0.5, pan = -0.25 } } } });
+        var saved = await _client.PutAsJsonAsync("/api/logic/synths/mixer", new { settings = new { master = 0.6 } });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+
+        var mixer = await Json(await _client.GetAsync("/api/logic/synths/mixer"));
+        Assert.Equal(0.6, (double)mixer["settings"]!["master"]!);
+        Assert.Null(mixer["settings"]!["tracks"]);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/logic/synths/mixer", new { settings = 1 })).StatusCode);
+    }
+
     private static async Task<JsonNode> Json(HttpResponseMessage response) =>
         JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
 }

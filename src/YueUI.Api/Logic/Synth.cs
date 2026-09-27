@@ -41,6 +41,30 @@ public sealed record TrackSynthInput(JsonElement? Patch, string? Preset)
     }
 }
 
+/// <summary>
+/// The preview's mixer: volume and pan per track and the master, as the browser holds them. Only the browser reads them.
+/// </summary>
+/// <param name="Settings"><c>null</c> until the mixer was first saved.</param>
+public sealed record MixerSettings(JsonElement? Settings, string? UpdatedAt);
+
+/// <summary>What a client sends to save the mixer.</summary>
+public sealed record MixerInput(JsonElement? Settings)
+{
+    public IReadOnlyList<string> Problems()
+    {
+        var problems = new List<string>();
+        if (Settings is not { ValueKind: JsonValueKind.Object } value)
+        {
+            problems.Add("settings must be a JSON object");
+        }
+        else if (value.GetRawText().Length > SynthPatch.MaxPatchBytes)
+        {
+            problems.Add($"settings may have at most {SynthPatch.MaxPatchBytes} bytes");
+        }
+        return problems;
+    }
+}
+
 public static class SynthPatch
 {
     public const int MaxNameLength = 64;
