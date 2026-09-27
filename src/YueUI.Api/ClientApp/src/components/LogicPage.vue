@@ -77,11 +77,15 @@ function pickSong(id: string | null): void {
   }
 }
 
+/** A song opened from the library is converted as soon as the page can, so its preview is there to adjust. */
+let convertWhenReady = songId.value !== null
+
 // An address with a song (a link from the library) picks it, also while the page is already open.
 watch(logicSong, (id) => {
   if (id && id !== songId.value) {
     mode.value = 'library'
     pickSong(id)
+    convertWhenReady = true
   }
 })
 
@@ -120,6 +124,18 @@ const source = computed<ScoreSource | null>(() => {
 const hasAudio = computed(() => (mode.value === 'library' ? !!chosen.value?.song.hasAudio : audio.value !== null))
 
 watch(mode, () => forgetResult())
+
+// Waits for the library as well, which may arrive after the page when it is opened by address.
+watch(
+  source,
+  (from) => {
+    if (convertWhenReady && from && mode.value === 'library') {
+      convertWhenReady = false
+      void convert()
+    }
+  },
+  { flush: 'post' },
+)
 
 function forgetResult(): void {
   pending?.abort()

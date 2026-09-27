@@ -266,13 +266,6 @@ export interface MidiScore {
   warnings: string[]
 }
 
-/** A warning of a Logic export (YueToLogic.Core's Diagnostic, PascalCase severity). */
-export interface LogicDiagnostic {
-  severity: 'Info' | 'Warning' | 'Error'
-  code: string
-  message: string
-}
-
 export interface StorageInfo {
   freeBytes: number
   totalBytes: number
