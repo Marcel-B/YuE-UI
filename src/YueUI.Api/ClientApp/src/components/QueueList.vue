@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
-import { cancel, shutdownWorker, stopAll } from '../api'
+import { cancel, cancelQueued, moveQueued, shutdownWorker, stopAll } from '../api'
 import { formatDuration, formatTime, stageLabel, t } from '../i18n'
 import SongTimeline from './SongTimeline.vue'
 import { showSong, songHref } from '../view'
-import type { LogEntry, SongState, WorkerInfo } from '../types'
+import type { LogEntry, QueuedJob, SongState, WorkerInfo } from '../types'
 
 defineExpose({ run, stopAll, shutdownWorker })
 
 const props = defineProps<{
   songs: SongState[]
+  /** Jobs the server holds back until the memory is free, in the order they start. */
+  jobs: QueuedJob[]
   worker: WorkerInfo
   log: LogEntry[]
   /** Songs the library lists; those have a place on the songs page to jump to. */
@@ -22,6 +24,31 @@ const emit = defineEmits<{
 }>()
 
 const hasFinished = computed(() => props.songs.some((s) => s.finished))
+
+const jobIcons: Record<QueuedJob['kind'], string> = {
+  song: 'pi pi-sparkles',
+  render: 'pi pi-refresh',
+  lyrics: 'pi pi-pen-to-square',
+}
+
+function jobTitle(job: QueuedJob): string {
+  if (job.title) {
+    return job.title
+  }
+  return job.kind === 'render' ? (job.songId ?? '') : job.kind === 'lyrics' ? t('jobLyrics') : t('untitled')
+}
+
+function jobDetail(job: QueuedJob): string {
+  const quality = job.quality ? t(job.quality === 'full' ? 'qualityFull' : 'qualityDraft') : ''
+  switch (job.kind) {
+    case 'song':
+      return [job.batch && job.batch > 1 ? t('jobSongs', { n: job.batch }) : '', quality].filter(Boolean).join(' · ')
+    case 'render':
+      return [t('jobRender'), quality].join(' · ')
+    case 'lyrics':
+      return t(job.revision ? 'jobRevision' : 'jobLyrics')
+  }
+}
 
 /** From joining the queue to the end, or null for a song without its stages (a server from before they were kept). */
 function totalTime(song: SongState): string | null {
@@ -79,8 +106,55 @@ watch(
       />
     </div>
 
-    <p v-if="songs.length === 0" class="muted empty">{{ t('queueEmpty') }}</p>
-    <ul v-else>
+    <div v-if="jobs.length > 0" class="mb-4">
+      <h3 class="m-0 text-sm font-medium text-muted-color" :title="t('queueWaitingHint')">{{ t('queueWaiting') }}</h3>
+      <ul class="m-0 p-0 list-none flex flex-col gap-1">
+        <li v-for="(job, i) in jobs" :key="job.id" class="flex gap-2 items-center">
+          <i :class="[jobIcons[job.kind], 'text-muted-color']" />
+          <div class="min-w-0 flex-1">
+            <a
+              v-if="job.songId && listed.has(job.songId)"
+              :href="songHref(job.songId)"
+              class="block truncate font-bold text-color no-underline hover:underline"
+              :title="t('showSong')"
+              @click.prevent="showSong(job.songId)"
+              >{{ jobTitle(job) }}</a
+            >
+            <strong v-else class="block truncate">{{ jobTitle(job) }}</strong>
+            <span class="text-sm text-muted-color">{{ jobDetail(job) }}</span>
+          </div>
+          <Button
+            icon="pi pi-arrow-up"
+            text
+            rounded
+            size="small"
+            :disabled="i === 0"
+            :aria-label="t('moveUp')"
+            @click="run(() => moveQueued(job.id, -1))"
+          />
+          <Button
+            icon="pi pi-arrow-down"
+            text
+            rounded
+            size="small"
+            :disabled="i === jobs.length - 1"
+            :aria-label="t('moveDown')"
+            @click="run(() => moveQueued(job.id, 1))"
+          />
+          <Button
+            icon="pi pi-times"
+            text
+            rounded
+            severity="danger"
+            :aria-label="t('removeFromQueue')"
+            @click="run(() => cancelQueued(job.id))"
+          />
+        </li>
+      </ul>
+    </div>
+
+    <p v-if="songs.length === 0 && jobs.length === 0" class="muted empty">{{ t('queueEmpty') }}</p>
+    <ul v-else-if="songs.length > 0">
       <li v-for="song in songs" :key="song.id" :class="['song', song.stage]">
         <div class="flex gap-3 items-center">
           <a

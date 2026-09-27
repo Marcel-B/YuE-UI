@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using YueUI.Api.Library;
+using YueUI.Api.Queue;
 using YueUI.Api.Voices;
 
 namespace YueUI.Api.Worker;
@@ -36,6 +37,12 @@ public sealed class WorkerHost(
 
     private static readonly TimeSpan StudioCheckInterval = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// How long a sent song counts as busy without its started event. The worker answers a command within moments of
+    /// reading it, and reads only once it is up; this only keeps a command it refused silently from blocking forever.
+    /// </summary>
+    private static readonly TimeSpan ExpectationTimeout = TimeSpan.FromMinutes(5);
+
     private readonly Lock _gate = new();
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly Dictionary<string, SongState> _songs = [];
@@ -44,6 +51,8 @@ public sealed class WorkerHost(
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
     /// <summary>Songs a render was asked for and that have not started yet; the worker's started event does not say.</summary>
     private readonly HashSet<string> _renders = [];
+    /// <summary>When songs were announced (<see cref="ExpectSongs"/>) whose started event has not come yet, oldest first.</summary>
+    private readonly List<DateTimeOffset> _expected = [];
     private readonly LinkedList<LogEntry> _log = [];
     private readonly List<Channel<ServerEvent>> _subscribers = [];
     private IWorkerConnection? _connection;
@@ -51,6 +60,7 @@ public sealed class WorkerHost(
     private string? _lastError;
     private bool? _extensions;
     private LyricsState? _lyrics;
+    private IReadOnlyList<QueuedJob> _queue = [];
     private bool _studioRunning;
     private DateTimeOffset _studioCheckedAt = DateTimeOffset.MinValue;
 
@@ -76,6 +86,43 @@ public sealed class WorkerHost(
         {
             _subscribers.Add(channel);
             return new Subscription(SnapshotLocked(studioRunning), channel.Reader, () => Unsubscribe(channel));
+        }
+    }
+
+    /// <summary>Songs are in flight or on their way to the worker: its model holds the memory.</summary>
+    public bool IsBusy
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return BusyLocked();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Counts the worker as busy from now until the started event of the command about to be sent. Without it the
+    /// lyrics writer or a voice conversion could see an idle worker in between, shut it down and lose the command.
+    /// Announce before checking whether the memory is free, as they check the worker after claiming it.
+    /// </summary>
+    public void ExpectSongs()
+    {
+        lock (_gate)
+        {
+            _expected.Add(time.GetUtcNow());
+        }
+    }
+
+    /// <summary>Takes back <see cref="ExpectSongs"/> for a command that was not sent after all.</summary>
+    public void ExpectNoSongs()
+    {
+        lock (_gate)
+        {
+            if (_expected.Count > 0)
+            {
+                _expected.RemoveAt(_expected.Count - 1);
+            }
         }
     }
 
@@ -207,6 +254,19 @@ public sealed class WorkerHost(
         Publish("lyrics", lyrics);
     }
 
+    /// <summary>Keeps the jobs waiting in <see cref="JobQueue"/> for the snapshot and sends them to the browsers.</summary>
+    public void UpdateQueue(IReadOnlyList<QueuedJob> queue)
+    {
+        lock (_gate)
+        {
+            _queue = queue;
+        }
+        Publish("queue", queue);
+    }
+
+    /// <summary>Something went wrong outside the worker that the queue's log should show, e.g. a queued song that could not start.</summary>
+    public void LogError(string message) => AddLog("error", message);
+
     /// <summary>
     /// Keeps a song's version in the works (Voices/VoiceConverter.cs) for the snapshot and sends it to the browsers; a
     /// finished one leaves the snapshot with the next, since the library lists it from then on.
@@ -323,6 +383,7 @@ public sealed class WorkerHost(
             _connection = null;
             _status = WorkerStatus.Stopped;
             _renders.Clear();
+            _expected.Clear();
             foreach (var song in _songs.Values.Where(s => !s.Finished).ToList())
             {
                 var now = time.GetUtcNow();
@@ -389,6 +450,8 @@ public sealed class WorkerHost(
                 lock (_gate)
                 {
                     _lastError = error;
+                    // Typically a command the worker refused, which then never starts.
+                    _expected.Clear();
                 }
                 AddLog("error", error);
                 PublishWorker();
@@ -529,6 +592,10 @@ public sealed class WorkerHost(
 
         lock (_gate)
         {
+            if (_expected.Count > 0)
+            {
+                _expected.RemoveAt(0);
+            }
             for (var i = 0; i < started.Count; i++)
             {
                 if (_renders.Remove(started[i].Id))
@@ -642,10 +709,17 @@ public sealed class WorkerHost(
         [.. _log],
         [.. _transcriptions.Values.OrderBy(t => t.UpdatedAt)],
         _lyrics,
-        [.. _versions.Values.OrderBy(v => v.CreatedAt)]);
+        [.. _versions.Values.OrderBy(v => v.CreatedAt)],
+        _queue);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
-        new(_status, _songs.Values.Any(s => !s.Finished), studioRunning, _lastError, _extensions);
+        new(_status, BusyLocked(), studioRunning, _lastError, _extensions);
+
+    private bool BusyLocked()
+    {
+        _expected.RemoveAll(sent => time.GetUtcNow() - sent > ExpectationTimeout);
+        return _expected.Count > 0 || _songs.Values.Any(s => !s.Finished);
+    }
 
     /// <summary>Scanning the process table takes a moment, and worker events come in bursts: look at most every few seconds.</summary>
     private bool StudioRunning()

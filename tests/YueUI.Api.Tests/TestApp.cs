@@ -34,6 +34,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public TestApp(bool fakeWorker = true)
     {
         _fakeWorker = fakeWorker;
+        // A job waiting for the memory starts within moments of it being free, not a second later.
+        Queue.JobQueue.CheckInterval = TimeSpan.FromMilliseconds(20);
         Root = Directory.CreateTempSubdirectory("yueui-").FullName;
         OutputDir = Path.Combine(Root, "songs");
         Directory.CreateDirectory(OutputDir);
@@ -68,6 +70,13 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public string? VoiceBaseUrl { get; set; } = "http://voice.test";
 
     public FakeWorker Worker => Launcher.Current ?? throw new InvalidOperationException("No worker was started.");
+
+    /// <summary>The worker a job from the queue starts on the queue's own thread.</summary>
+    public async Task<FakeWorker> StartedWorker()
+    {
+        await WaitUntil(() => Launcher.Current is { Disposed: false });
+        return Worker;
+    }
 
     /// <summary>Creates <c>run/songN</c> with the files the worker writes; <paramref name="files"/> overrides or adds.</summary>
     public string AddSong(string run, string song, string title = "Neon Night", string quality = "draft", params string[] files)
@@ -200,6 +209,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
         }
     }
 
+    /// <summary>The state as the browsers get it, without a round trip (for checks right after a request).</summary>
+    public StatusSnapshot Snapshot() => Services.GetRequiredService<WorkerHost>().Snapshot();
+
     public string AudioPath(string run, string song) => Path.Combine(OutputDir, run, song, "audio.flac");
 }
 
@@ -209,8 +221,15 @@ public sealed class FakeLauncher : IWorkerLauncher
 
     public FakeWorker? Current { get; private set; }
 
+    /// <summary>As when YuE Studio is not installed.</summary>
+    public bool Fail { get; set; }
+
     public IWorkerConnection Launch()
     {
+        if (Fail)
+        {
+            throw new WorkerUnavailableException("YuE Studio is not installed.");
+        }
         Launches++;
         return Current = new FakeWorker();
     }

@@ -370,15 +370,27 @@ public sealed class LyricsEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task No_draft_while_YuE2_generates()
+    public async Task A_draft_waits_in_the_queue_while_YuE2_generates()
     {
         await StartSong();
 
         var response = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var queued = (await response.Content.ReadFromJsonAsync<LyricsState>(TestApp.Json))!;
+        Assert.Equal("queued", queued.Stage);
+        var job = Assert.Single((await _app.WaitForStatus(_client, s => s.Queue is { Count: 1 })).Queue!);
+        Assert.Equal((queued.Id, Queue.JobKind.Lyrics, "summer"), (job.Id, job.Kind, job.Title));
+        await Task.Delay(100);
         Assert.Empty(_app.LmStudio.Requests);
         Assert.False(_app.Worker.Disposed);
+
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath("20260922-101500-Neon-Night", "song1"), stage = "ready", detail = "" });
+
+        var draft = (await _app.WaitForStatus(_client, s => s.Lyrics is { Finished: true } lyrics && lyrics.Id == queued.Id)).Lyrics!;
+        Assert.Equal("done", draft.Stage);
+        Assert.True(_app.Worker.Disposed);
+        Assert.Empty(_app.Snapshot().Queue!);
     }
 
     [Fact]
@@ -394,7 +406,7 @@ public sealed class LyricsEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task While_lyrics_are_written_no_song_starts_and_no_second_draft()
+    public async Task While_lyrics_are_written_songs_and_a_second_draft_wait_in_order()
     {
         _app.LmStudio.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var drafting = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
@@ -403,16 +415,34 @@ public sealed class LyricsEndpointTests : IDisposable
         await WaitFor(() => _app.LmStudio.Requests.Any(r => r.Path == "/v1/chat/completions"));
         Assert.Equal("writing", (await _app.WaitForStatus(_client, s => s.Lyrics?.Id == id)).Lyrics!.Stage);
 
-        var song = await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa" });
+        var song = await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa", title = "Sun", batch = 2 });
         var second = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "winter" });
 
-        Assert.Equal(HttpStatusCode.Conflict, song.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, song.StatusCode);
+        var songJob = (await song.Content.ReadFromJsonAsync<Queue.QueuedJob>(TestApp.Json))!;
+        Assert.Equal((Queue.JobKind.Song, "Sun", 2, "draft"), (songJob.Kind, songJob.Title, songJob.Batch, songJob.Quality));
+        var secondId = (await second.Content.ReadFromJsonAsync<LyricsState>(TestApp.Json))!.Id;
+        Assert.Equal([songJob.Id, secondId], _app.Snapshot().Queue!.Select(j => j.Id));
         Assert.Equal(0, _app.Launcher.Launches);
 
         _app.LmStudio.Gate.SetResult();
-        await _app.WaitForStatus(_client, s => s.Lyrics is { Stage: "done" });
-        Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa" })).StatusCode);
+        await _app.WaitForStatus(_client, s => s.Lyrics is { Stage: "done" } lyrics && lyrics.Id == id);
+
+        // The song goes to the worker; the second draft waits for it, even before the worker has said it started.
+        Assert.Equal("generate", (string?)(await (await _app.StartedWorker()).NextCommand())["cmd"]);
+        Assert.Equal([secondId], (await _app.WaitForStatus(_client, s => s.Queue is { Count: 1 })).Queue!.Select(j => j.Id));
+        await Task.Delay(100);
+        Assert.Equal(1, _app.LmStudio.Requests.Count(r => r.Path == "/v1/chat/completions"));
+        Assert.False(_app.Worker.Disposed);
+
+        var path = _app.AudioPath("20260927-120000-Sun", "song1");
+        _app.Worker.Emit(new { @event = "started", job = "20260927-120000-Sun", title = "Sun", songs = new[] { new { index = 1, path } } });
+        await _app.WaitForStatus(_client, s => s.Songs.Count == 1);
+        await Task.Delay(100);
+        Assert.False(_app.Worker.Disposed);
+
+        _app.Worker.Emit(new { @event = "stage", path, stage = "ready", detail = "" });
+        Assert.Equal("done", (await _app.WaitForStatus(_client, s => s.Lyrics is { Finished: true } lyrics && lyrics.Id == secondId)).Lyrics!.Stage);
     }
 
     public void Dispose()

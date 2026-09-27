@@ -16,6 +16,8 @@ namespace YueUI.Api.Data;
 /// Version 2: titles given to runs in this app (<see cref="SqliteRunTitleStore"/>).
 /// Version 3: song ratings, one to five stars (<see cref="SqliteSongRatingStore"/>).
 /// Version 4: songs sung with another voice (<see cref="SqliteVersionStore"/>).
+/// Version 5: the stem model a version was separated with.
+/// Version 6: songs, renders and lyrics drafts waiting for their turn (<see cref="SqliteJobStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -160,6 +162,22 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     """
                     ALTER TABLE song_versions ADD COLUMN stem_model TEXT NULL;
                     PRAGMA user_version = 5;
+                    """);
+            }
+            if (current < 6)
+            {
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE queued_jobs (
+                        id TEXT PRIMARY KEY,
+                        position INTEGER NOT NULL,
+                        kind TEXT NOT NULL,
+                        job TEXT NOT NULL,
+                        payload TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 6;
                     """);
             }
             _ready = true;

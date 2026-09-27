@@ -5,6 +5,7 @@ using YueUI.Api.Library;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
+using YueUI.Api.Queue;
 using YueUI.Api.Share;
 using YueUI.Api.Voices;
 using YueUI.Api.Worker;
@@ -63,6 +64,11 @@ builder.Services.AddHttpClient(StemClient.HttpClientName, client => client.Timeo
 builder.Services.AddSingleton<VoiceConverter>();
 builder.Services.AddHostedService(services => services.GetRequiredService<VoiceConverter>());
 
+// Songs, renders and lyrics drafts wait here for the memory instead of being refused; kept in the database.
+builder.Services.AddSingleton<SqliteJobStore>();
+builder.Services.AddSingleton<JobQueue>();
+builder.Services.AddHostedService(services => services.GetRequiredService<JobQueue>());
+
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddProblemDetails();
@@ -90,6 +96,7 @@ api.MapLogicEndpoints();
 api.MapPushEndpoints();
 api.MapPlaylistEndpoints();
 api.MapVoiceEndpoints();
+api.MapQueueEndpoints();
 
 app.MapClientApp();
 

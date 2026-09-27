@@ -2,8 +2,7 @@ using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using YueUI.Api.Library;
-using YueUI.Api.Lyrics;
-using YueUI.Api.Voices;
+using YueUI.Api.Queue;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api;
@@ -42,35 +41,26 @@ public static class WorkerEndpoints
         return api;
     }
 
-    private static async Task<IResult> Generate(
-        GenerateRequest request, WorkerHost host, LyricsWriter lyrics, VoiceConverter voices, CancellationToken cancellationToken)
+    /// <summary>
+    /// While a lyrics draft or a voice conversion holds the memory the song waits in the <see cref="JobQueue"/>; the
+    /// answer then carries the waiting job.
+    /// </summary>
+    private static async Task<IResult> Generate(GenerateRequest request, JobQueue queue, CancellationToken cancellationToken)
     {
         var errors = request.Validate();
         if (errors.Count > 0)
         {
             return Results.ValidationProblem(errors);
         }
-        return lyrics.IsWriting ? WritingLyrics()
-            : voices.IsConverting ? ConvertingVoice()
-            : await Send(() => host.GenerateAsync(request.ToWorkerCommand(), cancellationToken));
+        return await Send(() => queue.GenerateAsync(request, cancellationToken));
     }
-
-    /// <summary>The lyrics model may be in memory; YuE2 beside it would not fit on 24 GB.</summary>
-    private static IResult WritingLyrics() =>
-        Results.Problem(title: "Lyrics are being written; start the song once they are done.", statusCode: StatusCodes.Status409Conflict);
-
-    /// <summary>Separation or Seed-VC holds the memory, see <see cref="VoiceConverter"/>.</summary>
-    private static IResult ConvertingVoice() =>
-        Results.Problem(title: "A song is being sung with another voice; start the song once that is done.", statusCode: StatusCodes.Status409Conflict);
 
     private static async Task<IResult> Render(
         string run,
         string song,
         RenderRequest? request,
         SongLibrary library,
-        WorkerHost host,
-        LyricsWriter lyrics,
-        VoiceConverter voices,
+        JobQueue queue,
         CancellationToken cancellationToken)
     {
         request ??= new RenderRequest();
@@ -86,18 +76,16 @@ public static class WorkerEndpoints
         {
             return Results.Problem(title: "The song's tokens were not saved, so it cannot be rendered again.", statusCode: StatusCodes.Status409Conflict);
         }
-        return lyrics.IsWriting ? WritingLyrics()
-            : voices.IsConverting ? ConvertingVoice()
-            : await Send(() => host.RenderAsync(directory, request.Quality, request.Engines, cancellationToken));
+        return await Send(() => queue.RenderAsync(run, song, library.TitleOf(run, directory), request.Quality, request.Engines, cancellationToken));
     }
 
     /// <summary>The worker answers asynchronously (its "started" event reaches the browsers), so a sent command is 202.</summary>
-    private static async Task<IResult> Send(Func<Task> send)
+    private static async Task<IResult> Send(Func<Task<QueuedJob?>> send)
     {
         try
         {
-            await send();
-            return Results.Accepted();
+            var queued = await send();
+            return queued is null ? Results.Accepted() : Results.Accepted(value: queued);
         }
         catch (WorkerUnavailableException exception)
         {

@@ -8,6 +8,7 @@ import type {
   LyricsState,
   MidiScore,
   PlaylistInfo,
+  QueuedJob,
   RunInfo,
   SongRequest,
   SongState,
@@ -38,14 +39,15 @@ export class ApiError extends Error {
 }
 
 /** Queues a run; its songs then arrive as `song` events. */
-export async function generate(request: GenerateRequest): Promise<void> {
-  await send('/api/generate', json('POST', request))
+/** Resolves to the waiting job while other work holds the memory, else to null: the song went to the worker. */
+export async function generate(request: GenerateRequest): Promise<QueuedJob | null> {
+  return queuedJob(await send('/api/generate', json('POST', request)))
 }
 
 /**
  * Starts English or German lyrics in YuE2's format from a few keywords or a photo (a data URL, see `photo.ts`), written by
- * the language model in LM Studio; the draft arrives as a `lyrics` event. Refused (409) while YuE2 generates or another
- * draft is being written.
+ * the language model in LM Studio; the draft arrives as a `lyrics` event. While YuE2 generates or another draft is being
+ * written it waits in the queue (stage `queued`).
  */
 export async function draftLyrics(
   keywords: string,
@@ -82,8 +84,24 @@ export async function getLyricsModels(): Promise<LyricsModels> {
 }
 
 /** Synthesizes a finished song again from its saved tokens, normally a draft at full quality. */
-export async function render(songId: string, quality: 'full' | 'draft' = 'full'): Promise<void> {
-  await send(`/api/songs/${songId}/render`, json('POST', { quality }))
+export async function render(songId: string, quality: 'full' | 'draft' = 'full'): Promise<QueuedJob | null> {
+  return queuedJob(await send(`/api/songs/${songId}/render`, json('POST', { quality })))
+}
+
+/** A 202 carries the job only when it has to wait. */
+async function queuedJob(response: Response): Promise<QueuedJob | null> {
+  const text = await response.text()
+  return text ? (JSON.parse(text) as QueuedJob) : null
+}
+
+/** Takes a job out of the queue before it starts. */
+export async function cancelQueued(id: string): Promise<void> {
+  await send(`/api/queue/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+/** Moves a waiting job by `offset` places, towards the front when negative. */
+export async function moveQueued(id: string, offset: number): Promise<void> {
+  await send(`/api/queue/${encodeURIComponent(id)}/move`, json('POST', { offset }))
 }
 
 export async function cancel(songId: string): Promise<void> {
@@ -329,6 +347,7 @@ export interface EventHandlers {
   transcription(transcription: TranscriptionState): void
   lyrics(lyrics: LyricsState): void
   version(version: VersionState): void
+  queue(queue: QueuedJob[]): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */
   connection(open: boolean): void
 }
@@ -349,6 +368,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on('library', () => handlers.library())
   on<TranscriptionState>('transcription', handlers.transcription)
   on<LyricsState>('lyrics', handlers.lyrics)
+  on<QueuedJob[]>('queue', handlers.queue)
   on<VersionState>('version', handlers.version)
   source.onerror = () => handlers.connection(false)
   return () => source.close()
