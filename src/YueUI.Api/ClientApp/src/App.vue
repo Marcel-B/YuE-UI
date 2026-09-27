@@ -35,6 +35,8 @@ import type {
 // Dialog, a good part of PrimeVue that the create page does not need; sharing needs its dialog only when used.
 const LibraryList = defineAsyncComponent(() => import('./components/LibraryList.vue'))
 const ShareDialog = defineAsyncComponent(() => import('./components/ShareDialog.vue'))
+// The Logic page brings the options form, the piano roll and the MIDI preview; loaded only once it is opened.
+const LogicPage = defineAsyncComponent(() => import('./components/LogicPage.vue'))
 
 const logCapacity = 300
 const form = ref(loadFormState())
@@ -167,6 +169,7 @@ const pages: { view: View; label: MessageKey; icon: string }[] = [
   { view: 'songs', label: 'menuSongs', icon: 'pi pi-list' },
   { view: 'playlist', label: 'menuPlaylist', icon: 'pi pi-play-circle' },
   { view: 'voices', label: 'menuVoices', icon: 'pi pi-users' },
+  { view: 'logic', label: 'menuLogic', icon: 'pi pi-box' },
 ]
 
 /**
@@ -185,6 +188,17 @@ const voiceInfo = ref<VoiceInfo>({ voicesConfigured: false, conversionConfigured
 getVoiceInfo()
   .then((info) => (voiceInfo.value = info))
   .catch(() => undefined)
+
+/**
+ * The Logic page is only built once it is opened, and then kept like the others: it asks the server for instruments
+ * and presets on its first appearance, which a visit to the other pages does not need.
+ */
+const logicOpened = ref(view.value === 'logic')
+watch(view, (value) => {
+  if (value === 'logic') {
+    logicOpened.value = true
+  }
+})
 
 const menu = computed(() =>
   pages
@@ -507,6 +521,10 @@ async function useAsNewSong(songId: string): Promise<void> {
         <VoicesPanel :active="view === 'voices'" :versions="versions" @error="show($event, true)" />
       </template>
     </Card>
+  </main>
+
+  <main v-if="logicOpened" v-show="view === 'logic'">
+    <LogicPage :runs="runs" />
   </main>
 
   <!-- Outside the pages, so switching between them does not stop the song. The spacer keeps it off the page's end. -->

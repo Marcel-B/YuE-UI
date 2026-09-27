@@ -52,6 +52,8 @@ builder.Services.AddSingleton<SqlitePlaylistStore>();
 builder.Services.AddSingleton<SqliteRunTitleStore>();
 builder.Services.AddSingleton<SqliteSongRatingStore>();
 builder.Services.AddSingleton<SqliteVersionStore>();
+builder.Services.AddSingleton<SqliteInstrumentStore>();
+builder.Services.AddSingleton<SqliteLogicPresetStore>();
 
 // Songs sung with a reference voice: StemMyWav separates, ChangeMyVoice converts, ffmpeg mixes. A slow separation
 // model takes three times as long as the song and answers only when it is done.
@@ -95,6 +97,7 @@ api.MapLibraryEndpoints();
 api.MapTranscriptionEndpoints();
 api.MapLyricsEndpoints();
 api.MapLogicEndpoints();
+api.MapInstrumentEndpoints();
 api.MapPushEndpoints();
 api.MapPlaylistEndpoints();
 api.MapVoiceEndpoints();

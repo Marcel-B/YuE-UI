@@ -18,9 +18,13 @@
     --text: var(--p-text-color);
     --text-muted: var(--p-text-muted-color);
     --border: var(--p-content-border-color);
+    --border-strong: var(--p-form-field-border-color);
     --accent: var(--p-primary-color);
+    --accent-soft: var(--p-highlight-background);
     --danger: var(--p-red-600);
+    --warning: var(--p-amber-500);
     --warning-text: var(--p-amber-700);
+    --radius: var(--p-content-border-radius);
     --radius-small: var(--p-form-field-border-radius);
     --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
@@ -38,6 +42,7 @@
       --bg: #0f1115;
       --surface-sunken: #1e222b;
       --danger: var(--p-red-400);
+      --warning: var(--p-amber-400);
       --warning-text: var(--p-amber-400);
 
       color-scheme: dark;
@@ -88,5 +93,15 @@
 
   .danger {
     color: var(--danger);
+  }
+
+  /* A line of explanation under a field or button, as the Logic page (ported from yue-to-logic-pro) uses them. */
+  .hint {
+    margin: 0.75rem 0 0;
+    font-size: 0.9rem;
+  }
+
+  .hint.warning {
+    color: var(--warning-text);
   }
 }
