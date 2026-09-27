@@ -14,7 +14,7 @@ public sealed class LogicEndpointTests : IDisposable
     private const string Run = "20260921-165850-Neon-Night";
 
     /// <summary>The official YuE2 example (samples/score.abc); 1 047 273 samples at 48 kHz is its length.</summary>
-    private static readonly string SampleScore = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Samples", "score.abc"));
+    internal static readonly string SampleScore = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Samples", "score.abc"));
 
     private readonly TestApp _app = new();
 
@@ -145,7 +145,7 @@ public sealed class LogicEndpointTests : IDisposable
         _app.CreateClient().PostAsync("/api/midi/abc", new MultipartFormDataContent { { new ByteArrayContent(midi), "file", "song.mid" } });
 
     /// <summary>A FLAC header with its STREAMINFO block (stereo, 24 bit), followed by some bytes standing for the frames.</summary>
-    private static byte[] Flac(int sampleRate, long samples)
+    internal static byte[] Flac(int sampleRate, long samples)
     {
         var data = new byte[42 + 256];
         "fLaC"u8.CopyTo(data);

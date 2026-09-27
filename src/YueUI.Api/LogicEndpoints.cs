@@ -1,9 +1,11 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using YueToLogic.Core.Conversion;
 using YueToLogic.Core.Diagnostics;
 using YueToLogic.Core.Logic;
 using YueToLogic.Core.Serialization;
+using YueUI.Api.Data;
 using YueUI.Api.Library;
 using YueUI.Api.Logic;
 
@@ -15,8 +17,10 @@ namespace YueUI.Api;
 public sealed record MidiScore(string Abc, IReadOnlyList<string> Warnings);
 
 /// <summary>
-/// A song as a Logic Pro project, and a MIDI file edited in Logic back into a score, both built in this process by
-/// <c>YueToLogic.Core</c> (formerly the separate yue-to-logic-pro service).
+/// Scores as MIDI files and Logic Pro projects, and a MIDI file edited in Logic back into a score, all built in this
+/// process by <c>YueToLogic.Core</c> (formerly the separate yue-to-logic-pro service). The library's button exports a
+/// song with the defaults; the Logic page converts with its options and instruments, from a song of the library or an
+/// uploaded score, and answers in YueToLogic.Core's own JSON (enums by name), which its frontend was written against.
 /// </summary>
 public static class LogicEndpoints
 {
@@ -26,6 +30,13 @@ public static class LogicEndpoints
     /// <summary>A song's MIDI file is a few hundred kilobytes, even with every generated track in it.</summary>
     public const long MaxMidiBytes = 4 * 1024 * 1024;
 
+    /// <summary>YuE2's scores are a few kilobytes; anything near this is not one.</summary>
+    public const long MaxScoreBytes = 1024 * 1024;
+
+    /// <summary>A long song's 48 kHz FLAC stays well below this.</summary>
+    public const long MaxAudioBytes = 250L * 1024 * 1024;
+
+    // Header values must be single-line, so the diagnostics header uses unindented JSON.
     private static readonly YueToLogicJsonContext CompactJson = new(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = false,
@@ -34,13 +45,29 @@ public static class LogicEndpoints
 
     public static RouteGroupBuilder MapLogicEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/songs/{run}/{song}/logic", ExportAsync);
+        api.MapGet("/songs/{run}/{song}/logic", ExportSongAsync);
         // The way back: a song edited in Logic and exported as MIDI becomes the score of a new song.
         api.MapPost("/midi/abc", MidiToAbcAsync).DisableAntiforgery();
+
+        var logic = api.MapGroup("/logic");
+        logic.MapPost("/convert", ConvertAsync)
+            .DisableAntiforgery()
+            .WithFormOptions(multipartBodyLengthLimit: MaxScoreBytes + 64 * 1024);
+        logic.MapPost("/export", ExportAsync)
+            .DisableAntiforgery()
+            .WithMetadata(new RequestSizeLimitAttribute(MaxAudioBytes + MaxScoreBytes + 64 * 1024))
+            .WithFormOptions(multipartBodyLengthLimit: MaxAudioBytes + MaxScoreBytes + 64 * 1024);
+        logic.MapGet("/presets", (SqliteLogicPresetStore store) => Results.Ok(store.List()));
+        logic.MapPut("/presets/{name}", SavePreset);
+        logic.MapDelete("/presets/{name}", (string name, SqliteLogicPresetStore store) =>
+            store.Delete(name.Trim())
+                ? Results.NoContent()
+                : Results.Problem(title: "Unknown preset", detail: $"There is no preset named '{name}'.", statusCode: StatusCodes.Status404NotFound));
+        logic.MapPost("/import", Import);
         return api;
     }
 
-    private static async Task<IResult> ExportAsync(
+    private static async Task<IResult> ExportSongAsync(
         string run,
         string song,
         SongLibrary library,
@@ -59,19 +86,122 @@ public static class LogicEndpoints
 
         const string title = "This song cannot become a Logic project.";
         var name = $"{LibraryEndpoints.FileName(library.TitleOf(run, directory), run)}-{song}";
-        var conversionOptions = new ConversionOptions();
-        ConversionResult converted;
-        await using (var score = File.OpenRead(Path.Combine(directory, "score.abc")))
+        await using var score = File.OpenRead(Path.Combine(directory, "score.abc"));
+        await using var audio = File.OpenRead(Path.Combine(directory, "audio.flac"));
+        var built = await BuildAsync(
+            converter, writer, score, audio, new ConversionOptions(), name, options.Value.SplitSections, new Dictionary<string, LogicInstrument>(), cancellationToken);
+        return built.Zip is { } zip
+            ? Package(zip, built.Diagnostics, name, context)
+            : Results.Problem(
+                title: title,
+                detail: string.Join(" ", [title, .. Messages(built.Diagnostics, DiagnosticSeverity.Error)]),
+                statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
+
+    /// <summary>The Logic page's preview: the converted score with its notes and the MIDI file, or why there is none.</summary>
+    private static async Task<IResult> ConvertAsync(
+        [FromForm] string? song,
+        IFormFile? file,
+        [FromForm] string? options,
+        SongLibrary library,
+        IScoreConverter converter,
+        CancellationToken cancellationToken)
+    {
+        if (ParseOptions(options) is not { } parsed)
         {
-            converted = await converter.ConvertAsync(score, conversionOptions, cancellationToken);
+            return BadRequest("Invalid options", "Form field 'options' is not valid ConversionOptions JSON.");
         }
-        if (!converted.Success)
+        var source = OpenScore(song, file, library);
+        if (source.Problem is not null)
         {
-            return Refusal(title, converted.Diagnostics);
+            return source.Problem;
+        }
+        ConversionResult result;
+        await using (var score = source.Score!)
+        {
+            result = await converter.ConvertAsync(score, parsed, cancellationToken);
+        }
+        return Results.Json(
+            result,
+            YueToLogicJsonContext.Default.ConversionResult,
+            statusCode: result.Success ? StatusCodes.Status200OK : StatusCodes.Status422UnprocessableEntity);
+    }
+
+    /// <summary>The Logic page's export, with its options, the instruments the tracks play and a name of its choosing.</summary>
+    private static async Task<IResult> ExportAsync(
+        [FromForm] string? song,
+        IFormFile? file,
+        IFormFile? audio,
+        [FromForm] string? options,
+        [FromForm] string? name,
+        [FromForm] bool? splitSections,
+        [FromForm] string? instruments,
+        SongLibrary library,
+        IScoreConverter converter,
+        ILogicProjectWriter writer,
+        HttpContext context,
+        CancellationToken cancellationToken)
+    {
+        if (ParseOptions(options) is not { } parsed)
+        {
+            return BadRequest("Invalid options", "Form field 'options' is not valid ConversionOptions JSON.");
+        }
+        var (logicInstruments, invalidInstruments) = ParseInstruments(instruments);
+        if (invalidInstruments is not null)
+        {
+            return invalidInstruments;
+        }
+        if (audio is { Length: > MaxAudioBytes })
+        {
+            return BadRequest("Audio file too large", $"The audio may have at most {MaxAudioBytes / (1024 * 1024)} MB.");
+        }
+        var source = OpenScore(song, file, library);
+        if (source.Problem is not null)
+        {
+            return source.Problem;
         }
 
-        // ZipArchive writes synchronously, which Kestrel does not allow on the response; the ZIP is as large as the
-        // FLAC, so it goes into a temporary file (deleted once sent) rather than into memory.
+        // A song of the library brings its own recording; an uploaded score takes the uploaded one, if any.
+        var fallbackName = source.Directory is { } directory
+            ? $"{LibraryEndpoints.FileName(library.TitleOf(source.Run!, directory), source.Run!)}-{source.Song}"
+            : Path.GetFileNameWithoutExtension(file!.FileName);
+        var packageName = PackageName(name, fallbackName);
+        await using var score = source.Score!;
+        await using var audioStream = source.Directory is { } songDirectory
+            ? File.Exists(Path.Combine(songDirectory, "audio.flac")) ? File.OpenRead(Path.Combine(songDirectory, "audio.flac")) : null
+            : audio is { Length: > 0 } ? audio.OpenReadStream() : null;
+        var built = await BuildAsync(
+            converter, writer, score, audioStream, parsed, packageName, splitSections ?? false, logicInstruments, cancellationToken);
+        return built.Zip is { } zip
+            ? Package(zip, built.Diagnostics, packageName, context)
+            : Results.Json(
+                new ConversionResult(false, null, null, built.Diagnostics),
+                YueToLogicJsonContext.Default.ConversionResult,
+                statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
+
+    /// <summary>
+    /// Converts the score and writes the project into a temporary file (deleted once sent): ZipArchive writes
+    /// synchronously, which Kestrel does not allow on the response, and the ZIP is as large as the FLAC.
+    /// </summary>
+    /// <returns>The ZIP, positioned at its start, or null with the diagnostics that say why there is none.</returns>
+    private static async Task<(FileStream? Zip, IReadOnlyList<Diagnostic> Diagnostics)> BuildAsync(
+        IScoreConverter converter,
+        ILogicProjectWriter writer,
+        Stream score,
+        Stream? audio,
+        ConversionOptions options,
+        string name,
+        bool splitSections,
+        IReadOnlyDictionary<string, LogicInstrument> instruments,
+        CancellationToken cancellationToken)
+    {
+        var converted = await converter.ConvertAsync(score, options, cancellationToken);
+        if (!converted.Success)
+        {
+            return (null, converted.Diagnostics);
+        }
+
         var zip = new FileStream(
             Path.Combine(Path.GetTempPath(), $"yueui-logic-{Guid.NewGuid():N}.zip"),
             FileMode.CreateNew,
@@ -82,7 +212,6 @@ public static class LogicEndpoints
         LogicProjectResult logic;
         try
         {
-            await using var audio = File.OpenRead(Path.Combine(directory, "audio.flac"));
             using var sink = new ZipLogicPackageSink(zip, name);
             logic = await writer.WriteAsync(
                 converted.Score!,
@@ -91,8 +220,9 @@ public static class LogicEndpoints
                 new LogicProjectOptions
                 {
                     ProjectName = name,
-                    SplitRegionsAtSections = options.Value.SplitSections,
-                    Channels = conversionOptions.MidiChannels,
+                    SplitRegionsAtSections = splitSections,
+                    Channels = options.MidiChannels,
+                    Instruments = instruments,
                 },
                 cancellationToken);
         }
@@ -106,17 +236,108 @@ public static class LogicEndpoints
         if (!logic.Success)
         {
             await zip.DisposeAsync();
-            return Refusal(title, diagnostics);
+            return (null, diagnostics);
         }
+        zip.Position = 0;
+        return (zip, diagnostics);
+    }
 
+    private static IResult Package(FileStream zip, IReadOnlyList<Diagnostic> diagnostics, string name, HttpContext context)
+    {
         var warnings = diagnostics.Where(d => d.Severity != DiagnosticSeverity.Info).ToArray();
         if (warnings.Length > 0)
         {
             // JSON escapes non-ASCII characters by default, so the value is a valid header.
             context.Response.Headers[DiagnosticsHeader] = JsonSerializer.Serialize(warnings, CompactJson.DiagnosticArray);
         }
-        zip.Position = 0;
         return Results.File(zip, "application/zip", $"{name}.logicx.zip");
+    }
+
+    /// <summary>The score of a library song (<c>run/songN</c>) or an uploaded one; exactly one of them must be given.</summary>
+    private static (Stream? Score, string? Directory, string? Run, string? Song, IResult? Problem) OpenScore(string? song, IFormFile? file, SongLibrary library)
+    {
+        if (!string.IsNullOrWhiteSpace(song))
+        {
+            var parts = song.Split('/');
+            if (parts.Length != 2
+                || library.SongDirectory(parts[0], parts[1]) is not { } directory
+                || !File.Exists(Path.Combine(directory, "score.abc")))
+            {
+                return (null, null, null, null, Results.NotFound());
+            }
+            return (File.OpenRead(Path.Combine(directory, "score.abc")), directory, parts[0], parts[1], null);
+        }
+        if (file is null || file.Length == 0)
+        {
+            return (null, null, null, null, BadRequest("Missing score", "Name a song as form field 'song' or send a score.abc as form field 'file'."));
+        }
+        if (file.Length > MaxScoreBytes)
+        {
+            return (null, null, null, null, BadRequest("Score file too large", $"A score.abc is at most {MaxScoreBytes / 1024} KB."));
+        }
+        return (file.OpenReadStream(), null, null, null, null);
+    }
+
+    private static ConversionOptions? ParseOptions(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new ConversionOptions();
+        }
+        try
+        {
+            return JsonSerializer.Deserialize(json, YueToLogicJsonContext.Default.ConversionOptions) ?? new ConversionOptions();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The instruments the tracks play, from the form field of that name: track name → name, port and channel as JSON.
+    /// The browser sends what its routing table shows, so the export needs no look into the store.
+    /// </summary>
+    private static (IReadOnlyDictionary<string, LogicInstrument> Instruments, IResult? Problem) ParseInstruments(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return (new Dictionary<string, LogicInstrument>(), null);
+        }
+        Dictionary<string, LogicInstrument>? instruments;
+        try
+        {
+            instruments = JsonSerializer.Deserialize(json, YueToLogicJsonContext.Default.DictionaryStringLogicInstrument);
+        }
+        catch (JsonException exception)
+        {
+            return (new Dictionary<string, LogicInstrument>(), BadRequest("Invalid instruments", $"Form field 'instruments' is not valid JSON: {exception.Message}"));
+        }
+        foreach (var (track, instrument) in instruments ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(instrument.Name))
+            {
+                return (new Dictionary<string, LogicInstrument>(), BadRequest("Invalid instruments", $"The instrument of track '{track}' has no name."));
+            }
+            if (instrument.Channel is not (>= 1 and <= 16))
+            {
+                return (new Dictionary<string, LogicInstrument>(), BadRequest("Invalid instruments", $"The channel of track '{track}' must be between 1 and 16, not {instrument.Channel}."));
+            }
+        }
+        return (instruments ?? [], null);
+    }
+
+    /// <summary>A safe file name from the requested name, else from the song or the score's file name.</summary>
+    private static string PackageName(string? requested, string fallback)
+    {
+        var candidate = string.IsNullOrWhiteSpace(requested) ? fallback : requested;
+        var invalid = Path.GetInvalidFileNameChars().Concat(['/', '\\', ':']).ToHashSet();
+        var cleaned = new string(candidate.Where(c => !invalid.Contains(c) && !char.IsControl(c)).ToArray()).Trim().TrimStart('.');
+        if (cleaned.Length > 100)
+        {
+            cleaned = cleaned[..100];
+        }
+        return cleaned.Length == 0 ? "YuE" : cleaned;
     }
 
     private static async Task<IResult> MidiToAbcAsync(IFormFile? file, IMidiToAbcConverter converter, CancellationToken cancellationToken)
@@ -136,18 +357,70 @@ public static class LogicEndpoints
         var result = await converter.ConvertAsync(midi, new MidiToAbcOptions(), cancellationToken);
         if (!result.Success || result.Abc is not { Length: > 0 } abc)
         {
-            return Refusal("No score can be read from this MIDI file.", result.Diagnostics);
+            const string title = "No score can be read from this MIDI file.";
+            return Results.Problem(
+                title: title,
+                detail: string.Join(" ", [title, .. Messages(result.Diagnostics, DiagnosticSeverity.Error)]),
+                statusCode: StatusCodes.Status422UnprocessableEntity);
         }
         return Results.Ok(new MidiScore(abc, Messages(result.Diagnostics, DiagnosticSeverity.Warning)));
+    }
+
+    private static IResult SavePreset(string name, [FromBody] LogicPresetInput input, SqliteLogicPresetStore store)
+    {
+        if (input.Problems(name) is { Count: > 0 } problems)
+        {
+            return BadRequest("Invalid preset", string.Join("; ", problems) + ".");
+        }
+        var (preset, created) = store.Save(name.Trim(), input.Form!.Value);
+        return created ? Results.Created($"/api/logic/presets/{Uri.EscapeDataString(preset.Name)}", preset) : Results.Ok(preset);
+    }
+
+    /// <summary>
+    /// Takes over what yue-to-logic-pro's own server kept. Invalid entries are skipped and named rather than failing
+    /// the whole import, and running it twice changes nothing, since instruments and presets are matched by name.
+    /// </summary>
+    private static IResult Import([FromBody] LogicImport import, SqliteInstrumentStore instruments, SqliteLogicPresetStore presets)
+    {
+        var skipped = new List<string>();
+        var valid = new List<(long, InstrumentValues)>();
+        foreach (var instrument in import.Instruments ?? [])
+        {
+            var input = new InstrumentInput(instrument.Name, instrument.Port, instrument.Channel, instrument.Kind, instrument.Drums);
+            if (input.Problems() is { Count: > 0 } problems)
+            {
+                skipped.Add($"instrument '{instrument.Name}': {string.Join("; ", problems)}");
+            }
+            else
+            {
+                valid.Add((instrument.Id, input.Cleaned()));
+            }
+        }
+        var assignments = (import.Assignments ?? new Dictionary<string, long>())
+            .Where(entry => entry.Key.Trim().Length is > 0 and <= InstrumentEndpoints.MaxTrackLength)
+            .ToDictionary(entry => entry.Key.Trim(), entry => entry.Value, StringComparer.OrdinalIgnoreCase);
+        var (instrumentCount, assignmentCount) = instruments.Import(valid, assignments);
+
+        var validPresets = new List<(string, JsonElement)>();
+        foreach (var preset in import.Presets ?? [])
+        {
+            var input = new LogicPresetInput(preset.Form);
+            if (input.Problems(preset.Name ?? "") is { Count: > 0 } problems)
+            {
+                skipped.Add($"preset '{preset.Name}': {string.Join("; ", problems)}");
+            }
+            else
+            {
+                validPresets.Add((preset.Name!.Trim(), preset.Form!.Value));
+            }
+        }
+        var presetCount = presets.SaveAll(validPresets);
+        return Results.Ok(new LogicImportResult(instrumentCount, assignmentCount, presetCount, skipped));
     }
 
     private static List<string> Messages(IEnumerable<Diagnostic> diagnostics, DiagnosticSeverity severity) =>
         diagnostics.Where(d => d.Severity == severity).Select(d => d.Message).ToList();
 
-    /// <summary>The input itself cannot be converted; its errors say why. The browser shows the detail alone.</summary>
-    private static IResult Refusal(string title, IEnumerable<Diagnostic> diagnostics) =>
-        Results.Problem(
-            title: title,
-            detail: string.Join(" ", [title, .. Messages(diagnostics, DiagnosticSeverity.Error)]),
-            statusCode: StatusCodes.Status422UnprocessableEntity);
+    private static IResult BadRequest(string title, string detail) =>
+        Results.Problem(title: title, detail: detail, statusCode: StatusCodes.Status400BadRequest);
 }

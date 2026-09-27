@@ -18,6 +18,8 @@ namespace YueUI.Api.Data;
 /// Version 4: songs sung with another voice (<see cref="SqliteVersionStore"/>).
 /// Version 5: the stem model a version was separated with.
 /// Version 6: songs, renders and lyrics drafts waiting for their turn (<see cref="SqliteJobStore"/>).
+/// Version 7: the Logic page's instruments, which track plays which, and its presets (<see cref="SqliteInstrumentStore"/>,
+/// <see cref="SqliteLogicPresetStore"/>), as yue-to-logic-pro kept them, without its users.
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -178,6 +180,43 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         payload TEXT NOT NULL
                     );
                     PRAGMA user_version = 6;
+                    """);
+            }
+            if (current < 7)
+            {
+                // A preset's name is unique through name_key, the name folded by .NET: SQLite's NOCASE knows ASCII only,
+                // so "Ä" and "ä" would otherwise be two presets. A synthesizer leaves the drum columns NULL.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE instruments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        port TEXT NOT NULL,
+                        channel INTEGER NOT NULL CHECK (channel BETWEEN 1 AND 16),
+                        kind TEXT NOT NULL DEFAULT 'Synth',
+                        drum_kick INTEGER,
+                        drum_snare INTEGER,
+                        drum_closed_hihat INTEGER,
+                        drum_open_hihat INTEGER,
+                        drum_crash INTEGER,
+                        drum_clap INTEGER,
+                        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    );
+                    CREATE TABLE track_assignments (
+                        track TEXT NOT NULL COLLATE NOCASE PRIMARY KEY,
+                        instrument_id INTEGER NOT NULL REFERENCES instruments (id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE logic_presets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        name_key TEXT NOT NULL UNIQUE,
+                        form TEXT NOT NULL,
+                        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    );
+                    PRAGMA user_version = 7;
                     """);
             }
             _ready = true;

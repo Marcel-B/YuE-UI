@@ -43,7 +43,7 @@ Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ 
 
 ## Seiten, Player und Playlist
 
-Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter, Warteschlange), **Transkription** (SheetSage2), **Titel** (die Bibliothek), **Playlist** und **Stimmen** (nur mit ChangeMyVoice, siehe unten); auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
+Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter, Warteschlange), **Transkription** (SheetSage2), **Titel** (die Bibliothek), **Playlist**, **Logic** (siehe unten) und **Stimmen** (nur mit ChangeMyVoice, siehe unten); auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
 
 In der Warteschlange zeigt jeder Song seine Schritte als waagerechte Zeitleiste: Warten, Partitur, Tokens, Synthese und Audio, mit der Dauer jedes erledigten Schritts. Der Kreis des laufenden Schritts füllt sich mit dessen Fortschritt, darunter steht, was der Worker gerade meldet. Ein neu gerenderter Entwurf beginnt gleich bei der Synthese. Fertige Songs klappen auf eine Zeile mit der Gesamtdauer zusammen; **Schritte** öffnet die Zeitleiste wieder.
 
@@ -102,6 +102,16 @@ LM Studio muss dafür nicht geöffnet sein: Antwortet sein Server nicht, startet
 ## Als Logic-Projekt laden
 
 Die Bibliothek zeigt bei jedem Song mit Audio und Partitur einen Knopf **Als Logic-Projekt laden**. YuE UI baut das Projekt selbst, mit der Bibliothek `YueToLogic.Core` (früher der eigene Dienst [yue-to-logic-pro](https://github.com/Marcel-B/yue-to-logic-pro)); der Browser muss die FLAC also nicht erst herunter- und wieder hochladen. Zurück kommt ein ZIP mit dem `.logicx`-Projekt: Audio auf der ersten Spur, Gesang, Instrument und Akkorde als MIDI, Tempo, Takt und Abschnitte aus der Partitur. Hinweise (etwa eine Partitur, die länger ist als das Audio) zeigt die Oberfläche nach dem Download an; wird aus einem Song kein Projekt (eine Partitur, die sich nicht lesen lässt, Audio ohne 48 kHz), steht der Grund in der Fehlermeldung.
+
+**Die Seite Logic.** Wer mehr als die Voreinstellung will, öffnet einen Song auf der Seite **Logic** (Knopf beim Song oder Menü) oder lädt dort eine eigene `score.abc`, auf Wunsch mit `audio.flac`. Dort lassen sich Spuren dazuerzeugen (Akkorde mit Muster und Umkehrung, Bass, Schlagzeug, Leittöne, Verdopplung), Oktaven, Groove (Swing, Humanize), Einzähler und eine Region je Abschnitt einstellen; Einstellungen lassen sich als Voreinstellung speichern. Die Vorschau zeigt die Noten als Pianoroll und spielt sie ab, in Chrome auf dem Mac auch über die angeschlossenen MIDI-Geräte (Web MIDI gibt es nur in Chromium-Browsern, und nur über HTTPS). In der Instrumentenliste bekommt jedes Gerät einen Namen für seinen MIDI-Ausgang und Kanal, ein Drumcomputer dazu die Noten seiner Trommeln; jede Spur kann ein Instrument spielen. Die MIDI-Datei, die Vorschau und das Logic-Projekt legen die Spur dann auf dessen Kanal, und im Projekt geht sie über Logics External Instrument an das Gerät, sofern die Vorlage den Ausgang kennt. Instrumente, Zuordnungen und Voreinstellungen liegen in `yueui.db`, Handy und Mac sehen also dieselben.
+
+**Instrumente aus yue-to-logic-pro übernehmen.** Solange der alte Server noch läuft, holt dieser Befehl (etwa auf dem Proxmox-Host, der beide erreicht) seine Instrumente, Zuordnungen und Voreinstellungen und gibt sie YuE UI; zweimal ausgeführt ändert er nichts:
+
+```sh
+Y=http://192.168.2.73:8080/api
+{ printf '{"instruments":'; curl -s $Y/instruments; printf ',"assignments":'; curl -s $Y/instruments/assignments; printf ',"presets":'; curl -s $Y/presets; printf '}'; } > ytl.json
+curl -s -X POST -H 'Content-Type: application/json' --data @ytl.json https://<mac>.<tailnet>.ts.net:8443/api/logic/import
+```
 
 **Zurück aus Logic.** Wer den Song in Logic weiterbearbeitet hat (Melodie, Akkorde, Tempo), wählt dort alle MIDI-Regionen aus und exportiert sie als MIDI-Datei (*Ablage → Exportieren → Auswahl als MIDI-Datei*); die Spurnamen `Vocal`, `Ins` und `Chords` müssen bleiben, an ihnen erkennt YuE UI die Stimmen. Der Knopf **MIDI aus Logic als Partitur** beim Song macht daraus wieder eine `score.abc`; die steht dann mit Stil, Text und Seed des Songs im Formular, bereit für einen neuen Song. Dasselbe geht ohne Song über den Knopf neben dem Partiturfeld unter „Erweiterte Parameter“, etwa für eine Melodie, die in Logic entstanden ist. Spuren, die sich nicht zuordnen lassen, nennt die Oberfläche als Hinweis.
 
@@ -181,6 +191,13 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `GET` | `/api/songs/{run}/{song}/zip` | FLAC und ABC des Songs als ZIP |
 | `GET` | `/api/runs/{run}/zip` | FLAC und ABC aller Songs des Laufs als ZIP |
 | `GET` | `/api/songs/{run}/{song}/logic` | Song als Logic-Projekt (ZIP mit `.logicx`), Hinweise im Header `X-YueToLogic-Diagnostics`; `422`, wenn daraus kein Projekt wird, mit dem Grund |
+| `POST` | `/api/logic/convert` | Multipart: `song` (`<run>/songN`) oder `file` (`score.abc`), dazu `options` (ConversionOptions als JSON): die umgewandelte Partitur mit Noten und MIDI-Datei (Base64) für die Seite Logic; `422` mit den Diagnosen, wenn sie sich nicht lesen lässt |
+| `POST` | `/api/logic/export` | Multipart wie oben, dazu `audio` (FLAC, nur mit `file`), `name`, `splitSections`, `instruments` (Spur → Name, Port, Kanal als JSON): Logic-Projekt als ZIP, Hinweise im Header; `422` mit den Diagnosen |
+| `GET` / `PUT` / `DELETE` | `/api/logic/presets[/{name}]` | Voreinstellungen der Seite Logic (`PUT` mit `{ form }`) |
+| `POST` | `/api/logic/import` | Instrumente, Zuordnungen und Voreinstellungen aus yue-to-logic-pro übernehmen (`{ instruments, assignments, presets }`, wie dessen `GET`-Routen sie liefern) |
+| `GET` / `POST` | `/api/instruments` | Instrumente der Seite Logic (Name, Port, Kanal, `kind` `Synth` oder `DrumMachine`, `drums`); `409` bei doppeltem Namen |
+| `PUT` / `DELETE` | `/api/instruments/{id}` | Instrument ändern oder löschen (mit seinen Zuordnungen) |
+| `GET` / `PUT` | `/api/instruments/assignments[/{track}]` | Welche Spur welches Instrument spielt (`PUT` mit `{ instrumentId }`, `null` nimmt es weg) |
 | `POST` | `/api/midi/abc` | Multipart-Feld `file`: MIDI-Datei (bis 4 MB), zurück in eine Partitur gewandelt: `{ abc, warnings }`; `422`, wenn keine Partitur daraus wird, `413` für zu große Dateien |
 | `DELETE` | `/api/songs/{run}/{song}` | Song löschen, mit dem letzten auch den Lauf; `409`, solange der Worker daran arbeitet |
 | `PUT` | `/api/songs/{run}/{song}/rating` | Song bewerten (`{"rating": 1…5}`, `null` oder `0` nimmt die Bewertung weg); `400` außerhalb von 1 bis 5 |
@@ -219,6 +236,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Songs mit einer anderen Stimme neu singen (Stem-Trennung, Seed-VC, Remix) und Stimmen hochladen
 - [x] Gemeinsame Warteschlange: Songs, Neuberechnungen und Textentwürfe warten auf den Speicher statt abgelehnt zu werden
 - [x] Warteschlange nach Modell bündeln (gleiche Arten zusammen, solange nichts zu lange wartet)
+- [x] yue-to-logic-pro aufgenommen: Logic-Export im eigenen Prozess, Seite Logic mit Optionen, Instrumenten und Web MIDI
 - [x] Stimme schon im Formular wählen; die Fassung entsteht dann von selbst, sobald der Song fertig ist
 - [ ] Eine Fassung statt der Originalstimme ins Logic-Projekt
 - [x] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)
