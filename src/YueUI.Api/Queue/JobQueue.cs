@@ -43,6 +43,9 @@ public sealed class JobQueue(
     /// </summary>
     public static TimeSpan CheckInterval { get; set; } = TimeSpan.FromSeconds(1);
 
+    /// <summary>Where a song job's payload keeps its <see cref="SongVoice"/>; not part of the worker's protocol.</summary>
+    private const string VoiceKey = "yueui_voice";
+
     /// <summary>Held while a job is started, so that a request and the queue's loop never start two at once.</summary>
     private readonly SemaphoreSlim _starting = new(1, 1);
     private readonly SemaphoreSlim _wake = new(0);
@@ -63,10 +66,17 @@ public sealed class JobQueue(
     /// <summary>A new run: to the worker now if the memory is free and nothing waits, otherwise into the queue.</summary>
     /// <returns>The waiting job, or null when the song went to the worker.</returns>
     /// <exception cref="WorkerUnavailableException">The worker could not be started.</exception>
-    public Task<QueuedJob?> GenerateAsync(GenerateRequest request, CancellationToken cancellationToken)
+    /// <param name="voice">Sings each finished song again with this voice.</param>
+    public Task<QueuedJob?> GenerateAsync(GenerateRequest request, SongVoice? voice, CancellationToken cancellationToken)
     {
-        var job = new QueuedJob(NewId(), JobKind.Song, request.Title?.Trim() ?? "", time.GetUtcNow(), Batch: request.Batch, Quality: request.Quality);
-        return SubmitAsync(job, request.ToWorkerCommand(), cancellationToken);
+        var job = new QueuedJob(NewId(), JobKind.Song, request.Title?.Trim() ?? "", time.GetUtcNow(), Batch: request.Batch, Quality: request.Quality, VoiceLabel: voice?.VoiceLabel);
+        var payload = request.ToWorkerCommand();
+        if (voice is not null)
+        {
+            // Kept beside the worker's command, so that it survives a restart with it; taken off before sending.
+            payload[VoiceKey] = JsonSerializer.SerializeToNode(voice, Json);
+        }
+        return SubmitAsync(job, payload, cancellationToken);
     }
 
     /// <inheritdoc cref="GenerateAsync"/>
@@ -246,10 +256,16 @@ public sealed class JobQueue(
         }
 
         JsonObject? command = null;
+        SongVoice? voice = null;
         string? directory = null;
         if (job.Kind == JobKind.Song)
         {
-            command = payload;
+            command = payload.DeepClone().AsObject();
+            if (command.TryGetPropertyValue(VoiceKey, out var stored))
+            {
+                voice = stored?.Deserialize<SongVoice>(Json);
+                command.Remove(VoiceKey);
+            }
         }
         else if (library.SongDirectory(Text(payload["run"]), Text(payload["song"])) is not { } found)
         {
@@ -262,7 +278,7 @@ public sealed class JobQueue(
 
         // Announced before looking: the lyrics writer and the voice converter claim the memory first and then look at
         // the worker, so one of the two always sees the other.
-        host.ExpectSongs();
+        host.ExpectSongs(voice);
         if (lyrics.IsWriting || voices.IsConverting)
         {
             host.ExpectNoSongs();

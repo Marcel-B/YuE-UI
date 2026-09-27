@@ -60,6 +60,9 @@ public sealed record SongState
     /// <summary>A render from saved tokens: it has no planning or composing ahead of it.</summary>
     public bool Render { get; init; }
 
+    /// <summary>The voice the form chose: once the song is ready, a version with it is queued (Voices/AutoVersions.cs).</summary>
+    public Voices.SongVoice? Voice { get; init; }
+
     public bool Finished => Stage is "ready" or "failed" or "cancelled";
 
     /// <summary>Moves on to <paramref name="stage"/>; the worker repeats a stage's event when only its detail changes.</summary>

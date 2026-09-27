@@ -309,6 +309,89 @@ public sealed class VoiceEndpointTests : IDisposable
         Assert.Null(version.StemModel);
     }
 
+    [Fact]
+    public async Task A_voice_chosen_in_the_form_sings_each_song_once_it_is_ready()
+    {
+        const string run = "20260927-180000-Neon-Night";
+        _app.AddSong(run, "song1");
+        _app.AddSong(run, "song2");
+        var client = _app.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/generate", new
+        {
+            style = "pop",
+            lyrics = "[verse]\nLa",
+            title = "Neon Night",
+            batch = 2,
+            voice = new { voiceId = "v1", semiToneShift = -12, strength = 0.9 },
+        });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var command = await (await _app.StartedWorker()).NextCommand();
+        // The worker does not know about voices.
+        Assert.False(command.ContainsKey("yueui_voice"));
+        Assert.False(command.ContainsKey("voice"));
+        _app.Worker.Emit(new
+        {
+            @event = "started",
+            job = run,
+            title = "Neon Night",
+            songs = new[] { new { path = _app.AudioPath(run, "song1"), index = 1 }, new { path = _app.AudioPath(run, "song2"), index = 2 } },
+        });
+        var started = await _app.WaitForStatus(client, s => s.Songs.Count == 2);
+        Assert.All(started.Songs, s => Assert.Equal("Eurobecca", s.Voice?.VoiceLabel));
+
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath(run, "song1"), stage = "ready" });
+        await WaitForVersion(client, $"{run}/song1", v => v.Stage == "queued");
+        // The second song still holds YuE2; the version waits for it.
+        await Task.Delay(100);
+        Assert.Equal(0, _app.Stems.Calls);
+
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath(run, "song2"), stage = "ready" });
+        var first = await WaitForVersion(client, $"{run}/song1", v => v.Finished);
+        var second = await WaitForVersion(client, $"{run}/song2", v => v.Finished);
+        Assert.Equal(("done", "done"), (first.Stage, second.Stage));
+        Assert.Equal(("v1", -12, 0.9, 50, true), (second.VoiceId, second.SemiToneShift, second.Strength, second.DiffusionSteps, second.KeepReverb));
+        Assert.Equal("Neon Night", second.Title);
+
+        // Rendering a song again does not make another version.
+        _app.AddSong(run, "song1", files: "semantic.npy");
+        await client.PostAsJsonAsync($"/api/songs/{run}/song1/render", new { quality = "full" });
+        Assert.Equal("render", (string?)(await (await _app.StartedWorker()).NextCommand())["cmd"]);
+        _app.Worker.Emit(new { @event = "started", job = run, songs = new[] { new { path = _app.AudioPath(run, "song1"), index = 1 } } });
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath(run, "song1"), stage = "ready" });
+        await _app.WaitForStatus(client, s => s.Songs.Single(x => x.Id == $"{run}/song1") is { Render: true, Stage: "ready" });
+        await Task.Delay(100);
+        Assert.Single((await Library(client)).Single(r => r.Id == run).Songs.Single(s => s.Index == 1).Versions);
+    }
+
+    [Fact]
+    public async Task A_song_with_an_unknown_voice_or_without_voices_is_refused()
+    {
+        var client = _app.CreateClient();
+
+        var unknown = await client.PostAsJsonAsync("/api/generate", new { style = "pop", lyrics = "[verse]\nLa", voice = new { voiceId = "nobody" } });
+        var steps = await client.PostAsJsonAsync("/api/generate", new { style = "pop", lyrics = "[verse]\nLa", voice = new { voiceId = "v1", diffusionSteps = 1 } });
+
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        Assert.Contains("voice.voiceId", await unknown.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.BadRequest, steps.StatusCode);
+        Assert.Contains("voice.diffusionSteps", await steps.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(0, _app.Launcher.Launches);
+    }
+
+    [Fact]
+    public async Task Without_voices_a_song_with_a_voice_is_refused()
+    {
+        _app.VoiceBaseUrl = null;
+        var client = _app.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/generate", new { style = "pop", lyrics = "[verse]\nLa", voice = new { voiceId = "v1" } });
+
+        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
+        Assert.Equal(0, _app.Launcher.Launches);
+    }
+
     private static async Task<RunInfo[]> Library(HttpClient client) =>
         (await client.GetFromJsonAsync<RunInfo[]>("/api/library", TestApp.Json))!;
 

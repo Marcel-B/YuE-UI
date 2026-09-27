@@ -51,8 +51,12 @@ public sealed class WorkerHost(
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
     /// <summary>Songs a render was asked for and that have not started yet; the worker's started event does not say.</summary>
     private readonly HashSet<string> _renders = [];
-    /// <summary>When songs were announced (<see cref="ExpectSongs"/>) whose started event has not come yet, oldest first.</summary>
-    private readonly List<DateTimeOffset> _expected = [];
+    /// <summary>
+    /// Songs announced (<see cref="ExpectSongs"/>) whose started event has not come yet, oldest first, with the voice
+    /// they are to be sung with afterwards. The worker answers its commands in the order it reads them, so the next
+    /// started event belongs to the oldest entry.
+    /// </summary>
+    private readonly List<(DateTimeOffset At, SongVoice? Voice)> _expected = [];
     private readonly LinkedList<LogEntry> _log = [];
     private readonly List<Channel<ServerEvent>> _subscribers = [];
     private IWorkerConnection? _connection;
@@ -106,11 +110,12 @@ public sealed class WorkerHost(
     /// lyrics writer or a voice conversion could see an idle worker in between, shut it down and lose the command.
     /// Announce before checking whether the memory is free, as they check the worker after claiming it.
     /// </summary>
-    public void ExpectSongs()
+    /// <param name="voice">The voice the songs of this command are sung with once they are ready.</param>
+    public void ExpectSongs(SongVoice? voice = null)
     {
         lock (_gate)
         {
-            _expected.Add(time.GetUtcNow());
+            _expected.Add((time.GetUtcNow(), voice));
         }
     }
 
@@ -592,8 +597,10 @@ public sealed class WorkerHost(
 
         lock (_gate)
         {
+            SongVoice? voice = null;
             if (_expected.Count > 0)
             {
+                voice = _expected[0].Voice;
                 _expected.RemoveAt(0);
             }
             for (var i = 0; i < started.Count; i++)
@@ -601,6 +608,10 @@ public sealed class WorkerHost(
                 if (_renders.Remove(started[i].Id))
                 {
                     started[i] = started[i] with { Render = true };
+                }
+                else if (voice is not null)
+                {
+                    started[i] = started[i] with { Voice = voice };
                 }
                 _songs[started[i].Id] = started[i];
             }
@@ -717,7 +728,7 @@ public sealed class WorkerHost(
 
     private bool BusyLocked()
     {
-        _expected.RemoveAll(sent => time.GetUtcNow() - sent > ExpectationTimeout);
+        _expected.RemoveAll(sent => time.GetUtcNow() - sent.At > ExpectationTimeout);
         return _expected.Count > 0 || _songs.Values.Any(s => !s.Finished);
     }
 

@@ -28,6 +28,11 @@ export interface FormState {
   abcSampling: Sampling
   /** How the song tokens are sampled. */
   semanticSampling: Sampling
+  /** The reference voice each finished song is sung with afterwards; empty for none. */
+  voiceId: string
+  /** Whole octaves, as in the library's voice dialog. */
+  voiceShift: number
+  voiceStrength: number
 }
 
 /** One of the model's sampling settings, every value filled in. */
@@ -85,6 +90,9 @@ export function defaultFormState(): FormState {
     instrumental: false,
     quality: 'draft',
     batch: 1,
+    voiceId: '',
+    voiceShift: 0,
+    voiceStrength: 0.7,
     ...defaultAdvanced(),
   }
 }
@@ -192,6 +200,17 @@ export function toGenerateRequest(form: FormState): GenerateRequest {
     fullSteps: form.quality === 'full' && form.fullSteps !== defaultFullSteps ? form.fullSteps : null,
     abcSampling: samplingOverrides('abcSampling', form.abcSampling),
     semanticSampling: samplingOverrides('semanticSampling', form.semanticSampling),
+    // Quality and the original's reverb as the library's dialog starts them; the form stays short.
+    voice:
+      form.voiceId === ''
+        ? null
+        : {
+            voiceId: form.voiceId,
+            semiToneShift: form.voiceShift,
+            strength: form.voiceStrength,
+            diffusionSteps: 50,
+            keepReverb: true,
+          },
   }
 }
 

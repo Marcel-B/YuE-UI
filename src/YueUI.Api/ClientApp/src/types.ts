@@ -39,6 +39,8 @@ export interface SongState {
   stages: StageTime[]
   /** A render from saved tokens: no planning or composing ahead of it. */
   render: boolean
+  /** The voice chosen in the form: a version with it is queued once the song is ready. */
+  voice: SongVoice | null
   finished: boolean
 }
 
@@ -80,6 +82,8 @@ export interface QueuedJob {
   quality: 'draft' | 'full' | null
   /** A lyrics job that revises lyrics rather than drafting new ones. */
   revision: boolean
+  /** The voice a new run's songs are sung with once they are ready. */
+  voiceLabel: string | null
 }
 
 /** melody-full: the Vocal and Ins melodies; melody-vocal: only the sung one. */
@@ -149,6 +153,8 @@ export interface GenerateRequest {
   fullSteps: number | null
   abcSampling: SamplingOverrides | null
   semanticSampling: SamplingOverrides | null
+  /** Sings each finished song again with this voice. */
+  voice: VersionRequest | null
 }
 
 /** Changes to one of the model's sampling settings; a missing value keeps the model's. */
@@ -315,6 +321,16 @@ export interface VersionState {
   createdAt: string
   updatedAt: string
   finished: boolean
+}
+
+/** A voice chosen in the form, with its settings (SongVoice in Voices/VoiceModels.cs). */
+export interface SongVoice {
+  voiceId: string
+  voiceLabel: string
+  semiToneShift: number
+  strength: number
+  diffusionSteps: number
+  keepReverb: boolean
 }
 
 /** What a version is made with (VersionRequest in Voices/VoiceModels.cs). */

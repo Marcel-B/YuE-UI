@@ -392,6 +392,11 @@ const messages = {
     settingStrength: 'Stärke {value}',
     settingSteps: 'Qualität {value}',
     withReverb: 'mit Hall',
+    voiceAfter: 'Danach mit Stimme singen',
+    voiceAfterNone: 'Nein, Originalstimme',
+    voiceAfterHint:
+      'Ist der Song fertig, wird der Gesang abgetrennt und mit dieser Stimme neu gesungen; die Fassung erscheint beim Song. Dauert pro Song etwa 10 bis 20 Minuten.',
+    jobVoice: 'danach mit {voice}',
     withoutReverb: 'ohne Hall',
     stemModel: 'Trennung: {model}',
     versionQueued: '{title} wird mit {voice} gesungen.',
@@ -810,6 +815,11 @@ const messages = {
     settingStrength: 'strength {value}',
     settingSteps: 'quality {value}',
     withReverb: 'with reverb',
+    voiceAfter: 'Then sing with a voice',
+    voiceAfterNone: 'No, original voice',
+    voiceAfterHint:
+      'Once the song is done, its vocals are separated and sung again with this voice; the version appears with the song. Takes about 10 to 20 minutes per song.',
+    jobVoice: 'then with {voice}',
     withoutReverb: 'without reverb',
     stemModel: 'separated with {model}',
     versionQueued: '{title} is being sung with {voice}.',

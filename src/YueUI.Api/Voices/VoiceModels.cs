@@ -55,6 +55,25 @@ public sealed record VersionRequest(
 }
 
 /// <summary>
+/// A voice chosen in the form: each song of the run is sung with it as soon as it is finished, as if
+/// <c>POST /api/songs/{run}/{song}/versions</c> had been asked for then. Travels with the queued job and the song's
+/// state; the label is looked up when the song is asked for, like a version's.
+/// </summary>
+public sealed record SongVoice(
+    string VoiceId,
+    string VoiceLabel,
+    int SemiToneShift,
+    double Strength,
+    int DiffusionSteps,
+    bool KeepReverb)
+{
+    public static SongVoice From(ReferenceVoice voice, VersionRequest request) =>
+        new(voice.Id, voice.Label, request.SemiToneShift, request.Strength, request.DiffusionSteps, request.KeepReverb);
+
+    public VersionRequest ToRequest() => new(VoiceId, SemiToneShift, Strength, DiffusionSteps, KeepReverb);
+}
+
+/// <summary>
 /// A song sung with another voice: its vocals separated, converted to a reference voice and mixed back under the
 /// instrumental. The song itself stays; the version is a file of this app's own, next to its database.
 /// <see cref="Stage"/>: queued, separating, converting, mixing, done, failed or cancelled.

@@ -42,7 +42,13 @@ function jobDetail(job: QueuedJob): string {
   const quality = job.quality ? t(job.quality === 'full' ? 'qualityFull' : 'qualityDraft') : ''
   switch (job.kind) {
     case 'song':
-      return [job.batch && job.batch > 1 ? t('jobSongs', { n: job.batch }) : '', quality].filter(Boolean).join(' · ')
+      return [
+        job.batch && job.batch > 1 ? t('jobSongs', { n: job.batch }) : '',
+        quality,
+        job.voiceLabel ? t('jobVoice', { voice: job.voiceLabel }) : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
     case 'render':
       return [t('jobRender'), quality].join(' · ')
     case 'lyrics':
@@ -167,6 +173,12 @@ watch(
           >
           <strong v-else class="name">{{ song.title || song.run }}</strong>
           <span class="muted">{{ t('songN', { n: song.index }) }}</span>
+          <span
+            v-if="song.voice"
+            class="muted truncate text-sm"
+            :title="t('jobVoice', { voice: song.voice.voiceLabel })"
+            ><i class="pi pi-user text-xs" /> {{ song.voice.voiceLabel }}</span
+          >
           <Button
             v-if="!song.finished"
             icon="pi pi-times"

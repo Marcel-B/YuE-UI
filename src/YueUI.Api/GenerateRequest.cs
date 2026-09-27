@@ -15,6 +15,7 @@ namespace YueUI.Api;
 /// <param name="FullSteps">Synthesis steps at full quality, 1–64; null for the model's 32. Needs the worker extension.</param>
 /// <param name="AbcSampling">Overrides of how the score is sampled; needs the worker extension.</param>
 /// <param name="SemanticSampling">Overrides of how the song tokens are sampled; needs the worker extension.</param>
+/// <param name="Voice">Sings each finished song again with this reference voice (a version, see Voices/VoiceConverter.cs).</param>
 public sealed record GenerateRequest(
     string Style,
     string Lyrics,
@@ -30,7 +31,8 @@ public sealed record GenerateRequest(
     string? Abc = null,
     int? FullSteps = null,
     SamplingOverrides? AbcSampling = null,
-    SamplingOverrides? SemanticSampling = null)
+    SamplingOverrides? SemanticSampling = null,
+    Voices.VersionRequest? Voice = null)
 {
     public const int MaxBatch = 8;
     // The worker's semantic sampling insists on at least 200 tokens (min_tokens). The worker caps at 9000; the
@@ -88,6 +90,10 @@ public sealed record GenerateRequest(
         }
         AbcSampling?.Validate("abcSampling", errors);
         SemanticSampling?.Validate("semanticSampling", errors);
+        foreach (var (key, messages) in Voice?.Validate() ?? [])
+        {
+            errors[$"voice.{key}"] = messages;
+        }
         // The model only reads a score in a planning mode; an instrumental switches "off" to "full" itself.
         if (HasAbc && Cot == "off" && !Instrumental)
         {
