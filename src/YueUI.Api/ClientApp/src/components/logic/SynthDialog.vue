@@ -141,6 +141,10 @@ const targetLabels: Record<(typeof LFO_TARGETS)[number], MessageKey> = {
   amp: 'synthLfoAmp',
 }
 const waves = computed(() => WAVES.map((value) => ({ label: t(waveLabels[value]), value })))
+/** For the oscillators the square is the pulse wave, whose width can be set. */
+const oscillatorWaves = computed(() =>
+  WAVES.map((value) => ({ label: t(value === 'square' ? 'synthWavePulse' : waveLabels[value]), value })),
+)
 const filterTypes = computed(() => FILTER_TYPES.map((value) => ({ label: t(filterLabels[value]), value })))
 const targets = computed(() => LFO_TARGETS.map((value) => ({ label: t(targetLabels[value]), value })))
 
@@ -220,7 +224,7 @@ const envelopes = computed<{ title: MessageKey; value: Envelope }[]>(() => [
         <h3>{{ t(osc.title) }}</h3>
         <SelectButton
           v-model="patch[osc.key].wave"
-          :options="waves"
+          :options="oscillatorWaves"
           option-label="label"
           option-value="value"
           :allow-empty="false"
@@ -244,6 +248,18 @@ const envelopes = computed<{ title: MessageKey; value: Envelope }[]>(() => [
           :format="(v) => signed(v, ' ct')"
         />
         <SynthKnob v-model="patch[osc.key].level" :label="t('synthLevel')" :min="0" :max="1" :format="percent" />
+        <template v-if="patch[osc.key].wave === 'square'">
+          <SynthKnob
+            v-model="patch[osc.key].width"
+            :label="t('synthWidth')"
+            :min="RANGES.width[0]"
+            :max="RANGES.width[1]"
+            :step="0.01"
+            :format="percent"
+          />
+          <SynthKnob v-model="patch[osc.key].pwm" :label="t('synthPwm')" :min="0" :max="1" :format="percent" />
+          <p v-if="patch[osc.key].pwm > 0" class="muted mt-1 mb-0 text-xs">{{ t('synthPwmHint') }}</p>
+        </template>
       </section>
 
       <section>
