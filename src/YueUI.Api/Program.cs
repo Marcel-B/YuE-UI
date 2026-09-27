@@ -66,6 +66,7 @@ builder.Services.AddHostedService(services => services.GetRequiredService<VoiceC
 builder.Services.AddHostedService<AutoVersions>();
 
 // Songs, renders and lyrics drafts wait here for the memory instead of being refused; kept in the database.
+builder.Services.Configure<QueueOptions>(builder.Configuration.GetSection(QueueOptions.Section));
 builder.Services.AddSingleton<SqliteJobStore>();
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddHostedService(services => services.GetRequiredService<JobQueue>());

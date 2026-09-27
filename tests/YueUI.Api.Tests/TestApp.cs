@@ -63,6 +63,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// <summary>Where the fake ChangeMyVoice is expected; set to null before the first request to switch voices off.</summary>
     public string? VoiceBaseUrl { get; set; } = "http://voice.test";
 
+    /// <summary>How long a draft or version may be passed by songs; set before the first request.</summary>
+    public TimeSpan BundleWindow { get; set; } = TimeSpan.FromMinutes(20);
+
     public FakeWorker Worker => Launcher.Current ?? throw new InvalidOperationException("No worker was started.");
 
     /// <summary>The worker a job from the queue starts on the queue's own thread.</summary>
@@ -147,6 +150,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddHttpClient(StemClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeStems.Handler(Stems));
             services.AddSingleton<IAudioMixer>(Mixer);
 
+            services.Configure<Queue.QueueOptions>(options => options.BundleWindow = BundleWindow);
             services.Configure<PushOptions>(options => options.DataPath = Path.Combine(Root, "push.json"));
             services.AddSingleton<IPushSender>(Push);
             services.AddSingleton<IAudioEncoder>(Encoder);

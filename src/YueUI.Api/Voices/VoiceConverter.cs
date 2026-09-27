@@ -41,6 +41,15 @@ public sealed class VoiceConverter(
     /// <summary>A separation or conversion holds the memory; YuE2 and the lyrics model have to wait.</summary>
     public bool IsConverting => _converting;
 
+    /// <summary>
+    /// When the version next in line was asked for, while it waits for the memory; null when none waits. The queue
+    /// stops sending songs ahead of it once it has waited too long (<see cref="Queue.QueueOptions.BundleWindow"/>).
+    /// </summary>
+    public DateTimeOffset? WaitingSince => Interlocked.Read(ref _waitingTicks) is > 0 and var ticks ? new DateTimeOffset(ticks, TimeSpan.Zero) : null;
+
+    /// <summary>UTC ticks behind <see cref="WaitingSince"/>, 0 for none; read by requests while the queue loop writes.</summary>
+    private long _waitingTicks;
+
     /// <summary>Whether a version of a song of the run (or of that song) is queued or in the works.</summary>
     public bool IsWorkingOn(string run, string? song = null) =>
         store.Unfinished().Any(v => song is null ? v.Run == run : v.SongId == $"{run}/{song}");
@@ -136,7 +145,15 @@ public sealed class VoiceConverter(
         string? job = null;
         try
         {
-            await WaitForMemoryAsync(cancel.Token);
+            Interlocked.Exchange(ref _waitingTicks, version.CreatedAt.UtcTicks);
+            try
+            {
+                await WaitForMemoryAsync(cancel.Token);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _waitingTicks, 0);
+            }
             if (library.SongDirectory(version.Run, version.SongId[(version.Run.Length + 1)..]) is not { } directory
                 || !File.Exists(Path.Combine(directory, "audio.flac")))
             {

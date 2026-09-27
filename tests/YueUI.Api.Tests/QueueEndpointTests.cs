@@ -122,7 +122,84 @@ public sealed class QueueEndpointTests : IDisposable
         Assert.Equal(("v1", 0, 0.7), (song.Voice?.VoiceId, song.Voice?.SemiToneShift, song.Voice?.Strength));
     }
 
+    [Fact]
+    public async Task Songs_pass_a_waiting_draft_while_YuE2_is_busy()
+    {
+        var client = _app.CreateClient();
+        await StartSongAsync(client, "One");
+        var draft = await client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+        var draftId = (await draft.Content.ReadFromJsonAsync<LyricsState>(TestApp.Json))!.Id;
+        Assert.Single(_app.Snapshot().Queue!);
+
+        // Goes to the worker, which batches it with the running song, instead of waiting for the draft.
+        var second = await client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa", title = "Two" });
+
+        Assert.Equal(HttpStatusCode.Accepted, second.StatusCode);
+        Assert.Equal(0, second.Content.Headers.ContentLength);
+        Assert.Equal("Two", (string?)(await _app.Worker.NextCommand())["title"]);
+        Assert.Equal([JobKind.Lyrics], _app.Snapshot().Queue!.Select(j => j.Kind));
+
+        _app.Worker.Emit(new { @event = "started", job = "20260927-190000-Two", title = "Two", songs = new[] { new { index = 1, path = _app.AudioPath("20260927-190000-Two", "song1") } } });
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath(Run, "song1"), stage = "ready" });
+        await Task.Delay(100);
+        // Still one song for YuE2.
+        Assert.Single(_app.Snapshot().Queue!);
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath("20260927-190000-Two", "song1"), stage = "ready" });
+        var status = await _app.WaitForStatus(client, s => s.Queue is { Count: 0 });
+        Assert.Equal(draftId, status.Lyrics?.Id);
+    }
+
+    [Fact]
+    public async Task After_the_window_songs_wait_behind_the_draft()
+    {
+        _app.BundleWindow = TimeSpan.Zero;
+        var client = _app.CreateClient();
+        await StartSongAsync(client, "One");
+        await client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+
+        var second = await Generate(client, "Two");
+
+        Assert.Equal([JobKind.Lyrics, JobKind.Song], _app.Snapshot().Queue!.Select(j => j.Kind));
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath(Run, "song1"), stage = "ready" });
+        // The draft goes first, the song after it.
+        await _app.WaitForStatus(client, s => s.Lyrics is { Finished: true } && s.Queue is { Count: 0 });
+        Assert.Equal(2, _app.Launcher.Launches);
+        Assert.Equal("Two", (string?)(await _app.Worker.NextCommand())["title"]);
+        Assert.Equal(JobKind.Song, second.Kind);
+    }
+
+    [Fact]
+    public async Task A_version_waiting_past_the_window_holds_back_new_songs()
+    {
+        _app.BundleWindow = TimeSpan.Zero;
+        _app.AddSong(Run, "song2");
+        var client = _app.CreateClient();
+        await StartSongAsync(client, "One");
+        await client.PostAsJsonAsync($"/api/songs/{Run}/song2/versions", new { voiceId = "v1" });
+        await TestApp.WaitUntil(() => _app.Voice.Requests.Count > 0);
+
+        var held = await Generate(client, "Two");
+
+        Assert.Equal("Two", held.Title);
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath(Run, "song1"), stage = "ready" });
+        // The version goes first, the song after it.
+        await _app.WaitForStatus(client, s => s.Versions is [{ Finished: true }] && s.Queue is { Count: 0 });
+        Assert.Equal(2, _app.Launcher.Launches);
+        Assert.Equal("Two", (string?)(await _app.Worker.NextCommand())["title"]);
+        Assert.Equal(1, _app.Stems.Calls);
+    }
+
     public void Dispose() => _app.Dispose();
+
+    /// <summary>A song that holds YuE2 until its ready event.</summary>
+    private async Task StartSongAsync(HttpClient client, string title)
+    {
+        var response = await client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa", title });
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        await (await _app.StartedWorker()).NextCommand();
+        _app.Worker.Emit(new { @event = "started", job = Run, title, songs = new[] { new { index = 1, path = _app.AudioPath(Run, "song1") } } });
+        await _app.WaitForStatus(client, s => s.Songs.Count == 1);
+    }
 
     /// <summary>A draft that holds the memory until the returned gate opens, so that what follows has to wait.</summary>
     private async Task<TaskCompletionSource> HoldLyricsAsync(HttpClient client)
