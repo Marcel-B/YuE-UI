@@ -26,6 +26,12 @@ public interface IAudioMixer
 /// the separated ones: then the balance against the instrumental is the one YuE2 made. Vocals and instrumental
 /// come from the same song and have the same length, give or take a few samples of the vocoder's hop, so the
 /// instrumental decides where the mix ends. A limiter catches what the sum of separately made stems adds on top.
+/// <para>
+/// Where the original is silent (an intro, a solo), the separated vocals still carry a little of what the separation
+/// left behind, and Seed-VC turns that into an audible hiss. So the converted vocals pass a gate keyed by the
+/// original vocals: they sound only where the original sang. The key is brought to a fixed mean level first, so the
+/// threshold sits the same distance below the singing however loud YuE2 made it.
+/// </para>
 /// </remarks>
 public sealed partial class FfmpegMixer(ILogger<FfmpegMixer> logger) : IAudioMixer
 {
@@ -35,6 +41,15 @@ public sealed partial class FfmpegMixer(ILogger<FfmpegMixer> logger) : IAudioMix
     /// <summary>More would mean one of the two is near silence, where the measurement says nothing.</summary>
     private const double MaxGainDb = 20;
 
+    /// <summary>The mean level the gate's key is brought to, in dBFS.</summary>
+    private const double KeyLevelDb = -20;
+
+    /// <summary>
+    /// The gate opens 25 dB below the singing's mean: quiet phrases pass, separation leftovers (typically 40 dB and
+    /// more below) do not.
+    /// </summary>
+    private const double GateThresholdDb = KeyLevelDb - 25;
+
     public async Task MixAsync(MixInput input, string output, CancellationToken cancellationToken)
     {
         var ffmpeg = AacEncoder.FindFfmpeg() ?? throw new VoiceServiceException("ffmpeg is not installed.", System.Net.HttpStatusCode.NotImplemented);
@@ -43,18 +58,28 @@ public sealed partial class FfmpegMixer(ILogger<FfmpegMixer> logger) : IAudioMix
         // Silence (an instrumental passage) measures as -inf: nothing to match then.
         var gain = original is { } o && converted is { } c ? Math.Clamp(o - c, -MaxGainDb, MaxGainDb) : 0;
 
-        List<string> arguments = ["-nostdin", "-loglevel", "error", "-y", "-i", input.Instrumental, "-i", input.Vocals];
+        // Without a measurement (silent original) the key keeps its level; the gate then stays closed, as it should.
+        var keyGain = original is { } k ? Math.Clamp(Math.Pow(10, (KeyLevelDb - k) / 20), 1 / 64.0, 64) : 1;
+
+        List<string> arguments =
+        [
+            "-nostdin", "-loglevel", "error", "-y", "-i", input.Instrumental, "-i", input.Vocals, "-i", input.OriginalVocals,
+        ];
         var sources = "[0:a][v]";
         if (input.Reverb is not null)
         {
             arguments.AddRange(["-i", input.Reverb]);
-            sources += "[2:a]";
+            sources += "[3:a]";
         }
         var inputs = input.Reverb is null ? 2 : 3;
-        // Seed-VC writes mono; the stems are stereo at 48 kHz.
+        // Seed-VC writes mono; the stems are stereo at 48 kHz. Release long enough not to clip the ends of words.
         var filter = string.Create(
             CultureInfo.InvariantCulture,
-            $"[1:a]volume={gain:0.##}dB,aresample=48000,aformat=channel_layouts=stereo[v];{sources}amix=inputs={inputs}:normalize=0:duration=first,alimiter=limit=0.95:level=disabled[m]");
+            $"[1:a]volume={gain:0.##}dB,aresample=48000,aformat=channel_layouts=stereo[c];"
+            // The tiny offset keeps the key from digital silence, which ffmpeg's gate reads as "open".
+            + $"[2:a]aresample=48000,aformat=channel_layouts=stereo,aeval='val(ch)+0.00001':c=same[k];"
+            + $"[c][k]sidechaingate=level_sc={keyGain:0.####}:threshold={Math.Pow(10, GateThresholdDb / 20):0.#####}:range=0.001:ratio=20:attack=5:release=300[v];"
+            + $"{sources}amix=inputs={inputs}:normalize=0:duration=first,alimiter=limit=0.95:level=disabled[m]");
         arguments.AddRange(["-filter_complex", filter, "-map", "[m]", "-ar", "48000", "-sample_fmt", "s16", "-c:a", "flac", output]);
         await RunAsync(ffmpeg, arguments, cancellationToken);
     }
