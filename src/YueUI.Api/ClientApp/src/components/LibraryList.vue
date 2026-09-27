@@ -21,7 +21,7 @@ import {
   songZipUrl,
   versionAudioUrl,
 } from '../api'
-import { formatBytes, formatDateTime, formatDuration, t } from '../i18n'
+import { formatBytes, formatDateTime, formatDuration, t, versionProgress } from '../i18n'
 import { current, libraryTracks, play, playing, trackOf, versionTrack } from '../player'
 import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
@@ -707,9 +707,7 @@ const severityByQuality: Record<string, string> = {
                     <span>{{ version.voiceLabel }}</span>
                     <Tag v-if="version.stage !== 'done'" :severity="version.stage === 'failed' ? 'danger' : undefined">
                       {{ t(`versionStage_${version.stage}`) }}
-                      <template v-if="version.stage === 'converting' && version.fraction > 0">
-                        {{ Math.round(version.fraction * 100) }} %
-                      </template>
+                      {{ versionProgress(version) }}
                     </Tag>
                     <div class="ml-auto flex">
                       <Button

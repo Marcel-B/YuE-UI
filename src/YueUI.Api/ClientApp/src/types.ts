@@ -307,8 +307,10 @@ export interface VersionState {
   /** StemMyWav's model that separated the vocals; null for versions made before it was kept. */
   stemModel: string | null
   stage: VersionStage
-  /** Progress of the conversion, 0–1, estimated from the time the voice service expects. */
+  /** Progress of the conversion, 0–1, estimated from the time the voice service expects; 1 once that has passed. */
   fraction: number
+  /** How long the voice service expects the conversion to take; 0 before it started. */
+  estimatedSeconds: number
   message: string | null
   createdAt: string
   updatedAt: string
