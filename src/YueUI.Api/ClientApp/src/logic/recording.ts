@@ -3,6 +3,8 @@
  * played along with the notes, so one can hear and see whether score and recording belong together before exporting.
  */
 
+import { createSpectrumAnalyser } from '../spectrum'
+
 /** Resolution of the waveform: one peak per 5 ms, fine enough for the closest zoom of the piano roll. */
 const SECONDS_PER_PEAK = 0.005
 
@@ -51,6 +53,8 @@ export async function decodeRecording(file: Blob, context: BaseAudioContext): Pr
 /** Plays the recording from a position; one source per start, since an AudioBufferSourceNode plays only once. */
 export class RecordingPlayer {
   private readonly gain: GainNode
+  /** After the volume, so the analyzer shows what is heard. */
+  readonly analyser: AnalyserNode
   private source: AudioBufferSourceNode | null = null
 
   constructor(
@@ -61,6 +65,8 @@ export class RecordingPlayer {
     this.gain = context.createGain()
     this.gain.gain.value = volume
     this.gain.connect(context.destination)
+    this.analyser = createSpectrumAnalyser(context)
+    this.gain.connect(this.analyser)
   }
 
   /**
@@ -100,5 +106,6 @@ export class RecordingPlayer {
   close(): void {
     this.stop()
     this.gain.disconnect()
+    this.analyser.disconnect()
   }
 }

@@ -1,3 +1,4 @@
+import { createSpectrumAnalyser } from '../spectrum'
 import { defaultPatch, noiseBuffer, playSynthNote, type SynthPatch } from './synth'
 import type { ScoreDocument, VoiceTrack } from './types'
 
@@ -101,6 +102,8 @@ export interface Output {
   mixChanged?(): void
   /** Peak levels since the last call, 0 to 1 and above for clipping; only the browser's own output has meters. */
   levels?(): Levels
+  /** The mix as the spectrum analyzer hears it; only the browser's own output has one. */
+  analyser?(): AnalyserNode
 }
 
 /** The mixer's settings as the browser output reads them, looked up whenever they change. */
@@ -151,6 +154,11 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
   masterMeter.fftSize = 512
   master.connect(masterMeter)
   master.connect(context.destination)
+  // The analyzer too hears the mix before the headroom, or a full mix would barely reach its middle.
+  const spectrum = createSpectrumAnalyser(context)
+  const lift = context.createGain()
+  lift.gain.value = 1 / HEADROOM
+  master.connect(lift).connect(spectrum)
 
   /** One channel strip per track, made on its first note: fader, pan and a meter after both, as on a desk. */
   interface Strip {
@@ -291,6 +299,7 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
         master: peak(masterMeter) / HEADROOM,
       }
     },
+    analyser: () => spectrum,
   }
 }
 
@@ -425,6 +434,11 @@ export class OutputPool {
       }
     }
     return all
+  }
+
+  /** The analysers of every output that sounds in the browser, for the spectrum analyzer. */
+  analysers(): AnalyserNode[] {
+    return [...this.open.values()].flatMap((output) => (output.analyser ? [output.analyser()] : []))
   }
 
   silence(): void {

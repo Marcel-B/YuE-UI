@@ -5,6 +5,7 @@ import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
 import NotificationButton from './components/NotificationButton.vue'
 import QueueList from './components/QueueList.vue'
+import AudioBackground from './components/AudioBackground.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
@@ -17,6 +18,7 @@ import { loadPlaylists, playlistIds } from './playlist'
 import { setRatings } from './ratings'
 import { shareState } from './share'
 import { checkForUpdate, reload, standalone, updateAvailable } from './update'
+import { visuals } from './spectrum'
 import { navigate, view, type View } from './view'
 import type {
   LogEntry,
@@ -357,6 +359,7 @@ async function useAsNewSong(songId: string): Promise<void> {
 </script>
 
 <template>
+  <AudioBackground v-if="visuals.background" />
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
   <ShareDialog v-if="shareState" />
   <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
