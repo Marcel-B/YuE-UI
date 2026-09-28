@@ -198,6 +198,38 @@ public sealed class LogicPageTests : IDisposable
     }
 
     [Fact]
+    public async Task A_library_song_becomes_musicxml_with_its_options_and_name()
+    {
+        AddSong("song1");
+
+        var response = await _client.PostAsync("/api/logic/musicxml", new MultipartFormDataContent
+        {
+            { new StringContent($"{Run}/song1"), "song" },
+            { new StringContent("""{"arrangement":{"bass":{"pattern":"Walking","octaveShift":0}}}"""), "options" },
+            { new StringContent("Neon Night"), "name" },
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/vnd.recordare.musicxml+xml", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("Neon Night.musicxml", response.Content.Headers.ContentDisposition!.FileNameStar);
+        var document = System.Xml.Linq.XDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("score-partwise", document.Root!.Name.LocalName);
+        Assert.Contains("Bass", document.Descendants("part-abbreviation").Select(p => p.Value));
+    }
+
+    [Fact]
+    public async Task A_score_that_cannot_be_read_gives_no_musicxml()
+    {
+        var response = await _client.PostAsync("/api/logic/musicxml", new MultipartFormDataContent
+        {
+            { new ByteArrayContent(Encoding.UTF8.GetBytes("X:1\n")), "file", "score.abc" },
+        });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.False((bool)(await Json(response))["success"]!);
+    }
+
+    [Fact]
     public async Task A_library_song_is_exported_with_its_instruments_and_name()
     {
         AddSong("song1");

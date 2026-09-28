@@ -62,6 +62,8 @@ export interface ScoreDocument {
   voices: VoiceTrack[]
   chords: ChordEvent[]
   lengthTicks: number
+  /** Silent lead-in before the music; the recording starts here. */
+  countInTicks: number
   durationSeconds: number
 }
 

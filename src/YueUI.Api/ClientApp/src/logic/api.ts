@@ -63,6 +63,26 @@ export async function convertScore(
   throw await problem(response)
 }
 
+/**
+ * The score as MusicXML for a notation program, converted with the same options as the preview. The drums are left
+ * out and the chord symbols stand above the first staff; a score that cannot be read rejects with its diagnostics.
+ */
+export async function exportMusicXml(source: ScoreSource, options: ConversionOptions, name: string): Promise<Blob> {
+  const form = new FormData()
+  appendSource(form, source, false)
+  form.append('options', JSON.stringify(options))
+  form.append('name', name)
+
+  const response = await post('/api/logic/musicxml', form)
+  if (response.status === 422) {
+    throw new LogicExportError(((await response.json()) as ConversionResult).diagnostics)
+  }
+  if (!response.ok) {
+    throw await problem(response)
+  }
+  return response.blob()
+}
+
 /** The Logic project could not be built; the diagnostics say why (e.g. not a FLAC file). */
 export class LogicExportError extends Error {
   constructor(readonly diagnostics: Diagnostic[]) {

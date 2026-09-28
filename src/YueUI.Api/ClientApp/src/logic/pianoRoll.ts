@@ -12,6 +12,8 @@ export const CHORD_HEIGHT = 22
 export const LANE_HEIGHT = 58
 export const LANE_GAP = 4
 export const GUTTER_WIDTH = 92
+/** The recording's waveform, between the chord symbols and the first track; only there when a recording is shown. */
+export const WAVE_HEIGHT = 56
 
 /** One lane per track, in the order the score lists them. */
 export interface Lane {
@@ -22,8 +24,9 @@ export interface Lane {
   top: number
 }
 
-export function lanesOf(voices: VoiceTrack[]): Lane[] {
-  let top = RULER_HEIGHT + CHORD_HEIGHT
+/** `waveHeight` leaves room for the recording's waveform above the lanes: `WAVE_HEIGHT`, or 0 without one. */
+export function lanesOf(voices: VoiceTrack[], waveHeight = 0): Lane[] {
+  let top = RULER_HEIGHT + CHORD_HEIGHT + waveHeight
   return voices.map((track) => {
     const pitches = track.notes.map((n) => n.noteNumber)
     // An empty track still gets a lane, so its name stays visible; the range is then arbitrary.
@@ -35,8 +38,17 @@ export function lanesOf(voices: VoiceTrack[]): Lane[] {
   })
 }
 
-export function contentHeight(lanes: Lane[]): number {
-  return RULER_HEIGHT + CHORD_HEIGHT + lanes.length * (LANE_HEIGHT + LANE_GAP)
+export function contentHeight(lanes: Lane[], waveHeight = 0): number {
+  return RULER_HEIGHT + CHORD_HEIGHT + waveHeight + lanes.length * (LANE_HEIGHT + LANE_GAP)
+}
+
+/** The recording as the roll draws it: its peaks, and where in the score it starts. */
+export interface Waveform {
+  peaks: Float32Array
+  secondsPerPeak: number
+  /** The score position of the recording's first sample: the end of the count-in, 0 without one. */
+  startTicks: number
+  secondsPerTick: number
 }
 
 /** Colours taken from the stylesheet, so the roll follows the light and dark themes. */
@@ -88,6 +100,10 @@ export interface DrawOptions {
   scrollTicks: number
   /** Playhead in ticks, or null when stopped. */
   playhead: number | null
+  /** The recording's waveform, drawn in its own lane above the tracks; the lanes must have been laid out for it. */
+  waveform?: Waveform | null
+  /** The waveform lane's name in the gutter. */
+  waveformLabel?: string
 }
 
 /** Ticks per bar at a position, honouring meter changes. */
@@ -151,7 +167,7 @@ export function xAtTicks(score: ScoreDocument, ticks: number, pxPerBar: number):
 }
 
 export function draw(canvas: HTMLCanvasElement, options: DrawOptions): void {
-  const { score, lanes, pxPerBar, scrollTicks, playhead } = options
+  const { score, lanes, pxPerBar, scrollTicks, playhead, waveform } = options
   const ratio = window.devicePixelRatio || 1
   const width = canvas.clientWidth
   const height = canvas.clientHeight
@@ -210,9 +226,21 @@ export function draw(canvas: HTMLCanvasElement, options: DrawOptions): void {
     ctx.globalAlpha = 1
   })
 
-  // ---- bar lines over the lanes -----------------------------------------------------------------
+  // ---- the recording's waveform ------------------------------------------------------------------
   const laneTop = RULER_HEIGHT + CHORD_HEIGHT
-  const laneBottom = laneTop + lanes.length * (LANE_HEIGHT + LANE_GAP)
+  if (waveform) {
+    drawWaveform(ctx, waveform, {
+      top: laneTop,
+      width,
+      colours,
+      ticksAt: (x) => ticksAtX(score, x - GUTTER_WIDTH + originX, pxPerBar),
+      // ticksAtX stops at the song's end, which would smear the last peak over the empty space behind it.
+      right: Math.min(width, toScreen(score.lengthTicks)),
+    })
+  }
+
+  // ---- bar lines over the lanes -----------------------------------------------------------------
+  const laneBottom = laneTop + (waveform ? WAVE_HEIGHT : 0) + lanes.length * (LANE_HEIGHT + LANE_GAP)
   // A label every bar is unreadable when zoomed out; step up in musical amounts.
   const step = pxPerBar >= 48 ? 1 : pxPerBar >= 20 ? 4 : pxPerBar >= 8 ? 8 : 16
   ctx.strokeStyle = colours.border
@@ -296,6 +324,12 @@ export function draw(canvas: HTMLCanvasElement, options: DrawOptions): void {
   ctx.lineTo(GUTTER_WIDTH + 0.5, laneBottom)
   ctx.stroke()
 
+  if (waveform) {
+    ctx.fillStyle = colours.accent
+    ctx.fillRect(4, laneTop + 4, 3, WAVE_HEIGHT - 8)
+    ctx.fillStyle = colours.text
+    ctx.fillText(options.waveformLabel ?? 'Audio', 12, laneTop + WAVE_HEIGHT / 2)
+  }
   lanes.forEach((lane, index) => {
     ctx.fillStyle = trackColour(index)
     ctx.fillRect(4, lane.top + 4, 3, LANE_HEIGHT - 8)
@@ -307,4 +341,45 @@ export function draw(canvas: HTMLCanvasElement, options: DrawOptions): void {
     ctx.fillText(lane.track.id, 12, lane.top + LANE_HEIGHT / 2)
     ctx.restore()
   })
+}
+
+/**
+ * One mirrored bar per screen pixel, as tall as the loudest peak under it. Per pixel rather than per peak: zoomed out,
+ * a pixel covers dozens of peaks, and taking their maximum keeps short loud hits visible instead of sampling past them.
+ */
+function drawWaveform(
+  ctx: CanvasRenderingContext2D,
+  waveform: Waveform,
+  area: { top: number; width: number; right: number; colours: Palette; ticksAt: (x: number) => number },
+): void {
+  const { top, width, right, colours, ticksAt } = area
+  ctx.fillStyle = colours.sunken
+  ctx.fillRect(GUTTER_WIDTH, top, width - GUTTER_WIDTH, WAVE_HEIGHT - LANE_GAP)
+  const middle = top + (WAVE_HEIGHT - LANE_GAP) / 2
+  const half = (WAVE_HEIGHT - LANE_GAP) / 2 - 2
+  const indexAt = (x: number) =>
+    ((ticksAt(x) - waveform.startTicks) * waveform.secondsPerTick) / waveform.secondsPerPeak
+  ctx.fillStyle = colours.accent
+  ctx.globalAlpha = 0.75
+  let from = indexAt(GUTTER_WIDTH)
+  for (let x = GUTTER_WIDTH; x < right; x++) {
+    const to = indexAt(x + 1)
+    if (to <= 0) {
+      // Still in the count-in, before the recording starts.
+      from = to
+      continue
+    }
+    const first = Math.max(0, Math.floor(from))
+    const last = Math.min(waveform.peaks.length, Math.max(first + 1, Math.ceil(to)))
+    let peak = 0
+    for (let index = first; index < last; index++) {
+      peak = Math.max(peak, waveform.peaks[index]!)
+    }
+    from = to
+    if (peak > 0) {
+      const height = Math.max(1, peak * half)
+      ctx.fillRect(x, middle - height, 1, height * 2)
+    }
+  }
+  ctx.globalAlpha = 1
 }
