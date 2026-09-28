@@ -28,6 +28,8 @@ const messages = {
     notFlac: 'Die Datei endet nicht auf .flac – YuE schreibt das Audio als audio.flac.',
     downloadLogic: 'Logic-Projekt herunterladen',
     buildingLogic: 'Logic-Projekt wird erstellt …',
+    uploadingLogic: 'Audio wird hochgeladen … {amount}',
+    receivingLogic: 'Projekt wird geladen … {amount}',
     logicWithoutAudio: 'Ohne audio.flac enthält das Projekt nur die MIDI-Spuren, die Audiospur bleibt leer.',
     logicHint:
       'Experimentell: Das Projekt entsteht aus einer Vorlage aus Logic Pro 12.3 mit Audiospuren für Mix und Stems und elf Instrumentenspuren.',
@@ -306,6 +308,8 @@ const messages = {
     notFlac: 'The file does not end in .flac – YuE writes the audio as audio.flac.',
     downloadLogic: 'Download Logic project',
     buildingLogic: 'Creating Logic project …',
+    uploadingLogic: 'Uploading audio … {amount}',
+    receivingLogic: 'Downloading project … {amount}',
     logicWithoutAudio: 'Without an audio.flac the project holds only the MIDI tracks; its audio track stays empty.',
     logicHint:
       'Experimental: the project is built from a Logic Pro 12.3 template with audio tracks for the mix and its stems and eleven instrument tracks.',
