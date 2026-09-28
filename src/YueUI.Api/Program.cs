@@ -7,6 +7,7 @@ using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
 using YueUI.Api.Queue;
 using YueUI.Api.Share;
+using YueUI.Api.Speech;
 using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
@@ -69,6 +70,14 @@ builder.Services.AddSingleton<VoiceConverter>();
 builder.Services.AddHostedService(services => services.GetRequiredService<VoiceConverter>());
 builder.Services.AddHostedService<AutoVersions>();
 
+// The speech lab: text spoken by local models (mlx-audio in its own Python environment), one take at a time.
+builder.Services.Configure<SpeechOptions>(builder.Configuration.GetSection(SpeechOptions.Section));
+builder.Services.AddSingleton<SpeechActivity>();
+builder.Services.AddSingleton<SqliteSpeechStore>();
+builder.Services.AddSingleton<ISpeechEngine, MlxAudioEngine>();
+builder.Services.AddSingleton<SpeechLab>();
+builder.Services.AddHostedService(services => services.GetRequiredService<SpeechLab>());
+
 // Songs, renders and lyrics drafts wait here for the memory instead of being refused; kept in the database.
 builder.Services.Configure<QueueOptions>(builder.Configuration.GetSection(QueueOptions.Section));
 builder.Services.AddSingleton<SqliteJobStore>();
@@ -106,6 +115,7 @@ api.MapPlaylistEndpoints();
 api.MapVoiceEndpoints();
 api.MapStemEndpoints();
 api.MapQueueEndpoints();
+api.MapSpeechEndpoints();
 
 app.MapClientApp();
 

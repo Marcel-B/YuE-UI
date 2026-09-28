@@ -23,6 +23,7 @@ namespace YueUI.Api.Data;
 /// (<see cref="SqliteSynthStore"/>).
 /// Version 9: the preview's mixer (volume and pan per track, master), one row (<see cref="SqliteSynthStore"/>).
 /// Version 10: songs split into stems (<see cref="SqliteStemStore"/>).
+/// Version 11: the speech lab's recorded voices and takes (<see cref="SqliteSpeechStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -280,6 +281,40 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     );
                     CREATE INDEX song_stems_song ON song_stems (song_id);
                     PRAGMA user_version = 10;
+                    """);
+            }
+            if (current < 11)
+            {
+                // Takes keep the voice's label rather than a foreign key: a take stays worth hearing after its
+                // recording is deleted.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE speech_voices (
+                        id TEXT PRIMARY KEY,
+                        label TEXT NOT NULL,
+                        transcript TEXT NOT NULL,
+                        seconds REAL NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE speech_takes (
+                        id TEXT PRIMARY KEY,
+                        model_id TEXT NOT NULL,
+                        model_label TEXT NOT NULL,
+                        text TEXT NOT NULL,
+                        voice_id TEXT,
+                        voice_label TEXT,
+                        stage TEXT NOT NULL,
+                        message TEXT,
+                        seconds REAL,
+                        load_seconds REAL,
+                        speak_seconds REAL,
+                        peak_memory_gb REAL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 11;
                     """);
             }
             _ready = true;

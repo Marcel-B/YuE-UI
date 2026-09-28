@@ -27,6 +27,7 @@ import type {
   RunInfo,
   SongInfo,
   SongState,
+  SpeechTake,
   StorageInfo,
   TranscriptionState,
   StemSetState,
@@ -42,6 +43,8 @@ const LibraryList = defineAsyncComponent(() => import('./components/LibraryList.
 const ShareDialog = defineAsyncComponent(() => import('./components/ShareDialog.vue'))
 // The Logic page brings the options form, the piano roll and the MIDI preview; loaded only once it is opened.
 const LogicPage = defineAsyncComponent(() => import('./components/LogicPage.vue'))
+// The speech lab, likewise loaded and mounted only once it is opened.
+const SpeechLab = defineAsyncComponent(() => import('./components/SpeechLab.vue'))
 
 const logCapacity = 300
 const form = ref(loadFormState())
@@ -74,6 +77,10 @@ const lyricsDraft = ref<LyricsState | null>(null)
 const versions = ref<VersionState[]>([])
 /** Stems in the works, and those finished while the page was open. */
 const stemSets = ref<StemSetState[]>([])
+/** The speech lab's takes as the event stream reports them, by id; the lab lays them over what it loaded. */
+const speechTakes = ref<SpeechTake[]>([])
+/** Whether a take holds the memory, so the queue can say what its jobs wait for. */
+const speaking = computed(() => speechTakes.value.some((take) => take.stage === 'loading' || take.stage === 'speaking'))
 /** Songs, renders and drafts waiting for the memory. */
 const jobs = ref<QueuedJob[]>([])
 /** How long songs may pass a waiting draft or version (Queue:BundleWindow). */
@@ -175,6 +182,14 @@ const unsubscribe = subscribe({
   },
   version: upsertVersion,
   stems: upsertStems,
+  speech(take) {
+    const index = speechTakes.value.findIndex((other) => other.id === take.id)
+    if (index >= 0) {
+      speechTakes.value[index] = take
+    } else {
+      speechTakes.value.push(take)
+    }
+  },
   queue(queue) {
     jobs.value = queue
   },
@@ -193,6 +208,7 @@ const pages: { view: View; label: MessageKey; icon: string }[] = [
   { view: 'playlist', label: 'menuPlaylist', icon: 'pi pi-play-circle' },
   { view: 'voices', label: 'menuVoices', icon: 'pi pi-users' },
   { view: 'logic', label: 'menuLogic', icon: 'pi pi-box' },
+  { view: 'lab', label: 'menuLab', icon: 'pi pi-comments' },
 ]
 
 /**
@@ -204,6 +220,7 @@ const badges = computed<Partial<Record<View, number>>>(() => ({
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
   playlist: playlistIds.value.length,
   voices: versions.value.filter((v) => !v.finished).length + stemSets.value.filter((s) => !s.finished).length,
+  lab: speechTakes.value.filter((take) => !take.finished).length,
 }))
 
 /**
@@ -221,9 +238,13 @@ getVoiceInfo()
  * and presets on its first appearance, which a visit to the other pages does not need.
  */
 const logicOpened = ref(view.value === 'logic')
+const labOpened = ref(view.value === 'lab')
 watch(view, (value) => {
   if (value === 'logic') {
     logicOpened.value = true
+  }
+  if (value === 'lab') {
+    labOpened.value = true
   }
 })
 
@@ -494,6 +515,7 @@ async function useAsNewSong(songId: string): Promise<void> {
             :lyrics-draft="lyricsDraft"
             :versions="versions"
             :bundle-window-seconds="bundleWindowSeconds"
+            :speaking="speaking"
             :log="log"
             @hide-finished="hideFinished"
             @error="show($event, true)"
@@ -581,6 +603,10 @@ async function useAsNewSong(songId: string): Promise<void> {
 
   <main v-if="logicOpened" v-show="view === 'logic'">
     <LogicPage :runs="runs" />
+  </main>
+
+  <main v-if="labOpened" v-show="view === 'lab'">
+    <SpeechLab :active="view === 'lab'" :connected="connected" :live="speechTakes" @error="show($event, true)" />
   </main>
 
   <!-- Outside the pages, so switching between them does not stop the song. The spacer keeps it off the page's end. -->
