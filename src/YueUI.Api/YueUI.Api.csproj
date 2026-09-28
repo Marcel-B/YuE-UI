@@ -25,6 +25,7 @@
   <ItemGroup>
     <!-- Run by YuE Studio's Python in front of its worker (PythonWorkerLauncher.ExtensionScript). -->
     <None Update="Worker\yueui_worker.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Speech\yueui_speech.py" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

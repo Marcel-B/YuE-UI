@@ -21,6 +21,8 @@ const props = defineProps<{
   stems: StemSetState[]
   /** Queue:BundleWindow; null for a server from before it was sent. */
   bundleWindowSeconds: number | null
+  /** A take of the speech lab holds the memory. */
+  speaking?: boolean
   log: LogEntry[]
   /** Songs the library lists; those have a place on the songs page to jump to. */
   listed: Set<string>
@@ -74,7 +76,7 @@ const holder = computed(() => holderOf(props.worker, props.lyricsDraft, voiceWor
 
 const reasons = computed(() =>
   props.jobs.map((_, i) =>
-    waitReason(props.jobs, i, holder.value, voiceWork.value, props.bundleWindowSeconds, now.value),
+    waitReason(props.jobs, i, holder.value, voiceWork.value, props.bundleWindowSeconds, now.value, props.speaking),
   ),
 )
 
@@ -129,6 +131,9 @@ const voiceItems = computed<VoiceItem[]>(() =>
 function voiceReason(item: VoiceItem): string {
   if (item.stage !== 'queued') {
     return ''
+  }
+  if (props.speaking) {
+    return t('waitSpeech')
   }
   if (holder.value === 'yue') {
     return t('waitYue')

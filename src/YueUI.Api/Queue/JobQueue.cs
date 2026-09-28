@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using YueUI.Api.Data;
 using YueUI.Api.Library;
 using YueUI.Api.Lyrics;
+using YueUI.Api.Speech;
 using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
@@ -24,7 +25,7 @@ namespace YueUI.Api.Queue;
 /// as long as the draft at the front has waited less than <see cref="QueueOptions.BundleWindow"/>; after that songs
 /// wait behind it, so the worker runs empty and the draft gets its turn. Voice conversions keep their own queue
 /// (<see cref="VoiceConverter"/>), which waits for the memory in the same way; a version that has waited that long
-/// holds back new songs as well.
+/// holds back new songs as well. So does a take of the speech lab (<see cref="SpeechLab"/>), for as long as it speaks.
 /// Waiting jobs are kept in <see cref="SqliteJobStore"/> and resumed after a restart. Transcriptions are not queued
 /// here: SheetSage2 runs beside YuE2 in the worker.
 /// </remarks>
@@ -33,6 +34,7 @@ public sealed class JobQueue(
     WorkerHost host,
     LyricsWriter lyrics,
     VoiceConverter voices,
+    SpeechActivity speech,
     SongLibrary library,
     IOptions<QueueOptions> options,
     TimeProvider time,
@@ -312,7 +314,7 @@ public sealed class JobQueue(
         // Announced before looking: the lyrics writer and the voice converter claim the memory first and then look at
         // the worker, so one of the two always sees the other.
         host.ExpectSongs(voice);
-        if (lyrics.IsWriting || voices.IsConverting || VersionOverdue())
+        if (lyrics.IsWriting || voices.IsConverting || speech.IsSpeaking || VersionOverdue())
         {
             host.ExpectNoSongs();
             return false;
@@ -350,7 +352,7 @@ public sealed class JobQueue(
                 request.Image,
                 revision,
                 job.Id,
-                () => voices.IsConverting);
+                () => voices.IsConverting || speech.IsSpeaking);
             return true;
         }
         catch (LyricsBusyException)
