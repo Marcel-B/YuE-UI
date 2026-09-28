@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import DataView from 'primevue/dataview'
 import Dialog from 'primevue/dialog'
 import Checkbox from 'primevue/checkbox'
 import Fieldset from 'primevue/fieldset'
+import type Menu from 'primevue/menu'
 import { useConfirm } from 'primevue/useconfirm'
 import {
   addVersion,
@@ -231,6 +232,91 @@ function useMidi(run: RunInfo, song: SongInfo): void {
       importing.value.delete(song.id)
     }
   })
+}
+
+/** A song action beyond play, render, FLAC and ABC: an icon on a wide screen, a line of the "…" menu on a phone. */
+interface SongAction {
+  key: string
+  label: string
+  icon: string
+  /** A download: a link rather than a command. */
+  url?: string
+  command?: () => void
+  danger?: boolean
+  disabled?: boolean
+  loading?: boolean
+}
+
+function songActions(run: RunInfo, song: SongInfo): SongAction[] {
+  const actions: SongAction[] = []
+  if (song.hasAudio) {
+    actions.push({ key: 'share', label: t('share'), icon: 'pi pi-share-alt', command: () => shareSong(song.id) })
+  }
+  if (song.hasScore) {
+    actions.push({
+      key: 'score',
+      label: t('useScore'),
+      icon: 'pi pi-file-import',
+      command: () => void useScore(run, song),
+    })
+  }
+  const importingMidi = importing.value.has(song.id)
+  actions.push({
+    key: 'midi',
+    label: t('useMidi'),
+    icon: importingMidi ? 'pi pi-spin pi-spinner' : 'pi pi-file-arrow-up',
+    command: () => useMidi(run, song),
+    disabled: importingMidi,
+    loading: importingMidi,
+  })
+  if (song.hasScore) {
+    actions.push({
+      key: 'logic',
+      label: t('openInLogic'),
+      icon: 'pi pi-file-export',
+      command: () => openOnLogicPage(song.id),
+    })
+  }
+  if (song.hasAudio || song.hasScore) {
+    actions.push({ key: 'zip', label: t('zipTitle'), icon: 'pi pi-box', url: songZipUrl(song.id) })
+  }
+  if (props.voices && song.hasAudio) {
+    actions.push({
+      key: 'voice',
+      label: t('singWithVoice'),
+      icon: 'pi pi-user-edit',
+      command: () => void startSinging(run, song),
+    })
+  }
+  const busy = props.busyIds.has(song.id)
+  actions.push({
+    key: 'delete',
+    label: busy ? t('deleteBusy') : t('deleteSong'),
+    icon: 'pi pi-trash',
+    command: () => askDeleteSong(run, song),
+    danger: true,
+    disabled: busy,
+  })
+  return actions
+}
+
+/** One popup menu for every song; it takes the actions of the song whose "…" was tapped. */
+const actionMenu = useTemplateRef<InstanceType<typeof Menu>>('actionMenu')
+const menuActions = ref<SongAction[]>([])
+const menuItems = computed(() =>
+  menuActions.value.map((action) => ({
+    label: action.label,
+    icon: action.icon,
+    url: action.url,
+    command: action.command,
+    disabled: action.disabled,
+    danger: action.danger,
+  })),
+)
+
+function openActions(event: Event, run: RunInfo, song: SongInfo): void {
+  menuActions.value = songActions(run, song)
+  actionMenu.value?.toggle(event)
 }
 
 async function toggleScore(song: SongInfo, event: Event): Promise<void> {
@@ -502,7 +588,8 @@ const severityByQuality: Record<string, string> = {
       <template #empty />
       <template #list="slotProps">
         <div v-for="{ run, songs } in slotProps.items as SortedRun[]" :key="run.id">
-          <Fieldset :legend="run.title || t('untitled')">
+          <!-- A fieldset is as wide as its content by default, which pushed a card past a phone's edge. -->
+          <Fieldset :legend="run.title || t('untitled')" class="min-w-0">
             <div class="flex justify-between items-center">
               <div>
                 <span v-if="run.createdAt" class="muted text-sm">{{ formatDateTime(run.createdAt) }} · </span>
@@ -602,93 +689,51 @@ const severityByQuality: Record<string, string> = {
                     text
                     size="small"
                     :disabled="busyIds.has(song.id)"
+                    class="whitespace-nowrap"
                     @click="renderFull(song)"
                   />
-                  <div class="ml-auto flex justify-end">
+                  <div class="ml-auto flex items-center justify-end">
                     <Button as="a" text v-if="song.hasAudio" size="small" :href="audioUrl(song.id, true)">{{
                       t('download')
                     }}</Button>
                     <Button as="a" text v-if="song.hasScore" size="small" :href="scoreUrl(song.id)">{{
                       t('score')
                     }}</Button>
-                    <Button
-                      v-if="song.hasAudio"
-                      icon="pi pi-share-alt"
-                      text
-                      size="small"
-                      rounded
-                      v-tooltip="t('share')"
-                      :aria-label="t('share')"
-                      @click="shareSong(song.id)"
-                    />
                     <PlaylistToggle
                       v-if="song.hasAudio"
                       :song-id="song.id"
                       size="small"
                       @error="emit('error', $event)"
                     />
+                    <!-- On a phone the other actions would push the card past the screen's edge, so they go into a menu. -->
+                    <div class="hidden sm:flex">
+                      <Button
+                        v-for="action in songActions(run, song)"
+                        :key="action.key"
+                        :as="action.url ? 'a' : undefined"
+                        :href="action.url"
+                        :icon="action.icon"
+                        text
+                        size="small"
+                        rounded
+                        :severity="action.danger ? 'danger' : undefined"
+                        v-tooltip="action.label"
+                        :aria-label="action.label"
+                        :loading="action.loading"
+                        :disabled="action.disabled"
+                        @click="action.command?.()"
+                      />
+                    </div>
                     <Button
-                      v-if="song.hasScore"
-                      icon="pi pi-file-import"
+                      icon="pi pi-ellipsis-v"
                       text
                       size="small"
                       rounded
-                      v-tooltip="t('useScore')"
-                      :aria-label="t('useScore')"
-                      @click="useScore(run, song)"
-                    />
-                    <Button
-                      icon="pi pi-file-arrow-up"
-                      text
-                      size="small"
-                      rounded
-                      v-tooltip="t('useMidi')"
-                      :aria-label="t('useMidi')"
-                      :loading="importing.has(song.id)"
-                      :disabled="importing.has(song.id)"
-                      @click="useMidi(run, song)"
-                    />
-                    <Button
-                      v-if="song.hasScore"
-                      icon="pi pi-file-export"
-                      text
-                      size="small"
-                      rounded
-                      v-tooltip="t('openInLogic')"
-                      :aria-label="t('openInLogic')"
-                      @click="openOnLogicPage(song.id)"
-                    />
-                    <Button
-                      v-if="song.hasAudio || song.hasScore"
-                      as="a"
-                      text
-                      size="small"
-                      rounded
-                      icon="pi pi-box"
-                      v-tooltip="t('zipTitle')"
-                      :href="songZipUrl(song.id)"
-                      :title="t('zipTitle')"
-                    />
-                    <Button
-                      v-if="voices && song.hasAudio"
-                      icon="pi pi-user-edit"
-                      text
-                      size="small"
-                      rounded
-                      v-tooltip="t('singWithVoice')"
-                      :aria-label="t('singWithVoice')"
-                      @click="startSinging(run, song)"
-                    />
-                    <Button
-                      icon="pi pi-trash"
-                      text
-                      size="small"
-                      rounded
-                      severity="danger"
-                      v-tooltip="busyIds.has(song.id) ? t('deleteBusy') : t('deleteSong')"
-                      :aria-label="t('deleteSong')"
-                      :disabled="busyIds.has(song.id)"
-                      @click="askDeleteSong(run, song)"
+                      severity="secondary"
+                      class="sm:hidden"
+                      :aria-label="t('songActions')"
+                      aria-haspopup="true"
+                      @click="openActions($event, run, song)"
                     />
                   </div>
                 </div>
@@ -747,6 +792,15 @@ const severityByQuality: Record<string, string> = {
         </div>
       </template>
     </DataView>
+    <Menu ref="actionMenu" :model="menuItems" popup>
+      <!-- Only so "delete" is red like its icon on a wide screen. -->
+      <template #item="{ item, props: link }">
+        <a v-bind="link.action" :href="item.url" :class="{ danger: item.danger }">
+          <span :class="[item.icon, 'p-menu-item-icon', { danger: item.danger }]" />
+          <span class="p-menu-item-label">{{ item.label }}</span>
+        </a>
+      </template>
+    </Menu>
     <Dialog
       :visible="renaming !== null"
       modal
