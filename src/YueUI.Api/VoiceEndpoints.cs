@@ -18,7 +18,7 @@ public static class VoiceEndpoints
     public static RouteGroupBuilder MapVoiceEndpoints(this RouteGroupBuilder api)
     {
         api.MapGet("/voice", (IOptions<VoiceOptions> options) =>
-            new VoiceInfo(options.Value.VoicesConfigured, options.Value.ConversionConfigured));
+            new VoiceInfo(options.Value.VoicesConfigured, options.Value.ConversionConfigured, options.Value.StemsConfigured));
         api.MapGet("/voices", (VoiceClient voices, CancellationToken cancellationToken) =>
             Call(async () => Results.Ok(await voices.ListVoicesAsync(cancellationToken))));
         api.MapPost("/voices", AddVoiceAsync)

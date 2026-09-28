@@ -65,6 +65,10 @@ public sealed class PushNotifier(WorkerHost host, PushStore store, IPushSender s
         {
             _finished[$"version:{version.Id}"] = version.Finished;
         }
+        foreach (var set in snapshot.Stems ?? [])
+        {
+            _finished[$"stems:{set.Id}"] = set.Finished;
+        }
         if (snapshot.Lyrics is { } lyrics)
         {
             _finished[$"lyrics:{lyrics.Id}"] = lyrics.Finished;
@@ -84,6 +88,9 @@ public sealed class PushNotifier(WorkerHost host, PushStore store, IPushSender s
                 break;
             case VersionState version when Finishes($"version:{version.Id}", version.Finished) && version.Stage != "cancelled":
                 Queue($"version:{version.Id}", language => PushTexts.Version(version, language));
+                break;
+            case StemSetState set when Finishes($"stems:{set.Id}", set.Finished) && set.Stage != "cancelled":
+                Queue($"stems:{set.Id}", language => PushTexts.Stems(set, language));
                 break;
             case LyricsState lyrics when Finishes($"lyrics:{lyrics.Id}", lyrics.Finished):
                 Queue("lyrics", language => PushTexts.Lyrics(lyrics, language));

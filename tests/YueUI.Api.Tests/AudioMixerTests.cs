@@ -60,6 +60,32 @@ public sealed class AudioMixerTests : IDisposable
         Assert.True(await MaxVolume(ffmpeg, output, from: 1.5, seconds: 1) > -30);
     }
 
+    [Fact]
+    public async Task A_float_stem_becomes_a_24_bit_flac_and_its_waveform_is_read_from_the_wav()
+    {
+        if (AacEncoder.FindFfmpeg() is not { } ffmpeg)
+        {
+            return;
+        }
+        var stem = Path.Combine(_directory, "drums.wav");
+        // As separation models write them: 32-bit float.
+        await Run(ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=100:sample_rate=48000:duration=2",
+            "-af", "volume=0.5", "-ac", "2", "-c:a", "pcm_f32le", stem);
+        var output = Path.Combine(_directory, "drums.flac");
+
+        await new FfmpegMixer(NullLogger<FfmpegMixer>.Instance).EncodeFlacAsync(stem, output, CancellationToken.None);
+
+        var probe = await Run(ffmpeg.Replace("ffmpeg", "ffprobe"), "-v", "error", "-show_entries", "stream=codec_name,sample_rate,channels,bits_per_raw_sample", "-of", "default=nw=1", output);
+        Assert.Contains("codec_name=flac", probe);
+        Assert.Contains("sample_rate=48000", probe);
+        Assert.Contains("bits_per_raw_sample=24", probe);
+        var (seconds, peaks) = WavPeaks.Read(stem, 20)!.Value;
+        Assert.Equal(2, seconds, 2);
+        // The same peak ffmpeg measures, in dB.
+        var measured = await MaxVolume(ffmpeg, stem, from: 0, seconds: 2);
+        Assert.All(peaks, p => Assert.Equal(measured, 20 * Math.Log10(p), 0));
+    }
+
     private static async Task<double> MaxVolume(string ffmpeg, string file, double from, double seconds)
     {
         var start = new ProcessStartInfo(ffmpeg) { RedirectStandardError = true };

@@ -52,6 +52,7 @@ builder.Services.AddSingleton<SqlitePlaylistStore>();
 builder.Services.AddSingleton<SqliteRunTitleStore>();
 builder.Services.AddSingleton<SqliteSongRatingStore>();
 builder.Services.AddSingleton<SqliteVersionStore>();
+builder.Services.AddSingleton<SqliteStemStore>();
 builder.Services.AddSingleton<SqliteInstrumentStore>();
 builder.Services.AddSingleton<SqliteLogicPresetStore>();
 builder.Services.AddSingleton<SqliteSynthStore>();
@@ -103,6 +104,7 @@ api.MapSynthEndpoints();
 api.MapPushEndpoints();
 api.MapPlaylistEndpoints();
 api.MapVoiceEndpoints();
+api.MapStemEndpoints();
 api.MapQueueEndpoints();
 
 app.MapClientApp();
