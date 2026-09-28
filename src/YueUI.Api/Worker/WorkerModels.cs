@@ -109,7 +109,8 @@ public sealed record StatusSnapshot(
     IReadOnlyList<VersionState>? Versions = null,
     IReadOnlyList<QueuedJob>? Queue = null,
     double? BundleWindowSeconds = null,
-    IReadOnlyList<Voices.StemSetState>? Stems = null);
+    IReadOnlyList<Voices.StemSetState>? Stems = null,
+    IReadOnlyList<Speech.SpeechTake>? Speech = null);
 
 /// <summary>
 /// The last lyrics draft (Lyrics/LyricsWriter.cs). It arrives as an event rather than as the answer to the request:

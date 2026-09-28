@@ -168,6 +168,27 @@ public sealed class SpeechEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task The_status_carries_the_takes_in_the_works_so_the_queue_can_show_them()
+    {
+        _app.Speech.Gate = new TaskCompletionSource();
+        var client = _app.CreateClient();
+        await client.PostAsJsonAsync(
+            "/api/speech/takes",
+            new { text = "Hallo", models = new[] { "chatterbox", "qwen3-tts", "moss-tts" } });
+        await TestApp.WaitUntil(() => _app.Speech.Jobs.Count == 1);
+
+        var status = await _app.WaitForStatus(client, s => s.Speech is { Count: 3 } && s.Speech[0].Stage == "speaking");
+        Assert.Equal(["chatterbox", "qwen3-tts", "moss-tts"], status.Speech!.Select(t => t.ModelId));
+        Assert.Equal(["speaking", "queued", "queued"], status.Speech!.Select(t => t.Stage));
+
+        _app.Speech.Gate.SetResult();
+        await WaitForTakes(client, all => all.Count == 3 && all.All(t => t.Finished));
+
+        // A finished take leaves with the next change; the last one stays until then, like a version or stems.
+        Assert.Equal(["moss-tts"], _app.Snapshot().Speech!.Select(t => t.ModelId));
+    }
+
+    [Fact]
     public async Task Deleting_a_take_that_is_spoken_stops_it()
     {
         _app.Speech.Gate = new TaskCompletionSource();

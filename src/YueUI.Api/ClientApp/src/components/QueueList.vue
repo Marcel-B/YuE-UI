@@ -1,12 +1,30 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
-import { cancel, cancelQueued, deleteStems, deleteVersion, moveQueued, shutdownWorker, stopAll } from '../api'
+import {
+  cancel,
+  cancelQueued,
+  deleteSpeechTake,
+  deleteStems,
+  deleteVersion,
+  moveQueued,
+  shutdownWorker,
+  stopAll,
+} from '../api'
 import { formatDuration, formatTime, stageLabel, t, versionProgress } from '../i18n'
 import QueueOverview from './QueueOverview.vue'
 import SongTimeline from './SongTimeline.vue'
-import { holderOf, waitReason } from '../queueModels'
-import { showSong, songHref } from '../view'
-import type { LogEntry, LyricsState, QueuedJob, SongState, StemSetState, VersionState, WorkerInfo } from '../types'
+import { holderOf, speechWaitReason, waitReason } from '../queueModels'
+import { navigate, showSong, songHref } from '../view'
+import type {
+  LogEntry,
+  LyricsState,
+  QueuedJob,
+  SongState,
+  SpeechTake,
+  StemSetState,
+  VersionState,
+  WorkerInfo,
+} from '../types'
 
 defineExpose({ run, stopAll, shutdownWorker })
 
@@ -21,8 +39,8 @@ const props = defineProps<{
   stems: StemSetState[]
   /** Queue:BundleWindow; null for a server from before it was sent. */
   bundleWindowSeconds: number | null
-  /** A take of the speech lab holds the memory. */
-  speaking?: boolean
+  /** The speech lab's takes; those in the works wait for the same memory. */
+  takes: SpeechTake[]
   log: LogEntry[]
   /** Songs the library lists; those have a place on the songs page to jump to. */
   listed: Set<string>
@@ -72,13 +90,20 @@ const timer = setInterval(() => (now.value = Date.now()), 15_000)
 onBeforeUnmount(() => clearInterval(timer))
 
 const voiceWork = computed(() => [...props.versions, ...props.stems])
-const holder = computed(() => holderOf(props.worker, props.lyricsDraft, voiceWork.value))
+const holder = computed(() => holderOf(props.worker, props.lyricsDraft, voiceWork.value, props.takes))
 
 const reasons = computed(() =>
   props.jobs.map((_, i) =>
-    waitReason(props.jobs, i, holder.value, voiceWork.value, props.bundleWindowSeconds, now.value, props.speaking),
+    waitReason(props.jobs, i, holder.value, voiceWork.value, props.bundleWindowSeconds, now.value),
   ),
 )
+
+/** The speech lab's takes in the works, in the order the lab speaks them (it keeps its own queue, like the voices). */
+const takesInWork = computed(() => props.takes.filter((take) => !take.finished))
+
+function takeDetail(take: SpeechTake): string {
+  return [take.voiceLabel ?? t('labOwnVoice'), take.text.replace(/\s+/g, ' ').trim()].join(' · ')
+}
 
 /**
  * Voice versions and stem separations in the works, oldest first, as VoiceConverter makes them one at a time. They
@@ -132,7 +157,7 @@ function voiceReason(item: VoiceItem): string {
   if (item.stage !== 'queued') {
     return ''
   }
-  if (props.speaking) {
+  if (holder.value === 'speech') {
     return t('waitSpeech')
   }
   if (holder.value === 'yue') {
@@ -204,7 +229,14 @@ watch(
       />
     </div>
 
-    <QueueOverview :songs="songs" :jobs="jobs" :worker="worker" :lyrics-draft="lyricsDraft" :versions="voiceWork" />
+    <QueueOverview
+      :songs="songs"
+      :jobs="jobs"
+      :worker="worker"
+      :lyrics-draft="lyricsDraft"
+      :versions="voiceWork"
+      :takes="takes"
+    />
 
     <div v-if="voiceItems.length > 0" class="mb-4">
       <h3 class="m-0 text-sm font-medium text-muted-color">{{ t('queueVoice') }}</h3>
@@ -239,6 +271,40 @@ watch(
             severity="danger"
             :aria-label="t('queueCancel')"
             @click="run(item.remove)"
+          />
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="takesInWork.length > 0" class="mb-4">
+      <h3 class="m-0 text-sm font-medium text-muted-color">{{ t('menuLab') }}</h3>
+      <ul class="m-0 p-0 list-none flex flex-col gap-1">
+        <li v-for="(take, i) in takesInWork" :key="take.id" class="flex gap-2 items-center">
+          <i class="pi pi-comments text-muted-color" />
+          <div class="min-w-0 flex-1">
+            <a
+              href="#/lab"
+              class="block truncate font-bold text-color no-underline hover:underline"
+              :title="t('queueOpenLab')"
+              @click.prevent="navigate('lab')"
+              >{{ take.modelLabel }}</a
+            >
+            <span class="block text-sm text-muted-color truncate">{{ takeDetail(take) }}</span>
+            <span v-if="take.stage === 'queued'" class="block text-xs text-muted-color truncate"
+              ><i class="pi pi-clock text-xs" /> {{ speechWaitReason(i, holder) }}</span
+            >
+          </div>
+          <Tag :severity="take.stage === 'queued' ? 'secondary' : undefined" class="shrink-0">
+            <i v-if="take.stage !== 'queued'" class="pi pi-spin pi-spinner text-xs" />
+            {{ t(`labStage_${take.stage}`) }}
+          </Tag>
+          <Button
+            icon="pi pi-times"
+            text
+            rounded
+            severity="danger"
+            :aria-label="t('queueCancel')"
+            @click="run(() => deleteSpeechTake(take.id))"
           />
         </li>
       </ul>
@@ -294,7 +360,10 @@ watch(
       </ul>
     </div>
 
-    <p v-if="songs.length === 0 && jobs.length === 0 && voiceItems.length === 0" class="muted empty">
+    <p
+      v-if="songs.length === 0 && jobs.length === 0 && voiceItems.length === 0 && takesInWork.length === 0"
+      class="muted empty"
+    >
       {{ t('queueEmpty') }}
     </p>
     <ul v-else-if="songs.length > 0">

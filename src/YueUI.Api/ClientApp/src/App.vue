@@ -78,10 +78,11 @@ const lyricsDraft = ref<LyricsState | null>(null)
 const versions = ref<VersionState[]>([])
 /** Stems in the works, and those finished while the page was open. */
 const stemSets = ref<StemSetState[]>([])
-/** The speech lab's takes as the event stream reports them, by id; the lab lays them over what it loaded. */
+/**
+ * The speech lab's takes: those in the works from the snapshot, then as the event stream reports them, by id. The queue
+ * shows the unfinished ones; the lab lays them all over what it loaded.
+ */
 const speechTakes = ref<SpeechTake[]>([])
-/** Whether a take holds the memory, so the queue can say what its jobs wait for. */
-const speaking = computed(() => speechTakes.value.some((take) => take.stage === 'loading' || take.stage === 'speaking'))
 /** Songs, renders and drafts waiting for the memory. */
 const jobs = ref<QueuedJob[]>([])
 /** How long songs may pass a waiting draft or version (Queue:BundleWindow). */
@@ -150,6 +151,7 @@ const unsubscribe = subscribe({
     lyricsDraft.value = snapshot.lyrics
     versions.value = snapshot.versions
     stemSets.value = snapshot.stems ?? []
+    speechTakes.value = snapshot.speech ?? []
     jobs.value = snapshot.queue ?? []
     bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
     // The stream (re)opened: whatever was written meanwhile is in the library now, the playlists may have changed on
@@ -213,13 +215,17 @@ const pages: { view: View; label: MessageKey; icon: string }[] = [
   { view: 'lab', label: 'menuLab', icon: 'pi pi-comments' },
 ]
 
-/** Everything the queue page shows as in the works or waiting: songs, queued jobs, voice versions and stems. */
+/**
+ * Everything the queue page shows as in the works or waiting: songs, queued jobs, voice versions, stems and the speech
+ * lab's takes.
+ */
 const queueCount = computed(
   () =>
     songs.value.filter((s) => !s.finished).length +
     jobs.value.length +
     versions.value.filter((v) => !v.finished).length +
-    stemSets.value.filter((s) => !s.finished).length,
+    stemSets.value.filter((s) => !s.finished).length +
+    speechTakes.value.filter((take) => !take.finished).length,
 )
 
 /**
@@ -534,6 +540,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :worker="worker"
           :lyrics-draft="lyricsDraft"
           :versions="[...versions, ...stemSets]"
+          :takes="speechTakes"
         />
       </a>
     </div>
@@ -564,7 +571,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :versions="versions"
           :stems="stemSets"
           :bundle-window-seconds="bundleWindowSeconds"
-          :speaking="speaking"
+          :takes="speechTakes"
           :log="log"
           @hide-finished="hideFinished"
           @error="show($event, true)"
