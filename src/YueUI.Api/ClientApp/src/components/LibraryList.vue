@@ -4,6 +4,7 @@ import DataView from 'primevue/dataview'
 import Dialog from 'primevue/dialog'
 import Checkbox from 'primevue/checkbox'
 import Fieldset from 'primevue/fieldset'
+import Message from 'primevue/message'
 import type Menu from 'primevue/menu'
 import { useConfirm } from 'primevue/useconfirm'
 import {
@@ -30,6 +31,7 @@ import { shareSong } from '../share'
 import { openExport } from '../export'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
+import { needsReview, reviewCount, reviewDayChoices, reviewDays } from '../review'
 import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
 import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
 import { focusedSong, focusRequest, openOnLogicPage, openStems, view } from '../view'
@@ -71,19 +73,46 @@ const scopes = computed(() => [
 ])
 const terms = computed(() => parseQuery(query.value))
 
-/** Only songs with at least this many stars (5: only those with five); 0 shows every song. */
-const minRating = ref(0)
+/**
+ * Only songs with at least this many stars (5: only those with five); 0 shows every song. `review` shows the songs
+ * left unrated for longer than `reviewDays`, to be heard again and rated or deleted.
+ */
+const minRating = ref<number | 'review'>(0)
 const ratingFilters = computed(() => [
   { value: 0, label: t('ratingAll') },
   { value: 5, label: t('ratingOnly', { n: 5 }) },
   ...[4, 3, 2, 1].map((n) => ({ value: n, label: t('ratingAtLeast', { n }) })),
+  { value: 'review', label: t('ratingReview') },
 ])
+const reviewing = computed(() => minRating.value === 'review')
+const toReview = computed(() => reviewCount(props.runs, ratings.value, reviewDays.value))
+const dayOptions = computed(() =>
+  reviewDayChoices.map((days) => ({ value: days, label: t('reviewDays', { n: days }) })),
+)
+
+/**
+ * Songs rated while going through the unrated ones stay in the list until it is left, so a song does not vanish from
+ * under the finger that gave it its stars, and the player's queue matches what is listed.
+ */
+const reviewed = ref(new Set<string>())
+watch(reviewing, () => {
+  reviewed.value = new Set()
+})
 
 /** The songs of the run the rating filter lets through; the run itself (its size, deleting it) stays whole. */
 function shownSongs(run: RunInfo): SongInfo[] {
   // Read here, so the list follows a rating that changes while filtered.
   const stars = ratings.value
-  return minRating.value === 0 ? run.songs : run.songs.filter((song) => (stars[song.id] ?? 0) >= minRating.value)
+  const filter = minRating.value
+  if (filter === 'review') {
+    return run.songs.filter((song) => reviewed.value.has(song.id) || needsReview(run, song, stars, reviewDays.value))
+  }
+  return filter === 0 ? run.songs : run.songs.filter((song) => (stars[song.id] ?? 0) >= filter)
+}
+
+function startReview(): void {
+  query.value = ''
+  minRating.value = 'review'
 }
 
 /** The order of the list, beside search and rating filter. */
@@ -105,7 +134,7 @@ const shownRuns = computed(() =>
 )
 const searching = computed(() => terms.value.length > 0)
 /** Some runs are hidden, by the search or the rating filter; the count of hits shows. */
-const filtering = computed(() => searching.value || minRating.value > 0)
+const filtering = computed(() => searching.value || minRating.value !== 0)
 
 function clearSearch(): void {
   query.value = ''
@@ -118,7 +147,7 @@ const first = ref(0)
 const list = ref<HTMLElement | null>(null)
 
 // A new search starts on the first page; its hits would otherwise hide behind a page number.
-watch([terms, scope, minRating], () => {
+watch([terms, scope, minRating, reviewDays], () => {
   first.value = 0
 })
 
@@ -184,6 +213,9 @@ function playSong(run: RunInfo, song: SongInfo): void {
 }
 
 async function rateSong(song: SongInfo, rating: number | null | undefined): Promise<void> {
+  if (reviewing.value) {
+    reviewed.value.add(song.id)
+  }
   try {
     await rate(song.id, rating ?? null)
   } catch (caught) {
@@ -542,6 +574,32 @@ const severityByQuality: Record<string, string> = {
   <section ref="list">
     <p v-if="error" class="danger">{{ t('libraryError', { message: error }) }}</p>
     <p v-else-if="!loading && runs.length === 0" class="muted">{{ t('libraryEmpty') }}</p>
+    <!-- Nothing is deleted by itself: songs left unrated for a while are only offered, to be heard, rated or deleted. -->
+    <div v-if="reviewing || toReview > 0" class="mb-3">
+      <Message v-if="!reviewing" severity="info" size="small">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span class="flex-1 min-w-0">
+            <i class="pi pi-star mr-1" aria-hidden="true" />
+            {{ t(toReview === 1 ? 'reviewWaitingOne' : 'reviewWaiting', { count: toReview, n: reviewDays }) }}
+          </span>
+          <Button :label="t('reviewStart')" size="small" text class="shrink-0" @click="startReview" />
+        </div>
+      </Message>
+      <Message v-else severity="info" size="small">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>{{ t('reviewOlderThan') }}</span>
+          <Select
+            v-model="reviewDays"
+            :options="dayOptions"
+            option-label="label"
+            option-value="value"
+            :aria-label="t('reviewOlderThan')"
+            size="small"
+          />
+          <span class="basis-full muted">{{ t('reviewHint') }}</span>
+        </div>
+      </Message>
+    </div>
     <form v-if="runs.length > 0" class="search" role="search" @submit.prevent>
       <InputText
         v-model="query"
@@ -583,7 +641,10 @@ const severityByQuality: Record<string, string> = {
       />
     </form>
     <p v-if="filtering" class="muted text-sm mt-2 mb-0">
-      {{ shownRuns.length === 0 ? t('searchNone') : t('searchHits', { count: shownRuns.length, total: runs.length }) }}
+      <template v-if="reviewing && shownRuns.length === 0">{{ t('reviewDone') }}</template>
+      <template v-else>{{
+        shownRuns.length === 0 ? t('searchNone') : t('searchHits', { count: shownRuns.length, total: runs.length })
+      }}</template>
       <Button :label="t('searchClear')" text size="small" @click="clearSearch" />
     </p>
     <DataView

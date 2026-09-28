@@ -16,7 +16,8 @@ import { fromSongRequest, loadFormState, planningFor, saveFormState } from './fo
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
 import { current, retitle } from './player'
 import { loadPlaylists, playlistIds } from './playlist'
-import { setRatings } from './ratings'
+import { ratings, setRatings } from './ratings'
+import { reviewCount, reviewDays } from './review'
 import { shareState } from './share'
 import { exportTarget } from './export'
 import { checkForUpdate, reload, standalone, updateAvailable } from './update'
@@ -232,10 +233,11 @@ const queueCount = computed(
 
 /**
  * The badge counts what the page holds that is worth a look: songs and transcriptions in the works or waiting, songs
- * in the playlist.
+ * left unrated long enough to be heard again, songs in the playlist.
  */
 const badges = computed<Partial<Record<View, number>>>(() => ({
   queue: queueCount.value,
+  songs: reviewCount(runs.value, ratings.value, reviewDays.value),
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
   playlist: playlistIds.value.length,
   voices: versions.value.filter((v) => !v.finished).length + stemSets.value.filter((s) => !s.finished).length,
