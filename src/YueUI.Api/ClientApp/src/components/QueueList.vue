@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
-import { cancel, cancelQueued, moveQueued, shutdownWorker, stopAll } from '../api'
-import { formatDuration, formatTime, stageLabel, t } from '../i18n'
+import { cancel, cancelQueued, deleteStems, deleteVersion, moveQueued, shutdownWorker, stopAll } from '../api'
+import { formatDuration, formatTime, stageLabel, t, versionProgress } from '../i18n'
 import QueueOverview from './QueueOverview.vue'
 import SongTimeline from './SongTimeline.vue'
 import { holderOf, waitReason } from '../queueModels'
 import { showSong, songHref } from '../view'
-import type { LogEntry, LyricsState, QueuedJob, SongState, VersionState, WorkerInfo } from '../types'
+import type { LogEntry, LyricsState, QueuedJob, SongState, StemSetState, VersionState, WorkerInfo } from '../types'
 
 defineExpose({ run, stopAll, shutdownWorker })
 
@@ -17,6 +17,8 @@ const props = defineProps<{
   worker: WorkerInfo
   lyricsDraft: LyricsState | null
   versions: VersionState[]
+  /** Songs being split into stems; they share the voices' queue and memory. */
+  stems: StemSetState[]
   /** Queue:BundleWindow; null for a server from before it was sent. */
   bundleWindowSeconds: number | null
   log: LogEntry[]
@@ -67,12 +69,79 @@ const now = ref(Date.now())
 const timer = setInterval(() => (now.value = Date.now()), 15_000)
 onBeforeUnmount(() => clearInterval(timer))
 
-const reasons = computed(() => {
-  const holder = holderOf(props.worker, props.lyricsDraft, props.versions)
-  return props.jobs.map((_, i) =>
-    waitReason(props.jobs, i, holder, props.versions, props.bundleWindowSeconds, now.value),
-  )
-})
+const voiceWork = computed(() => [...props.versions, ...props.stems])
+const holder = computed(() => holderOf(props.worker, props.lyricsDraft, voiceWork.value))
+
+const reasons = computed(() =>
+  props.jobs.map((_, i) =>
+    waitReason(props.jobs, i, holder.value, voiceWork.value, props.bundleWindowSeconds, now.value),
+  ),
+)
+
+/**
+ * Voice versions and stem separations in the works, oldest first, as VoiceConverter makes them one at a time. They
+ * are not in the server's job queue (they keep their own), but they wait for the same memory.
+ */
+interface VoiceItem {
+  key: string
+  songId: string
+  title: string
+  detail: string
+  stage: string
+  stageLabel: string
+  createdAt: string
+  icon: string
+  remove: () => Promise<void>
+}
+
+const voiceItems = computed<VoiceItem[]>(() =>
+  [
+    ...props.versions
+      .filter((v) => !v.finished)
+      .map((v) => ({
+        key: `version:${v.id}`,
+        songId: v.songId,
+        title: v.title,
+        detail: t('queueVersion', { voice: v.voiceLabel }),
+        stage: v.stage,
+        stageLabel: [t(`versionStage_${v.stage}`), versionProgress(v)].filter(Boolean).join(' '),
+        createdAt: v.createdAt,
+        icon: 'pi pi-user',
+        remove: () => deleteVersion(v.songId, v.id),
+      })),
+    ...props.stems
+      .filter((s) => !s.finished)
+      .map((s) => ({
+        key: `stems:${s.id}`,
+        songId: s.songId,
+        title: s.title,
+        detail: t('queueStems', { model: s.model }),
+        stage: s.stage,
+        stageLabel: t(`stemsStage_${s.stage}`),
+        createdAt: s.createdAt,
+        icon: 'pi pi-sliders-v',
+        remove: () => deleteStems(s.songId, s.id),
+      })),
+  ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+)
+
+/** A waiting one waits for whoever holds the memory, or for the one before it in the voices' queue. */
+function voiceReason(item: VoiceItem): string {
+  if (item.stage !== 'queued') {
+    return ''
+  }
+  if (holder.value === 'yue') {
+    return t('waitYue')
+  }
+  if (holder.value === 'lyrics') {
+    return t('waitLyrics')
+  }
+  return holder.value === 'voice' ? t('waitTurn') : t('waitStarting')
+}
+
+function songNumber(songId: string): string {
+  return t('songN', { n: songId.slice(songId.lastIndexOf('/') + 5) })
+}
 
 /** From joining the queue to the end, or null for a song without its stages (a server from before they were kept). */
 function totalTime(song: SongState): string | null {
@@ -130,7 +199,45 @@ watch(
       />
     </div>
 
-    <QueueOverview :songs="songs" :jobs="jobs" :worker="worker" :lyrics-draft="lyricsDraft" :versions="versions" />
+    <QueueOverview :songs="songs" :jobs="jobs" :worker="worker" :lyrics-draft="lyricsDraft" :versions="voiceWork" />
+
+    <div v-if="voiceItems.length > 0" class="mb-4">
+      <h3 class="m-0 text-sm font-medium text-muted-color">{{ t('queueVoice') }}</h3>
+      <ul class="m-0 p-0 list-none flex flex-col gap-1">
+        <li v-for="item in voiceItems" :key="item.key" class="flex gap-2 items-center">
+          <i :class="[item.icon, 'text-muted-color']" />
+          <div class="min-w-0 flex-1">
+            <a
+              v-if="listed.has(item.songId)"
+              :href="songHref(item.songId)"
+              class="block truncate font-bold text-color no-underline hover:underline"
+              :title="t('showSong')"
+              @click.prevent="showSong(item.songId)"
+              >{{ item.title || t('untitled') }} · {{ songNumber(item.songId) }}</a
+            >
+            <strong v-else class="block truncate"
+              >{{ item.title || t('untitled') }} · {{ songNumber(item.songId) }}</strong
+            >
+            <span class="block text-sm text-muted-color truncate">{{ item.detail }}</span>
+            <span v-if="voiceReason(item)" class="block text-xs text-muted-color truncate"
+              ><i class="pi pi-clock text-xs" /> {{ voiceReason(item) }}</span
+            >
+          </div>
+          <Tag :severity="item.stage === 'queued' ? 'secondary' : undefined" class="shrink-0">
+            <i v-if="item.stage !== 'queued'" class="pi pi-spin pi-spinner text-xs" />
+            {{ item.stageLabel }}
+          </Tag>
+          <Button
+            icon="pi pi-times"
+            text
+            rounded
+            severity="danger"
+            :aria-label="t('queueCancel')"
+            @click="run(item.remove)"
+          />
+        </li>
+      </ul>
+    </div>
 
     <div v-if="jobs.length > 0" class="mb-4">
       <h3 class="m-0 text-sm font-medium text-muted-color" :title="t('queueWaitingHint')">{{ t('queueWaiting') }}</h3>
@@ -182,7 +289,9 @@ watch(
       </ul>
     </div>
 
-    <p v-if="songs.length === 0 && jobs.length === 0" class="muted empty">{{ t('queueEmpty') }}</p>
+    <p v-if="songs.length === 0 && jobs.length === 0 && voiceItems.length === 0" class="muted empty">
+      {{ t('queueEmpty') }}
+    </p>
     <ul v-else-if="songs.length > 0">
       <li v-for="song in songs" :key="song.id" :class="['song', song.stage]">
         <div class="flex gap-3 items-center">

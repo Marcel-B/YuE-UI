@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { t, type MessageKey } from '../i18n'
-import { holderOf, modelOf, type Model } from '../queueModels'
-import type { LyricsState, QueuedJob, SongState, VersionState, WorkerInfo } from '../types'
+import { holderOf, modelOf, type Model, type VoiceWork } from '../queueModels'
+import type { LyricsState, QueuedJob, SongState, WorkerInfo } from '../types'
 
 /**
  * One line over the queue: the three models that take turns in the 24 GB, which one holds the memory now and how
@@ -13,7 +13,8 @@ const props = defineProps<{
   jobs: QueuedJob[]
   worker: WorkerInfo
   lyricsDraft: LyricsState | null
-  versions: VersionState[]
+  /** Voice versions and stem separations. */
+  versions: VoiceWork[]
 }>()
 
 const models: { model: Model; icon: string; label: MessageKey }[] = [

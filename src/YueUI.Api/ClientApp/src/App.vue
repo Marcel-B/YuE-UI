@@ -200,7 +200,11 @@ const pages: { view: View; label: MessageKey; icon: string }[] = [
  * in the playlist.
  */
 const badges = computed<Partial<Record<View, number>>>(() => ({
-  create: songs.value.filter((s) => !s.finished).length + jobs.value.length,
+  create:
+    songs.value.filter((s) => !s.finished).length +
+    jobs.value.length +
+    versions.value.filter((v) => !v.finished).length +
+    stemSets.value.filter((s) => !s.finished).length,
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
   playlist: playlistIds.value.length,
   voices: versions.value.filter((v) => !v.finished).length + stemSets.value.filter((s) => !s.finished).length,
@@ -493,6 +497,7 @@ async function useAsNewSong(songId: string): Promise<void> {
             :worker="worker"
             :lyrics-draft="lyricsDraft"
             :versions="versions"
+            :stems="stemSets"
             :bundle-window-seconds="bundleWindowSeconds"
             :log="log"
             @hide-finished="hideFinished"

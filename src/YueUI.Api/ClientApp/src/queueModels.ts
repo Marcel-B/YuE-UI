@@ -1,9 +1,9 @@
 import { formatDuration, t } from './i18n'
-import type { LyricsState, QueuedJob, VersionState, WorkerInfo } from './types'
+import type { LyricsState, QueuedJob, WorkerInfo } from './types'
 
 /**
  * The three large models that take turns in the memory (Queue/JobQueue.cs): YuE2 for songs and renders, the lyrics
- * model in LM Studio, and separation plus Seed-VC for voice versions.
+ * model in LM Studio, and separation plus Seed-VC for voice versions and stems.
  */
 export type Model = 'yue' | 'lyrics' | 'voice'
 
@@ -11,8 +11,18 @@ export function modelOf(job: QueuedJob): Model {
   return job.kind === 'lyrics' ? 'lyrics' : 'yue'
 }
 
+/**
+ * A voice version or a stem separation: both wait in VoiceConverter's one queue and hold the memory as the "voice"
+ * model while they run.
+ */
+export interface VoiceWork {
+  stage: string
+  createdAt: string
+  finished: boolean
+}
+
 /** Which model holds the memory now, or null while none works. */
-export function holderOf(worker: WorkerInfo, lyrics: LyricsState | null, versions: VersionState[]): Model | null {
+export function holderOf(worker: WorkerInfo, lyrics: LyricsState | null, versions: VoiceWork[]): Model | null {
   if (lyrics?.stage === 'writing') {
     return 'lyrics'
   }
@@ -31,7 +41,7 @@ export function waitReason(
   jobs: QueuedJob[],
   index: number,
   holder: Model | null,
-  versions: VersionState[],
+  versions: VoiceWork[],
   windowSeconds: number | null,
   now: number,
 ): string {
