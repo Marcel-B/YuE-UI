@@ -5,10 +5,12 @@ import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
 import NotificationButton from './components/NotificationButton.vue'
 import QueueList from './components/QueueList.vue'
+import AudioBackground from './components/AudioBackground.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import VoicesPanel from './components/VoicesPanel.vue'
+import StemsPanel from './components/StemsPanel.vue'
 import Message from 'primevue/message'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
@@ -17,6 +19,7 @@ import { loadPlaylists, playlistIds } from './playlist'
 import { setRatings } from './ratings'
 import { shareState } from './share'
 import { checkForUpdate, reload, standalone, updateAvailable } from './update'
+import { visuals } from './spectrum'
 import { navigate, view, type View } from './view'
 import type {
   LogEntry,
@@ -27,6 +30,7 @@ import type {
   SpeechTake,
   StorageInfo,
   TranscriptionState,
+  StemSetState,
   VersionState,
   QueuedJob,
   VoiceInfo,
@@ -71,6 +75,8 @@ const transcriptions = ref<TranscriptionState[]>([])
 const lyricsDraft = ref<LyricsState | null>(null)
 /** Versions in the works, and those finished while the page was open; by id. */
 const versions = ref<VersionState[]>([])
+/** Stems in the works, and those finished while the page was open. */
+const stemSets = ref<StemSetState[]>([])
 /** The speech lab's takes as the event stream reports them, by id; the lab lays them over what it loaded. */
 const speechTakes = ref<SpeechTake[]>([])
 /** Whether a take holds the memory, so the queue can say what its jobs wait for. */
@@ -121,6 +127,15 @@ function upsertVersion(version: VersionState): void {
   }
 }
 
+function upsertStems(set: StemSetState): void {
+  const index = stemSets.value.findIndex((s) => s.id === set.id)
+  if (index >= 0) {
+    stemSets.value[index] = set
+  } else {
+    stemSets.value.push(set)
+  }
+}
+
 function hideFinished(): void {
   hidden.value = new Set([...hidden.value, ...songs.value.filter((s) => s.finished).map((s) => s.id)])
 }
@@ -133,6 +148,7 @@ const unsubscribe = subscribe({
     transcriptions.value = snapshot.transcriptions
     lyricsDraft.value = snapshot.lyrics
     versions.value = snapshot.versions
+    stemSets.value = snapshot.stems ?? []
     jobs.value = snapshot.queue ?? []
     bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
     // The stream (re)opened: whatever was written meanwhile is in the library now, the playlists may have changed on
@@ -165,6 +181,7 @@ const unsubscribe = subscribe({
     lyricsDraft.value = lyrics
   },
   version: upsertVersion,
+  stems: upsertStems,
   speech(take) {
     const index = speechTakes.value.findIndex((other) => other.id === take.id)
     if (index >= 0) {
@@ -202,12 +219,16 @@ const badges = computed<Partial<Record<View, number>>>(() => ({
   create: songs.value.filter((s) => !s.finished).length + jobs.value.length,
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
   playlist: playlistIds.value.length,
-  voices: versions.value.filter((v) => !v.finished).length,
+  voices: versions.value.filter((v) => !v.finished).length + stemSets.value.filter((s) => !s.finished).length,
   lab: speechTakes.value.filter((take) => !take.finished).length,
 }))
 
-/** Voices need ChangeMyVoice; without it the page is left out of the menu and the library offers no voice. */
-const voiceInfo = ref<VoiceInfo>({ voicesConfigured: false, conversionConfigured: false })
+/**
+ * Voices need ChangeMyVoice, stems StemMyWav; without either the page is left out of the menu, and the library offers
+ * only what is there.
+ */
+const voiceInfo = ref<VoiceInfo>({ voicesConfigured: false, conversionConfigured: false, stemsConfigured: false })
+const voicesPage = computed(() => voiceInfo.value.voicesConfigured || voiceInfo.value.stemsConfigured)
 getVoiceInfo()
   .then((info) => (voiceInfo.value = info))
   .catch(() => undefined)
@@ -229,7 +250,7 @@ watch(view, (value) => {
 
 const menu = computed(() =>
   pages
-    .filter((page) => page.view !== 'voices' || voiceInfo.value.voicesConfigured)
+    .filter((page) => page.view !== 'voices' || voicesPage.value)
     .map((page) => ({
       key: page.view,
       label: t(page.label),
@@ -378,6 +399,7 @@ async function useAsNewSong(songId: string): Promise<void> {
 </script>
 
 <template>
+  <AudioBackground v-if="visuals.background" />
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
   <ShareDialog v-if="shareState" />
   <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
@@ -537,6 +559,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :error="libraryError"
           :busy-ids="busyIds"
           :voices="voiceInfo.conversionConfigured"
+          :stems="voiceInfo.stemsConfigured"
           :live-versions="versions"
           @template="useTemplate"
           @use-score="useSongScore"
@@ -559,13 +582,21 @@ async function useAsNewSong(songId: string): Promise<void> {
     </Card>
   </main>
 
-  <main v-if="voiceInfo.voicesConfigured" v-show="view === 'voices'">
-    <Card>
+  <main v-if="voicesPage" v-show="view === 'voices'" class="flex flex-col gap-4">
+    <Card v-if="voiceInfo.voicesConfigured">
       <template #title>
         <h2>{{ t('voices') }}</h2>
       </template>
       <template #content>
         <VoicesPanel :active="view === 'voices'" :versions="versions" @error="show($event, true)" />
+      </template>
+    </Card>
+    <Card v-if="voiceInfo.stemsConfigured">
+      <template #title>
+        <h2>{{ t('stems') }}</h2>
+      </template>
+      <template #content>
+        <StemsPanel :active="view === 'voices'" :runs="runs" :live="stemSets" @error="show($event, true)" />
       </template>
     </Card>
   </main>

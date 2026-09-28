@@ -67,6 +67,8 @@ export interface StatusSnapshot {
   queue: QueuedJob[]
   /** Queue:BundleWindow in seconds: how long songs may pass a waiting lyrics draft or voice version. */
   bundleWindowSeconds: number | null
+  /** Songs being split into stems, and the last set that finished. */
+  stems: StemSetState[] | null
 }
 
 export type JobKind = 'song' | 'render' | 'lyrics'
@@ -279,6 +281,50 @@ export interface StorageInfo {
 export interface VoiceInfo {
   voicesConfigured: boolean
   conversionConfigured: boolean
+  /** StemMyWav alone: songs can be split into stems, with or without ChangeMyVoice. */
+  stemsConfigured: boolean
+}
+
+/** A separation model StemMyWav offers (Voices/StemModels.cs). */
+export interface StemModel {
+  id: string
+  name: string
+  /** What it separates: vocals, instrumental, karaoke, 4stem, 6stem or drums. */
+  task: string | null
+  /** The stems it makes. */
+  stems: string[] | null
+  /** Audio length divided by computing time: 0.3 means a four-minute song takes about thirteen. */
+  realtimeFactor: number | null
+  /** The model this server separates with when none is chosen. */
+  isDefault: boolean
+}
+
+/** One stem of a separation (Voices/StemModels.cs). */
+export interface StemFile {
+  /** What StemMyWav called it: vocals, instrumental, drums, vocals_dry, … */
+  name: string
+  file: string
+  seconds: number
+  /** The loudness outline, 0–1 on one scale for the whole set; null when the server could not read it. */
+  peaks: number[] | null
+}
+
+export type StemStage = 'queued' | 'separating' | 'done' | 'failed' | 'cancelled'
+
+/** A song split into stems (Voices/StemModels.cs); live changes arrive as `stems` events. */
+export interface StemSetState {
+  id: string
+  /** `run/songN` */
+  songId: string
+  title: string
+  model: string
+  dereverb: boolean
+  stage: StemStage
+  message: string | null
+  stems: StemFile[]
+  createdAt: string
+  updatedAt: string
+  finished: boolean
 }
 
 /** A reference voice ChangeMyVoice keeps (Voices/VoiceModels.cs). */

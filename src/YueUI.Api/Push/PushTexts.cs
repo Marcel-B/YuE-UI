@@ -35,6 +35,15 @@ public static class PushTexts
             : (de ? "Stimme fehlgeschlagen" : "Voice failed", WithMessage(which, version.Message));
     }
 
+    public static (string Title, string Body) Stems(StemSetState set, string language)
+    {
+        var de = IsGerman(language);
+        var which = $"{(string.IsNullOrWhiteSpace(set.Title) ? set.Run : set.Title)} · {set.Song.Replace("song", "Song ", StringComparison.Ordinal)}";
+        return set.Stage == "done"
+            ? (de ? "Stems fertig" : "Stems ready", which)
+            : (de ? "Stems fehlgeschlagen" : "Stems failed", WithMessage(which, set.Message));
+    }
+
     public static (string Title, string Body) Lyrics(LyricsState lyrics, string language)
     {
         var de = IsGerman(language);

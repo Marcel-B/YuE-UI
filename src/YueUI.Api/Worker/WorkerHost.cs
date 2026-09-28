@@ -50,6 +50,7 @@ public sealed class WorkerHost(
     private readonly Dictionary<string, SongState> _songs = [];
     private readonly Dictionary<string, TranscriptionState> _transcriptions = [];
     private readonly Dictionary<string, VersionState> _versions = [];
+    private readonly Dictionary<string, StemSetState> _stems = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
     /// <summary>Songs a render was asked for and that have not started yet; the worker's started event does not say.</summary>
     private readonly HashSet<string> _renders = [];
@@ -289,6 +290,23 @@ public sealed class WorkerHost(
             _versions[version.Id] = version;
         }
         Publish("version", version);
+    }
+
+    /// <summary>
+    /// Keeps a song's stems in the works (Voices/VoiceConverter.cs) for the snapshot and sends them to the browsers; a
+    /// finished set leaves the snapshot with the next, since the voices page lists it from then on.
+    /// </summary>
+    public void UpdateStems(StemSetState set)
+    {
+        lock (_gate)
+        {
+            foreach (var old in _stems.Values.Where(s => s.Finished).ToList())
+            {
+                _stems.Remove(old.Id);
+            }
+            _stems[set.Id] = set;
+        }
+        Publish("stems", set);
     }
 
     /// <summary>
@@ -732,7 +750,8 @@ public sealed class WorkerHost(
         _lyrics,
         [.. _versions.Values.OrderBy(v => v.CreatedAt)],
         _queue,
-        queueOptions.Value.BundleWindow.TotalSeconds);
+        queueOptions.Value.BundleWindow.TotalSeconds,
+        [.. _stems.Values.OrderBy(s => s.CreatedAt)]);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);

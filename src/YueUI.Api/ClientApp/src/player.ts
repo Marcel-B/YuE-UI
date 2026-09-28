@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { audioUrl, versionAudioUrl } from './api'
 import { t } from './i18n'
+import { createSpectrumAnalyser, registerSource, visuals, type SpectrumSource } from './spectrum'
 import type { RunInfo, SongInfo, VersionState } from './types'
 
 /** A song as the player shows it. */
@@ -65,6 +66,51 @@ export const hasNext = computed(() => position.value >= 0 && position.value < tr
 export const hasPrevious = computed(() => position.value > 0)
 
 let audio: HTMLAudioElement | null = null
+let context: AudioContext | null = null
+let analyser: AnalyserNode | null = null
+
+/** What the player's analyzer and the background listen to; empty until the analyzer first routed the element. */
+export const playerSource: SpectrumSource = { analysers: () => (analyser ? [analyser] : []), playing }
+registerSource(playerSource)
+
+/**
+ * Routes the audio element through Web Audio, for the analyzer. Once routed it stays so (an element cannot leave its
+ * source node), so this only happens with the analyzer switched on, and inside a click: iOS starts a context made
+ * outside one suspended, and a routed element then plays silence. Called again on every start, since iOS suspends
+ * the context while nothing plays. `create: false` only wakes an existing context, for a start outside our buttons (the
+ * element's own controls, the lock screen) that may not count as a click.
+ */
+export function listen(create = true): void {
+  if (!audio || (!context && (!create || !visuals.value.player))) {
+    return
+  }
+  if (!context) {
+    try {
+      // "playback" lets Web Audio carry on with the screen locked and the silent switch on, as the bare element does.
+      const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+      if (session) {
+        session.type = 'playback'
+      }
+      const created = new AudioContext()
+      const node = createSpectrumAnalyser(created)
+      // The analyser passes its input through unchanged, so it can sit between the element and the speakers.
+      created.createMediaElementSource(audio).connect(node).connect(created.destination)
+      created.addEventListener('statechange', () => {
+        // Interrupted by a call or Siri: the element would go on silently, so the context follows it back.
+        if (created.state !== 'running' && audio && !audio.paused) {
+          void created.resume().catch(() => undefined)
+        }
+      })
+      context = created
+      analyser = node
+    } catch {
+      return
+    }
+  }
+  if (context.state !== 'running') {
+    void context.resume().catch(() => undefined)
+  }
+}
 
 /** PlayerBar hands over its audio element; play() then starts it right in the click, which iOS insists on. */
 export function attach(element: HTMLAudioElement | null): void {
@@ -88,6 +134,7 @@ export function toggle(): void {
     return
   }
   if (audio.paused) {
+    listen()
     void audio.play().catch(() => undefined)
   } else {
     audio.pause()
@@ -128,6 +175,7 @@ function start(): void {
     return
   }
   audio.src = track.src ?? audioUrl(track.id)
+  listen()
   // A refusal (autoplay rules, a deleted file) leaves the player paused with its own controls to try again.
   void audio.play().catch(() => undefined)
   showOnLockScreen(track)

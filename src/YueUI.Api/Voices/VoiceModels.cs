@@ -4,7 +4,8 @@ namespace YueUI.Api.Voices;
 
 /// <param name="VoicesConfigured">ChangeMyVoice is set up, so reference voices can be managed.</param>
 /// <param name="ConversionConfigured">StemMyWav is set up as well, so songs can be sung with another voice.</param>
-public sealed record VoiceInfo(bool VoicesConfigured, bool ConversionConfigured);
+/// <param name="StemsConfigured">StemMyWav is set up, so songs can be split into stems, with or without ChangeMyVoice.</param>
+public sealed record VoiceInfo(bool VoicesConfigured, bool ConversionConfigured, bool StemsConfigured = false);
 
 /// <summary>A reference voice kept by ChangeMyVoice; songs are sung with its timbre.</summary>
 /// <param name="Seconds">How long the stored recording is; ChangeMyVoice keeps at most 25 seconds.</param>

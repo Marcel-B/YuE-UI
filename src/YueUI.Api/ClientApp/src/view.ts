@@ -9,7 +9,8 @@ const views: readonly View[] = ['create', 'transcribe', 'songs', 'playlist', 'vo
  * The page lives in the URL's hash (`#/songs`), so the back button, a reload and a bookmark on the home screen keep it,
  * and the server needs no route per page. Only the page's content switches; the player sits outside of it.
  * A song has an address of its own on the songs page, `#/songs/<run>/songN`, which scrolls to it and marks it, and on
- * the Logic page, `#/logic/<run>/songN`, which picks it as the score to convert.
+ * the Logic page, `#/logic/<run>/songN`, which picks it as the score to convert, and on the voices page,
+ * `#/voices/<run>/songN`, which picks it to be split into stems.
  */
 function fromHash(): { view: View; song: string | null } {
   const [name, ...song] = location.hash.replace(/^#\/?/, '').split('/')
@@ -18,7 +19,7 @@ function fromHash(): { view: View; song: string | null } {
   }
   return {
     view: name as View,
-    song: (name === 'songs' || name === 'logic') && song.length === 2 ? song.join('/') : null,
+    song: (name === 'songs' || name === 'logic' || name === 'voices') && song.length === 2 ? song.join('/') : null,
   }
 }
 
@@ -31,15 +32,19 @@ export const focusedSong = ref<string | null>(initial.view === 'songs' ? initial
  * plain `#/logic` returns to the page as it was left, like every page keeps its input.
  */
 export const logicSong = ref<string | null>(initial.view === 'logic' ? initial.song : null)
+/** The song the voices page offers to split into stems, when an address named one; like `logicSong`. */
+export const stemSong = ref<string | null>(initial.view === 'voices' ? initial.song : null)
 /** Counts requests to show a song, so that asking for the one already marked scrolls to it again. */
 export const focusRequest = ref(0)
 
 window.addEventListener('hashchange', () => {
   const target = fromHash()
   view.value = target.view
-  if (target.view === 'logic') {
-    if (target.song) {
+  if (target.view === 'logic' || target.view === 'voices') {
+    if (target.song && target.view === 'logic') {
       logicSong.value = target.song
+    } else if (target.song) {
+      stemSong.value = target.song
     }
     return
   }
@@ -95,4 +100,12 @@ export function replaceLogicSong(songId: string | null): void {
   if (view.value === 'logic') {
     history.replaceState(history.state, '', songId ? logicHref(songId) : '#/logic')
   }
+}
+
+/** Opens the voices page with the song picked to be split into stems. */
+export function openStems(songId: string): void {
+  setHash(`#/voices/${songId}`)
+  view.value = 'voices'
+  stemSong.value = songId
+  window.scrollTo({ top: 0 })
 }

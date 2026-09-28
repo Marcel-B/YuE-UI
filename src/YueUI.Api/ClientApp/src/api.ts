@@ -19,6 +19,8 @@ import type {
   TranscriptionState,
   TranscriptionTask,
   ReferenceVoice,
+  StemModel,
+  StemSetState,
   VersionRequest,
   VersionState,
   VoiceInfo,
@@ -339,6 +341,30 @@ export function versionAudioUrl(songId: string, versionId: string, download = fa
   return `${apiBase}/api/songs/${songId}/versions/${versionId}/audio${download ? '?download=true' : ''}`
 }
 
+/** The separation models StemMyWav offers, this server's default marked; at least that one. */
+export async function listStemModels(): Promise<StemModel[]> {
+  return (await send('/api/stems/models')).json() as Promise<StemModel[]>
+}
+
+/** Every song split into stems, newest first. */
+export async function listStems(): Promise<StemSetState[]> {
+  return (await send('/api/stems')).json() as Promise<StemSetState[]>
+}
+
+/** Queues the song to be split into stems; its progress arrives as `stems` events. */
+export async function separateSong(songId: string, model: string | null, dereverb: boolean): Promise<StemSetState> {
+  return (await send(`/api/songs/${songId}/stems`, json('POST', { model, dereverb }))).json() as Promise<StemSetState>
+}
+
+/** Stops a separation in the works, or removes a finished one with its files. */
+export async function deleteStems(songId: string, id: string): Promise<void> {
+  await send(`/api/songs/${songId}/stems/${id}`, { method: 'DELETE' })
+}
+
+export function stemAudioUrl(songId: string, id: string, name: string, download = false): string {
+  return `${apiBase}/api/songs/${songId}/stems/${id}/${encodeURIComponent(name)}${download ? '?download=true' : ''}`
+}
+
 /** The speech lab's models, recorded voices and takes. */
 export async function getSpeech(): Promise<SpeechInfo> {
   return (await send('/api/speech')).json() as Promise<SpeechInfo>
@@ -390,6 +416,7 @@ export interface EventHandlers {
   transcription(transcription: TranscriptionState): void
   lyrics(lyrics: LyricsState): void
   version(version: VersionState): void
+  stems(set: StemSetState): void
   /** A take of the speech lab changed; a deleted one arrives as cancelled. */
   speech(take: SpeechTake): void
   queue(queue: QueuedJob[]): void
@@ -415,6 +442,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on<LyricsState>('lyrics', handlers.lyrics)
   on<QueuedJob[]>('queue', handlers.queue)
   on<VersionState>('version', handlers.version)
+  on<StemSetState>('stems', handlers.stems)
   on<SpeechTake>('speech', handlers.speech)
   source.onerror = () => handlers.connection(false)
   return () => source.close()

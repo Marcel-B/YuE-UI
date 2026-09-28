@@ -99,6 +99,7 @@ public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunni
 /// <see cref="QueueOptions.BundleWindow"/>, so that the page can say how long songs may still pass a waiting draft or
 /// version.
 /// </param>
+/// <param name="Stems">Songs being split into stems, and the last set that finished.</param>
 public sealed record StatusSnapshot(
     WorkerInfo Worker,
     IReadOnlyList<SongState> Songs,
@@ -107,7 +108,8 @@ public sealed record StatusSnapshot(
     LyricsState? Lyrics = null,
     IReadOnlyList<VersionState>? Versions = null,
     IReadOnlyList<QueuedJob>? Queue = null,
-    double? BundleWindowSeconds = null);
+    double? BundleWindowSeconds = null,
+    IReadOnlyList<Voices.StemSetState>? Stems = null);
 
 /// <summary>
 /// The last lyrics draft (Lyrics/LyricsWriter.cs). It arrives as an event rather than as the answer to the request:

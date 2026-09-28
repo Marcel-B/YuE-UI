@@ -66,6 +66,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// <summary>Where the fake ChangeMyVoice is expected; set to null before the first request to switch voices off.</summary>
     public string? VoiceBaseUrl { get; set; } = "http://voice.test";
 
+    /// <summary>Where the fake StemMyWav is expected; set to null before the first request to switch stems off.</summary>
+    public string? StemsBaseUrl { get; set; } = "http://stems.test";
+
     /// <summary>How long a draft or version may be passed by songs; set before the first request.</summary>
     public TimeSpan BundleWindow { get; set; } = TimeSpan.FromMinutes(20);
 
@@ -143,7 +146,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
                 options.BaseUrl = VoiceBaseUrl;
                 options.ApiKey = "voice-key";
                 options.ApiKeyFile = null;
-                options.StemsBaseUrl = "http://stems.test";
+                options.StemsBaseUrl = StemsBaseUrl;
                 options.StemsApiKey = "stems-key";
                 options.StemsApiKeyFile = null;
                 options.PollInterval = TimeSpan.FromMilliseconds(10);
@@ -548,7 +551,10 @@ public sealed class FakeVoiceService
     }
 }
 
-/// <summary>StemMyWav's Mac API: answers POST /api/separate with a ZIP of stems.</summary>
+/// <summary>
+/// StemMyWav's Mac API: answers POST /api/separate with a ZIP of stems, one second of 16-bit stereo each whose level
+/// rises with the length of its name, and GET /api/models with <see cref="Models"/> (404 while null, as the Mac API may).
+/// </summary>
 public sealed class FakeStems
 {
     public Uri? RequestUri { get; private set; }
@@ -564,10 +570,47 @@ public sealed class FakeStems
 
     public string[] Files { get; set; } = ["vocals_dry.wav", "vocals_reverb.wav", "instrumental.wav"];
 
+    public JsonArray? Models { get; set; }
+
+    /// <summary>A WAV of one second at 8 kHz whose samples are all <paramref name="level"/> (0–1).</summary>
+    public static byte[] Wav(double level, int rate = 8000)
+    {
+        var data = new byte[rate * 4];
+        var sample = (short)(level * short.MaxValue);
+        for (var index = 0; index < data.Length; index += 2)
+        {
+            System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(data.AsSpan(index), sample);
+        }
+        var wav = new MemoryStream();
+        using (var writer = new BinaryWriter(wav, System.Text.Encoding.ASCII, leaveOpen: true))
+        {
+            writer.Write("RIFF"u8);
+            writer.Write(36 + data.Length);
+            writer.Write("WAVEfmt "u8);
+            writer.Write(16);
+            writer.Write((short)1);
+            writer.Write((short)2);
+            writer.Write(rate);
+            writer.Write(rate * 4);
+            writer.Write((short)4);
+            writer.Write((short)16);
+            writer.Write("data"u8);
+            writer.Write(data.Length);
+            writer.Write(data);
+        }
+        return wav.ToArray();
+    }
+
     public sealed class Handler(FakeStems stems) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == "/api/models")
+            {
+                return stems.Models is { } models
+                    ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(models.ToJsonString(), System.Text.Encoding.UTF8, "application/json") }
+                    : new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
             stems.Calls++;
             stems.RequestUri = request.RequestUri;
             stems.Key = request.Headers.GetValues("X-Api-Key").Single();
@@ -588,7 +631,7 @@ public sealed class FakeStems
                 foreach (var name in stems.Files)
                 {
                     using var entry = archive.CreateEntry(name).Open();
-                    entry.Write([.. "RIFF"u8, (byte)name.Length]);
+                    entry.Write(Wav(Math.Min(1, name.Length / 20.0)));
                 }
             }
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(zip.ToArray()) };
@@ -602,6 +645,23 @@ public sealed class FakeMixer : IAudioMixer
     public static readonly byte[] Flac = [.. "fLaC"u8, 7, 7, 7];
 
     public MixInput? Input { get; private set; }
+
+    /// <summary>What <see cref="EncodeFlacAsync"/> was given, by file name; it fails for names in <see cref="Unencodable"/>.</summary>
+    public List<string> Encoded { get; } = [];
+
+    public HashSet<string> Unencodable { get; } = [];
+
+    public Task EncodeFlacAsync(string input, string output, CancellationToken cancellationToken)
+    {
+        var name = Path.GetFileName(input);
+        if (Unencodable.Contains(name))
+        {
+            throw new InvalidOperationException("ffmpeg exited with 1");
+        }
+        Encoded.Add(name);
+        File.WriteAllBytes(output, Flac);
+        return Task.CompletedTask;
+    }
 
     public Task MixAsync(MixInput input, string output, CancellationToken cancellationToken)
     {

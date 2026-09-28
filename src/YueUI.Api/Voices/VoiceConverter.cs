@@ -10,7 +10,8 @@ namespace YueUI.Api.Voices;
 /// <summary>
 /// Sings songs with another voice, one at a time: StemMyWav separates the vocals, ChangeMyVoice (Seed-VC) converts
 /// them to a reference voice, ffmpeg mixes them back under the instrumental. The result is a version of the song
-/// (<see cref="SqliteVersionStore"/>); the song itself is not touched.
+/// (<see cref="SqliteVersionStore"/>); the song itself is not touched. It also splits songs into their stems for the
+/// voices page (<see cref="SqliteStemStore"/>), in the same queue, since that needs the same memory.
 /// </summary>
 /// <remarks>
 /// YuE2 does not know voices: no reference audio, no speaker embedding, and the same seed does not give the same
@@ -22,6 +23,7 @@ namespace YueUI.Api.Voices;
 /// </remarks>
 public sealed class VoiceConverter(
     SqliteVersionStore store,
+    SqliteStemStore stemStore,
     SongLibrary library,
     WorkerHost host,
     LyricsWriter lyrics,
@@ -33,6 +35,12 @@ public sealed class VoiceConverter(
     TimeProvider time,
     ILogger<VoiceConverter> logger) : BackgroundService
 {
+    /// <summary>Stem sets share the queue with versions; their entries carry this before the id.</summary>
+    private const string StemsKey = "stems:";
+
+    /// <summary>Slices of a stem's waveform: a few per pixel of a phone, a bar each on a wide screen.</summary>
+    private const int PeakCount = 400;
+
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Lock _gate = new();
     private string? _running;
@@ -51,9 +59,43 @@ public sealed class VoiceConverter(
     /// <summary>UTC ticks behind <see cref="WaitingSince"/>, 0 for none; read by requests while the queue loop writes.</summary>
     private long _waitingTicks;
 
-    /// <summary>Whether a version of a song of the run (or of that song) is queued or in the works.</summary>
+    /// <summary>Whether a version or stems of a song of the run (or of that song) are queued or in the works.</summary>
     public bool IsWorkingOn(string run, string? song = null) =>
-        store.Unfinished().Any(v => song is null ? v.Run == run : v.SongId == $"{run}/{song}");
+        store.Unfinished().Any(v => song is null ? v.Run == run : v.SongId == $"{run}/{song}")
+        || stemStore.Unfinished().Any(s => song is null ? s.Run == run : s.SongId == $"{run}/{song}");
+
+    public StemSetState EnqueueStems(string songId, string title, string model, bool dereverb)
+    {
+        var now = time.GetUtcNow();
+        var set = new StemSetState
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            SongId = songId,
+            Title = title,
+            Model = model,
+            Dereverb = dereverb,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        stemStore.Add(set);
+        host.UpdateStems(set);
+        _queue.Writer.TryWrite(StemsKey + set.Id);
+        return set;
+    }
+
+    /// <summary>Stops the separation if it runs, and removes the set with its files.</summary>
+    public void DeleteStems(StemSetState set)
+    {
+        lock (_gate)
+        {
+            if (_running == StemsKey + set.Id)
+            {
+                _cancel?.Cancel();
+            }
+        }
+        stemStore.Remove(set.Id);
+        host.UpdateStems(set with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+    }
 
     public VersionState Enqueue(string songId, string title, ReferenceVoice voice, VersionRequest request)
     {
@@ -101,15 +143,19 @@ public sealed class VoiceConverter(
         await Task.Yield();
         try
         {
-            foreach (var version in store.Unfinished())
+            var versions = store.Unfinished().Select(v => (v.CreatedAt, Key: v.Id, Resume: v.Stage == "queued", Fail: (Action)(() =>
+                Update(v, u => u with { Stage = "failed", Message = "The server restarted while the version was being made." }))));
+            var sets = stemStore.Unfinished().Select(s => (s.CreatedAt, Key: StemsKey + s.Id, Resume: s.Stage == "queued", Fail: (Action)(() =>
+                UpdateStems(s, u => u with { Stage = "failed", Message = "The server restarted while the stems were being separated." }))));
+            foreach (var (_, key, resume, fail) in versions.Concat(sets).OrderBy(e => e.CreatedAt))
             {
-                if (version.Stage == "queued")
+                if (resume)
                 {
-                    _queue.Writer.TryWrite(version.Id);
+                    _queue.Writer.TryWrite(key);
                 }
                 else
                 {
-                    Update(version, v => v with { Stage = "failed", Message = "The server restarted while the version was being made." });
+                    fail();
                 }
             }
         }
@@ -120,9 +166,16 @@ public sealed class VoiceConverter(
 
         try
         {
-            await foreach (var id in _queue.Reader.ReadAllAsync(stoppingToken))
+            await foreach (var key in _queue.Reader.ReadAllAsync(stoppingToken))
             {
-                await ProcessAsync(id, stoppingToken);
+                if (key.StartsWith(StemsKey, StringComparison.Ordinal))
+                {
+                    await SeparateAsync(key[StemsKey.Length..], stoppingToken);
+                }
+                else
+                {
+                    await ProcessAsync(key, stoppingToken);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -226,6 +279,143 @@ public sealed class VoiceConverter(
                 logger.LogWarning(exception, "Could not delete {Directory}", work);
             }
         }
+    }
+
+    /// <summary>
+    /// Splits a song into its stems for the voices page: StemMyWav separates, the WAVs are measured for the page's
+    /// waveforms and stored as FLAC (the WAV where ffmpeg cannot).
+    /// </summary>
+    private async Task SeparateAsync(string id, CancellationToken stoppingToken)
+    {
+        if (stemStore.Get(id) is not { Finished: false } set)
+        {
+            return;
+        }
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        lock (_gate)
+        {
+            _running = StemsKey + id;
+            _cancel = cancel;
+        }
+        var work = Path.Combine(Path.GetTempPath(), $"yueui-stems-{id}");
+        var target = stemStore.Folder(id);
+        try
+        {
+            Interlocked.Exchange(ref _waitingTicks, set.CreatedAt.UtcTicks);
+            try
+            {
+                await WaitForMemoryAsync(cancel.Token);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _waitingTicks, 0);
+            }
+            if (library.SongDirectory(set.Run, set.Song) is not { } directory || !File.Exists(Path.Combine(directory, "audio.flac")))
+            {
+                throw new VoiceServiceException("The song is gone.");
+            }
+            await host.ShutdownWorkerAsync();
+
+            set = UpdateStems(set, s => s with { Stage = "separating" });
+            var files = await stems.ExtractAsync(Path.Combine(directory, "audio.flac"), set.Model, set.Dereverb, work, cancel.Token);
+            if (files.Count == 0)
+            {
+                throw new VoiceServiceException($"The stem service's model {set.Model} gave no stems.");
+            }
+            // The model has left the memory; measuring and encoding need none to speak of.
+            _converting = false;
+
+            var measured = files.Select(file => (File: file, Read: WavPeaks.Read(file, PeakCount))).ToList();
+            // One scale for the whole set, so a quiet stem (the reverb) also looks quiet beside the others.
+            var loudest = measured.Max(m => m.Read is { Peaks.Length: > 0 } read ? read.Peaks.Max() : 0);
+            Directory.CreateDirectory(target);
+            List<StemFile> result = [];
+            foreach (var (file, read) in measured)
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                var stored = $"{name}.flac";
+                try
+                {
+                    await mixer.EncodeFlacAsync(file, Path.Combine(target, stored), cancel.Token);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Could not encode the stem {Name} of {Song} as FLAC; keeping the WAV", name, set.SongId);
+                    stored = Path.GetFileName(file);
+                    File.Move(file, Path.Combine(target, stored), overwrite: true);
+                }
+                var peaks = read?.Peaks.Select(p => Math.Round(loudest > 0 ? p / loudest : p, 3)).ToList();
+                result.Add(new StemFile(name, stored, Math.Round(read?.Seconds ?? 0, 2), peaks));
+            }
+
+            if (stemStore.Get(id) is null)
+            {
+                // Deleted while it was encoded.
+                DeleteFolder(target);
+            }
+            else
+            {
+                UpdateStems(set, s => s with { Stage = "done", Stems = result });
+            }
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            DeleteFolder(target);
+            if (!stoppingToken.IsCancellationRequested)
+            {
+                UpdateStems(set, s => s with { Stage = "cancelled" });
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "The stems {Id} of {Song} failed", id, set.SongId);
+            DeleteFolder(target);
+            UpdateStems(set, s => s with { Stage = "failed", Message = exception.Message });
+        }
+        finally
+        {
+            _converting = false;
+            lock (_gate)
+            {
+                _running = null;
+                _cancel = null;
+            }
+            DeleteFolder(work);
+        }
+    }
+
+    private void DeleteFolder(string folder)
+    {
+        try
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Could not delete {Directory}", folder);
+        }
+    }
+
+    /// <summary>Stores the change (a set deleted meanwhile stays deleted) and tells the browsers.</summary>
+    private StemSetState UpdateStems(StemSetState set, Func<StemSetState, StemSetState> change)
+    {
+        var updated = change(set) with { UpdatedAt = time.GetUtcNow() };
+        try
+        {
+            if (!stemStore.Update(updated))
+            {
+                return updated;
+            }
+        }
+        catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
+        {
+            logger.LogWarning(exception, "Could not store the stems {Id}", set.Id);
+        }
+        host.UpdateStems(updated);
+        return updated;
     }
 
     /// <summary>Checked again once <see cref="IsConverting"/> is set, so a song sent in between is not overlooked.</summary>

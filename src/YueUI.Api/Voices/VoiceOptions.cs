@@ -53,8 +53,11 @@ public sealed class VoiceOptions
     /// <summary>Reference voices can be managed.</summary>
     public bool VoicesConfigured => BaseUri is not null && ResolvedApiKey is not null;
 
+    /// <summary>Songs can be split into stems on the voices page.</summary>
+    public bool StemsConfigured => StemsBaseUri is not null && ResolvedStemsApiKey is not null;
+
     /// <summary>Songs can be sung with another voice: the voice service and the stem service are both there.</summary>
-    public bool ConversionConfigured => VoicesConfigured && StemsBaseUri is not null && ResolvedStemsApiKey is not null;
+    public bool ConversionConfigured => VoicesConfigured && StemsConfigured;
 
     /// <summary>A relative path would resolve against the API's own address.</summary>
     private static Uri? Parse(string? url) =>
