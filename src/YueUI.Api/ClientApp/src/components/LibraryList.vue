@@ -27,6 +27,7 @@ import { current, libraryTracks, play, playing, trackOf, versionTrack } from '..
 import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
 import { shareSong } from '../share'
+import { openExport } from '../export'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
 import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
@@ -253,6 +254,12 @@ function songActions(run: RunInfo, song: SongInfo): SongAction[] {
   const actions: SongAction[] = []
   if (song.hasAudio) {
     actions.push({ key: 'share', label: t('share'), icon: 'pi pi-share-alt', command: () => shareSong(song.id) })
+    actions.push({
+      key: 'export',
+      label: t('exportSong'),
+      icon: 'pi pi-download',
+      command: () => openExport({ songId: song.id, title: run.title, style: run.style }),
+    })
   }
   if (song.hasScore) {
     actions.push({

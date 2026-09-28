@@ -18,6 +18,7 @@ import { current, retitle } from './player'
 import { loadPlaylists, playlistIds } from './playlist'
 import { setRatings } from './ratings'
 import { shareState } from './share'
+import { exportTarget } from './export'
 import { checkForUpdate, reload, standalone, updateAvailable } from './update'
 import { visuals } from './spectrum'
 import QueueOverview from './components/QueueOverview.vue'
@@ -42,6 +43,7 @@ import type {
 // Dialog, a good part of PrimeVue that the create page does not need; sharing needs its dialog only when used.
 const LibraryList = defineAsyncComponent(() => import('./components/LibraryList.vue'))
 const ShareDialog = defineAsyncComponent(() => import('./components/ShareDialog.vue'))
+const ExportDialog = defineAsyncComponent(() => import('./components/ExportDialog.vue'))
 // The Logic page brings the options form, the piano roll and the MIDI preview; loaded only once it is opened.
 const LogicPage = defineAsyncComponent(() => import('./components/LogicPage.vue'))
 // The speech lab, likewise loaded and mounted only once it is opened.
@@ -419,6 +421,7 @@ async function useAsNewSong(songId: string): Promise<void> {
   <AudioBackground v-if="visuals.background" />
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
   <ShareDialog v-if="shareState" />
+  <ExportDialog v-if="exportTarget" />
   <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
     <template #start>
       <span class="brand">YuE UI</span>

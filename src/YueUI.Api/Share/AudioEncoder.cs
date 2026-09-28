@@ -2,18 +2,27 @@ using System.Diagnostics;
 
 namespace YueUI.Api.Share;
 
-/// <summary>Makes the small AAC a song is shared as. Tests replace it.</summary>
+/// <summary>A lossy format a song's FLAC is encoded into, for sharing or exporting.</summary>
+public enum AudioFormat
+{
+    /// <summary>AAC in an MPEG-4 container (<c>.m4a</c>).</summary>
+    M4a,
+    Mp3,
+}
+
+/// <summary>Makes the small AAC a song is shared as and the MP3 or M4A it is exported as. Tests replace it.</summary>
 public interface IAudioEncoder
 {
-    /// <summary>Writes <paramref name="flac"/> as AAC in an MPEG-4 container (<c>.m4a</c>) to <paramref name="m4a"/>.</summary>
-    /// <returns>False when this machine has no encoder.</returns>
-    Task<bool> EncodeAsync(string flac, string m4a, CancellationToken cancellationToken);
+    /// <summary>Writes <paramref name="flac"/> in <paramref name="format"/> at <paramref name="bitRate"/> bit/s to <paramref name="target"/>.</summary>
+    /// <returns>False when this machine has no encoder for the format.</returns>
+    Task<bool> EncodeAsync(string flac, string target, AudioFormat format, int bitRate, CancellationToken cancellationToken);
 }
 
 /// <summary>
 /// <c>afconvert</c> comes with macOS and reads FLAC, so the Mac needs nothing installed; <c>ffmpeg</c> is the
 /// fallback for a development machine elsewhere. 128 kbit/s makes a three-minute song about 3 MB instead of the
-/// FLAC's 30, small enough for any messenger, and AAC in <c>.m4a</c> plays everywhere, iOS included.
+/// FLAC's 30, small enough for any messenger, and AAC in <c>.m4a</c> plays everywhere, iOS included. MP3 needs
+/// <c>ffmpeg</c> (Homebrew's comes with LAME); <c>afconvert</c> cannot write it.
 /// </summary>
 public sealed class AacEncoder(ILogger<AacEncoder> logger) : IAudioEncoder
 {
@@ -24,20 +33,24 @@ public sealed class AacEncoder(ILogger<AacEncoder> logger) : IAudioEncoder
     /// <summary>A long song takes a few seconds; anything beyond this is hanging.</summary>
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
 
-    public async Task<bool> EncodeAsync(string flac, string m4a, CancellationToken cancellationToken)
+    public async Task<bool> EncodeAsync(string flac, string target, AudioFormat format, int bitRate, CancellationToken cancellationToken)
     {
         string tool;
         string[] arguments;
-        if (File.Exists(AfConvert))
+        var rate = bitRate.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (format == AudioFormat.M4a && File.Exists(AfConvert))
         {
             tool = AfConvert;
-            arguments = ["-f", "m4af", "-d", "aac", "-b", BitRate.ToString(), flac, m4a];
+            arguments = ["-f", "m4af", "-d", "aac", "-b", rate, flac, target];
         }
         else if (FindFfmpeg() is { } ffmpeg)
         {
             tool = ffmpeg;
-            // faststart puts the index first, so a player can start before the whole file is there.
-            arguments = ["-nostdin", "-loglevel", "error", "-y", "-i", flac, "-vn", "-c:a", "aac", "-b:a", BitRate.ToString(), "-movflags", "+faststart", "-f", "mp4", m4a];
+            // Tags are written afterwards (IAudioTagger); the FLAC's own would only be mixed into them.
+            arguments = format == AudioFormat.Mp3
+                ? ["-nostdin", "-loglevel", "error", "-y", "-i", flac, "-vn", "-map_metadata", "-1", "-c:a", "libmp3lame", "-b:a", rate, "-f", "mp3", target]
+                // faststart puts the index first, so a player can start before the whole file is there.
+                : ["-nostdin", "-loglevel", "error", "-y", "-i", flac, "-vn", "-map_metadata", "-1", "-c:a", "aac", "-b:a", rate, "-movflags", "+faststart", "-f", "mp4", target];
         }
         else
         {

@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using YueUI.Api;
 using YueUI.Api.Data;
+using YueUI.Api.Export;
 using YueUI.Api.Library;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
@@ -38,6 +39,8 @@ builder.Services.AddYueToLogic();
 
 // Sharing a song from the phone as a small AAC instead of the FLAC.
 builder.Services.AddSingleton<IAudioEncoder, AacEncoder>();
+// Exporting it as MP3, M4A or FLAC with title, lyrics and cover.
+builder.Services.AddSingleton<IAudioTagger, TagLibTagger>();
 
 // Web Push: notifies subscribed browsers (the app on a phone's home screen) when something finishes.
 builder.Services.Configure<PushOptions>(builder.Configuration.GetSection(PushOptions.Section));
@@ -105,6 +108,7 @@ var api = app.MapGroup("/api");
 api.MapMethods("/health", ClientAppEndpoints.GetAndHead, () => Results.Text("ok"));
 api.MapWorkerEndpoints();
 api.MapLibraryEndpoints();
+api.MapExportEndpoints();
 api.MapTranscriptionEndpoints();
 api.MapLyricsEndpoints();
 api.MapLogicEndpoints();

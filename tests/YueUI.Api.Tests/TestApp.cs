@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using YueUI.Api.Data;
+using YueUI.Api.Export;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
 using YueUI.Api.Share;
@@ -54,6 +55,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public FakePushSender Push { get; } = new();
 
     public FakeEncoder Encoder { get; } = new();
+
+    public FakeTagger Tagger { get; } = new();
 
     public FakeVoiceService Voice { get; } = new();
 
@@ -167,6 +170,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.Configure<PushOptions>(options => options.DataPath = Path.Combine(Root, "push.json"));
             services.AddSingleton<IPushSender>(Push);
             services.AddSingleton<IAudioEncoder>(Encoder);
+            services.AddSingleton<IAudioTagger>(Tagger);
             services.Configure<DataOptions>(options => options.Path = Path.Combine(Root, "yueui.db"));
             if (_fakeWorker)
             {
@@ -429,6 +433,27 @@ public sealed class FakePushSender : IPushSender
     public bool TryNext(out (PushSubscriptionEntry Subscription, JsonObject Payload) sent) => _sent.Reader.TryRead(out sent);
 }
 
+/// <summary>Remembers the tags instead of writing them, since the fake audio files are no real MP3s.</summary>
+public sealed class FakeTagger : IAudioTagger
+{
+    public SongTags? Tags { get; private set; }
+
+    public string? Path { get; private set; }
+
+    /// <summary>Set to fail like TagLib on a broken file.</summary>
+    public string? Failure { get; set; }
+
+    public void Write(string path, SongTags tags)
+    {
+        Path = path;
+        Tags = tags;
+        if (Failure is not null)
+        {
+            throw new InvalidOperationException(Failure);
+        }
+    }
+}
+
 /// <summary>Writes a few bytes instead of running afconvert; remembers what it was asked to encode.</summary>
 public sealed class FakeEncoder : IAudioEncoder
 {
@@ -444,10 +469,16 @@ public sealed class FakeEncoder : IAudioEncoder
 
     public string? Target { get; private set; }
 
-    public Task<bool> EncodeAsync(string flac, string m4a, CancellationToken cancellationToken)
+    public AudioFormat? Format { get; private set; }
+
+    public int? BitRate { get; private set; }
+
+    public Task<bool> EncodeAsync(string flac, string m4a, AudioFormat format, int bitRate, CancellationToken cancellationToken)
     {
         Source = flac;
         Target = m4a;
+        Format = format;
+        BitRate = bitRate;
         if (!Available)
         {
             return Task.FromResult(false);
