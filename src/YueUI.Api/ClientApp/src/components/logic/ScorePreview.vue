@@ -39,6 +39,8 @@ import { playableVoices } from '../../logic/score'
 import { hasSynth, normalizePatch, type SynthPatch } from '../../logic/synth'
 import { loadSounds, mixer, trackKey, trackMix, trackSounds } from '../../logic/synths'
 import type { Assignments, Instrument, ScoreDocument, VoiceTrack } from '../../logic/types'
+import { registerSource, reducedMotion, setVisual, visuals, type SpectrumSource } from '../../spectrum'
+import SpectrumBars from '../SpectrumBars.vue'
 import MixerPanel, { type MixerTrack } from './MixerPanel.vue'
 import SynthDialog from './SynthDialog.vue'
 
@@ -481,7 +483,18 @@ onMounted(async () => {
   }
 })
 
+/**
+ * The synth and the recording play on two audio contexts, so the analyzer and the background get one analyser of each.
+ * Notes sent to MIDI ports are not heard here and so not shown.
+ */
+const spectrumSource: SpectrumSource = {
+  analysers: () => [...pool.analysers(), ...(recordingPlayer ? [recordingPlayer.analyser] : [])],
+  playing,
+}
+const unregisterSource = registerSource(spectrumSource)
+
 onBeforeUnmount(() => {
+  unregisterSource()
   observer.disconnect()
   release()
   pool.close()
@@ -615,8 +628,8 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
     <template #content>
       <p v-if="stale" class="hint warning mt-0">{{ t('stale') }}</p>
 
-      <div v-if="recording" class="mb-2 flex flex-wrap items-center gap-3 text-sm">
-        <div class="flex items-center gap-2">
+      <div class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <div v-if="recording" class="flex items-center gap-2">
           <Checkbox v-model="recordingSettings.show" binary input-id="preview-recording" />
           <label for="preview-recording" class="cursor-pointer">{{ t('previewRecordingShow') }}</label>
         </div>
@@ -637,6 +650,31 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
         <span v-if="recordingSettings.show && recordingState === 'failed'" class="text-(--warning-text)">
           {{ t('previewRecordingFailed') }}
         </span>
+        <div class="flex items-center gap-2">
+          <Checkbox
+            :model-value="visuals.logic"
+            binary
+            input-id="preview-analyzer"
+            @update:model-value="setVisual('logic', $event)"
+          />
+          <label for="preview-analyzer" class="cursor-pointer">{{ t('previewAnalyzer') }}</label>
+        </div>
+        <div class="flex items-center gap-2">
+          <Checkbox
+            :model-value="visuals.background"
+            binary
+            input-id="preview-background"
+            @update:model-value="setVisual('background', $event)"
+          />
+          <label for="preview-background" class="cursor-pointer">
+            {{ reducedMotion ? t('previewBackgroundReduced') : t('previewBackground') }}
+          </label>
+        </div>
+      </div>
+
+      <!-- Above the roll rather than beside it: the roll needs the width, the analyzer only a strip of height. -->
+      <div v-if="visuals.logic" class="analyzer mb-2">
+        <SpectrumBars :sources="[spectrumSource]" :bars="64" peaks />
       </div>
 
       <div ref="viewport" class="viewport" @scroll.passive="onScroll" @click="seek">
@@ -810,6 +848,13 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
  * is only as wide as what is visible, so a long song costs no extra pixels. The piano roll reads its colours
  * (--text, --border, --accent, ...) from the canvas's computed style, which inherits them from :root.
  */
+.analyzer {
+  height: 5rem;
+  padding: 0.375rem;
+  border-radius: var(--radius-small);
+  background: var(--surface-sunken);
+}
+
 .viewport {
   max-width: 100%;
   overflow-x: auto;

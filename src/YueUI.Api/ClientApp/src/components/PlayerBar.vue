@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import { t } from '../i18n'
-import { attach, close, current, hasNext, hasPrevious, next, playing, previous } from '../player'
+import { attach, close, current, hasNext, hasPrevious, listen, next, playerSource, playing, previous } from '../player'
 import { rate, ratingOf } from '../ratings'
 import { showSong, songHref } from '../view'
 import PlaylistToggle from './PlaylistToggle.vue'
 import SongMenu from './SongMenu.vue'
+import VisualsButton from './VisualsButton.vue'
 
 /** The playing song has a score, as far as the library knows. */
 defineProps<{ hasScore: boolean }>()
@@ -25,6 +26,12 @@ async function rateCurrent(rating: number | null | undefined): Promise<void> {
   } catch (caught) {
     emit('error', caught instanceof Error ? caught.message : String(caught))
   }
+}
+
+/** Also a start from the element's own controls or the lock screen, which bypass player.ts. */
+function onPlay(): void {
+  playing.value = true
+  listen(false)
 }
 
 function ended(): void {
@@ -47,14 +54,12 @@ function ended(): void {
           @click.prevent="showSong(current.songId)"
           >{{ current.title }} <span class="text-sm font-normal text-muted-color">· {{ current.detail }}</span></a
         >
-        <!-- Rated while it plays, when the song is best judged. The line below the title has room for the stars. -->
-        <Rating
-          v-if="current"
-          :model-value="ratingOf(current.songId)"
-          :aria-label="t('rating')"
-          class="mt-1"
-          @update:model-value="rateCurrent"
-        />
+        <!-- Rated while it plays, when the song is best judged. The line below the title has room for the stars and
+             the analyzer. -->
+        <div v-if="current" class="mt-1 flex items-center gap-3">
+          <Rating :model-value="ratingOf(current.songId)" :aria-label="t('rating')" @update:model-value="rateCurrent" />
+          <VisualsButton :source="playerSource" />
+        </div>
       </div>
       <PlaylistToggle v-if="current" :song-id="current.songId" @error="emit('error', $event)" />
       <Button
@@ -75,7 +80,7 @@ function ended(): void {
       />
       <Button icon="pi pi-times" text rounded severity="secondary" :aria-label="t('closePlayer')" @click="close" />
     </div>
-    <audio ref="audio" controls preload="none" @play="playing = true" @pause="playing = false" @ended="ended" />
+    <audio ref="audio" controls preload="none" @play="onPlay" @pause="playing = false" @ended="ended" />
   </div>
 </template>
 

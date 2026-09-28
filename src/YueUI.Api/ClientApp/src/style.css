@@ -59,6 +59,9 @@
   }
 
   #app {
+    /* A stacking context of its own, so the moving background (AudioBackground.vue) can sit behind the cards and still
+       in front of the body's background. */
+    isolation: isolate;
     max-width: 72rem;
     margin: 0 auto;
     /* The notch and home indicator of a phone in landscape or as a home-screen app. */
