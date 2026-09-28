@@ -12,6 +12,8 @@ const messages = {
     workerReady: 'Worker bereit',
     workerBusy: 'Rechnet',
     disconnected: 'Verbindung zum Server unterbrochen – verbinde neu …',
+    updateAvailable: 'Eine neue Version von YuE UI ist da.',
+    reload: 'Neu laden',
     studioRunning:
       'YuE Studio ist geöffnet und hat einen eigenen Worker. Beide gleichzeitig rechnen zu lassen kann den Speicher sprengen – am besten die App beenden.',
     workerError: 'Der Worker meldet: {message}',
@@ -473,6 +475,8 @@ const messages = {
     workerReady: 'Worker ready',
     workerBusy: 'Working',
     disconnected: 'Lost the connection to the server – reconnecting …',
+    updateAvailable: 'A new version of YuE UI is available.',
+    reload: 'Reload',
     studioRunning:
       'YuE Studio is open and has a worker of its own. Letting both generate at once can run out of memory – better quit the app.',
     workerError: 'The worker reports: {message}',

@@ -9,7 +9,7 @@ const apiTarget = process.env.YUE_API_URL ?? 'http://127.0.0.1:5091'
 
 export default defineConfig({
   base: '/ui/',
-  plugins: [vue(), tailwindcss(), presetCoversStyles()],
+  plugins: [vue(), tailwindcss(), presetCoversStyles(), buildVersion()],
   build: {
     rolldownOptions: {
       output: {
@@ -69,6 +69,25 @@ function presetCoversStyles(): Plugin {
       if (missing.length > 0) {
         this.error(`src/theme.ts lacks the Aura tokens of: ${missing.join(', ')}`)
       }
+    },
+  }
+}
+
+/**
+ * Gives every build an id, compiled into the app (`__BUILD_ID__`) and written to `version.json` next to it. The home
+ * screen app on iOS stays in memory and resumes without reloading, so after a deploy it keeps running the old build;
+ * `src/update.ts` compares the two and offers a reload. During development the id is `dev` and nothing is checked.
+ */
+function buildVersion(): Plugin {
+  let id = 'dev'
+  return {
+    name: 'build-version',
+    config(_, { command }) {
+      if (command === 'build') id = Date.now().toString(36)
+      return { define: { __BUILD_ID__: JSON.stringify(id) } }
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: id }) })
     },
   }
 }

@@ -16,6 +16,7 @@ import { current, retitle } from './player'
 import { loadPlaylists, playlistIds } from './playlist'
 import { setRatings } from './ratings'
 import { shareState } from './share'
+import { checkForUpdate, reload, standalone, updateAvailable } from './update'
 import { navigate, view, type View } from './view'
 import type {
   LogEntry,
@@ -130,6 +131,8 @@ const unsubscribe = subscribe({
     // The stream (re)opened: whatever was written meanwhile is in the library now, the playlists may have changed on
     // another device.
     void loadLibrary()
+    // A deploy restarts the server, so a reopened stream is also when a new build may be there.
+    void checkForUpdate()
     loadPlaylists().catch((caught) => show(caught instanceof Error ? caught.message : String(caught), true))
   },
   song: upsert,
@@ -379,6 +382,16 @@ async function useAsNewSong(songId: string): Promise<void> {
           class="whitespace-nowrap"
         />
         <NotificationButton @notice="show" />
+        <Button
+          v-if="standalone"
+          icon="pi pi-refresh"
+          severity="secondary"
+          text
+          size="small"
+          :aria-label="t('reload')"
+          v-tooltip.bottom="t('reload')"
+          @click="reload"
+        />
         <Button :label="t('language')" text size="small" @click="setLocale(locale === 'de' ? 'en' : 'de')" />
       </div>
     </template>
@@ -386,6 +399,12 @@ async function useAsNewSong(songId: string): Promise<void> {
 
   <div class="mb-4 flex flex-col gap-2 empty:hidden">
     <Message v-if="!connected" severity="warn">{{ t('disconnected') }}</Message>
+    <Message v-if="updateAvailable" severity="info">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>{{ t('updateAvailable') }}</span>
+        <Button :label="t('reload')" icon="pi pi-refresh" size="small" @click="reload" />
+      </div>
+    </Message>
     <Message v-if="worker.studioRunning" severity="warn">{{ t('studioRunning') }}</Message>
     <Message v-if="worker.lastError" severity="error">{{ t('workerError', { message: worker.lastError }) }}</Message>
     <Message v-if="notice" :severity="notice.error ? 'error' : 'info'" role="status">{{ notice.text }}</Message>
