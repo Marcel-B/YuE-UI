@@ -39,7 +39,7 @@ import { playableVoices } from '../../logic/score'
 import { hasSynth, normalizePatch, type SynthPatch } from '../../logic/synth'
 import { loadSounds, mixer, trackKey, trackMix, trackSounds } from '../../logic/synths'
 import type { Assignments, Instrument, ScoreDocument, VoiceTrack } from '../../logic/types'
-import { registerSource, reducedMotion, setVisual, visuals, type SpectrumSource } from '../../spectrum'
+import { registerSource, setVisual, visuals, type SpectrumSource } from '../../spectrum'
 import SpectrumBars from '../SpectrumBars.vue'
 import MixerPanel, { type MixerTrack } from './MixerPanel.vue'
 import SynthDialog from './SynthDialog.vue'
@@ -658,17 +658,6 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
             @update:model-value="setVisual('logic', $event)"
           />
           <label for="preview-analyzer" class="cursor-pointer">{{ t('previewAnalyzer') }}</label>
-        </div>
-        <div class="flex items-center gap-2">
-          <Checkbox
-            :model-value="visuals.background"
-            binary
-            input-id="preview-background"
-            @update:model-value="setVisual('background', $event)"
-          />
-          <label for="preview-background" class="cursor-pointer">
-            {{ reducedMotion ? t('previewBackgroundReduced') : t('previewBackground') }}
-          </label>
         </div>
       </div>
 
