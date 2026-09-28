@@ -57,6 +57,7 @@ builder.Services.AddSingleton<SqliteRunTitleStore>();
 builder.Services.AddSingleton<SqliteSongRatingStore>();
 builder.Services.AddSingleton<SqliteVersionStore>();
 builder.Services.AddSingleton<SqliteStemStore>();
+builder.Services.AddSingleton<SqliteCoverStore>();
 builder.Services.AddSingleton<SqliteInstrumentStore>();
 builder.Services.AddSingleton<SqliteLogicPresetStore>();
 builder.Services.AddSingleton<SqliteSynthStore>();
@@ -109,6 +110,7 @@ api.MapMethods("/health", ClientAppEndpoints.GetAndHead, () => Results.Text("ok"
 api.MapWorkerEndpoints();
 api.MapLibraryEndpoints();
 api.MapExportEndpoints();
+api.MapCoverEndpoints();
 api.MapTranscriptionEndpoints();
 api.MapLyricsEndpoints();
 api.MapLogicEndpoints();

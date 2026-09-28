@@ -45,6 +45,13 @@ function ended(): void {
   <!-- Always in the page, only hidden without a song: the element has to exist before the first click on "play". -->
   <div v-show="current" class="player" role="region" :aria-label="t('play')">
     <div class="flex items-center gap-2">
+      <img
+        v-if="current?.cover"
+        :src="current.cover"
+        alt=""
+        class="h-10 w-10 shrink-0 cursor-pointer rounded-md object-cover"
+        @click="showSong(current.songId)"
+      />
       <div class="min-w-0 flex-1">
         <a
           v-if="current"

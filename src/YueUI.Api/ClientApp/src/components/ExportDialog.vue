@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Dialog from 'primevue/dialog'
-import { exportSongFile, saveBlob } from '../api'
+import { exportSongFile, putCover, saveBlob } from '../api'
 import {
   drawCover,
   exportFormats,
@@ -24,20 +24,29 @@ const artist = ref(settings.artist)
 const genre = ref('')
 const state = ref<Step>({ step: 'options' })
 
+/** The cover sent along; null with the song's own, which the server takes itself. */
 const cover = ref<Blob | null>(null)
-const coverUrl = ref<string | null>(null)
-/** Whether the cover is a chosen photo rather than the drawn one. */
-const ownCover = ref(false)
+const blobUrl = ref<string | null>(null)
+/** Which cover goes in: the song's own, a photo just chosen (kept as the song's own too) or the drawn one. */
+const coverKind = ref<'song' | 'photo' | 'drawn'>('drawn')
+/** Saving the chosen photo as the song's cover failed; the export still takes it. */
+const coverError = ref<string | null>(null)
 const coverInput = ref<HTMLInputElement | null>(null)
+const coverUrl = computed(() => (coverKind.value === 'song' ? (exportTarget.value?.cover ?? null) : blobUrl.value))
 
 const formatOptions = computed(() => exportFormats.map((value) => ({ value, label: value.toUpperCase() })))
 
 function setCover(blob: Blob | null): void {
-  if (coverUrl.value) {
-    URL.revokeObjectURL(coverUrl.value)
+  if (blobUrl.value) {
+    URL.revokeObjectURL(blobUrl.value)
   }
   cover.value = blob
-  coverUrl.value = blob ? URL.createObjectURL(blob) : null
+  blobUrl.value = blob ? URL.createObjectURL(blob) : null
+}
+
+function useSongCover(): void {
+  setCover(null)
+  coverKind.value = 'song'
 }
 
 async function useDrawnCover(): Promise<void> {
@@ -45,7 +54,7 @@ async function useDrawnCover(): Promise<void> {
   if (!target) {
     return
   }
-  ownCover.value = false
+  coverKind.value = 'drawn'
   try {
     setCover(await drawCover(target))
   } catch {
@@ -60,11 +69,27 @@ async function pickCover(event: Event): Promise<void> {
   if (!file) {
     return
   }
+  const target = exportTarget.value
+  let photo: Blob
   try {
-    setCover(await photoCover(file))
-    ownCover.value = true
+    photo = await photoCover(file)
   } catch {
     state.value = { step: 'failed', message: t('photoUnreadable') }
+    return
+  }
+  setCover(photo)
+  coverKind.value = 'photo'
+  coverError.value = null
+  if (!target) {
+    return
+  }
+  // The photo was chosen for the song, not only for this file: the library and the player show it from now on.
+  try {
+    await putCover(target.songId, photo)
+  } catch (caught) {
+    if (exportTarget.value === target) {
+      coverError.value = t('coverSaveFailed', { message: caught instanceof Error ? caught.message : String(caught) })
+    }
   }
 }
 
@@ -75,7 +100,12 @@ watch(
     if (target) {
       state.value = { step: 'options' }
       genre.value = genreOf(target.style)
-      void useDrawnCover()
+      coverError.value = null
+      if (target.cover) {
+        useSongCover()
+      } else {
+        void useDrawnCover()
+      }
     }
   },
   { immediate: true },
@@ -171,7 +201,16 @@ function close(): void {
             @click="coverInput?.click()"
           />
           <Button
-            v-if="ownCover"
+            v-if="exportTarget?.cover && coverKind === 'drawn'"
+            :label="t('exportCoverSong')"
+            icon="pi pi-image"
+            severity="secondary"
+            text
+            size="small"
+            @click="useSongCover"
+          />
+          <Button
+            v-if="coverKind !== 'drawn'"
             :label="t('exportCoverDrawn')"
             icon="pi pi-palette"
             severity="secondary"
@@ -179,6 +218,8 @@ function close(): void {
             size="small"
             @click="useDrawnCover"
           />
+          <small v-if="coverError" class="danger">{{ coverError }}</small>
+          <small v-else-if="coverKind === 'photo'" class="muted">{{ t('exportCoverKept') }}</small>
           <input ref="coverInput" type="file" accept="image/*" class="hidden" @change="pickCover" />
         </div>
       </div>

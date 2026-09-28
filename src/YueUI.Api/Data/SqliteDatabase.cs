@@ -24,6 +24,7 @@ namespace YueUI.Api.Data;
 /// Version 9: the preview's mixer (volume and pan per track, master), one row (<see cref="SqliteSynthStore"/>).
 /// Version 10: songs split into stems (<see cref="SqliteStemStore"/>).
 /// Version 11: the speech lab's recorded voices and takes (<see cref="SqliteSpeechStore"/>).
+/// Version 12: songs' covers (<see cref="SqliteCoverStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -315,6 +316,22 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         updated_at TEXT NOT NULL
                     );
                     PRAGMA user_version = 11;
+                    """);
+            }
+            if (current < 12)
+            {
+                // The file name is new for every cover, so a browser never shows a cached old one under the same name.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE song_covers (
+                        song_id TEXT PRIMARY KEY,
+                        file TEXT NOT NULL,
+                        content_type TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 12;
                     """);
             }
             _ready = true;

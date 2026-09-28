@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using YueUI.Api.Data;
+using YueUI.Api.Export;
 using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
@@ -30,6 +31,7 @@ public sealed record RunInfo(
 /// <param name="Bytes">What the song folder takes on disk: audio, tokens and the worker's intermediate files.</param>
 /// <param name="Rating">One to five stars given in this app, null while not rated.</param>
 /// <param name="Versions">The song sung with other voices, oldest first; cancelled ones are left out.</param>
+/// <param name="CoverUpdatedAt">When the song's cover was chosen, null while it has the drawn one.</param>
 public sealed record SongInfo(
     string Id,
     int Index,
@@ -41,7 +43,8 @@ public sealed record SongInfo(
     bool CanRender,
     long Bytes,
     int? Rating,
-    IReadOnlyList<VersionState> Versions);
+    IReadOnlyList<VersionState> Versions,
+    DateTimeOffset? CoverUpdatedAt = null);
 
 /// <summary>
 /// What a song was generated with, from its <c>request.json</c>, in the terms of <see cref="GenerateRequest"/>, so the
@@ -77,7 +80,8 @@ public sealed partial class SongLibrary(
     SqliteRunTitleStore titles,
     SqliteSongRatingStore ratings,
     SqliteVersionStore versions,
-    SqliteStemStore stems)
+    SqliteStemStore stems,
+    SqliteCoverStore covers)
 {
     public string OutputDir => paths.OutputDir;
 
@@ -90,6 +94,7 @@ public sealed partial class SongLibrary(
         }
         var renamed = Read(titles.All) ?? new Dictionary<string, string>();
         var rated = Read(ratings.All) ?? new Dictionary<string, int>();
+        var covered = Read(covers.All) ?? new Dictionary<string, DateTimeOffset>();
         var sung = (Read(versions.All) ?? [])
             .Where(v => v.Stage != "cancelled")
             .GroupBy(v => v.SongId)
@@ -99,7 +104,7 @@ public sealed partial class SongLibrary(
             .. root.EnumerateDirectories()
                 .Where(d => RunName().IsMatch(d.Name))
                 .OrderByDescending(d => d.Name, StringComparer.Ordinal)
-                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated, sung))
+                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated, covered, sung))
                 // A run still tokenizing has no song folders yet; the queue shows it.
                 .Where(r => r.Songs.Count > 0),
         ];
@@ -141,6 +146,7 @@ public sealed partial class SongLibrary(
             ratings.Remove($"{run}/{song}");
             versions.RemoveSong($"{run}/{song}");
             stems.RemoveSong($"{run}/{song}");
+            covers.Remove($"{run}/{song}");
         });
         var runDirectory = new DirectoryInfo(Path.Combine(paths.OutputDir, run));
         if (!SongFolders(runDirectory).Any())
@@ -201,6 +207,29 @@ public sealed partial class SongLibrary(
         }
         return true;
     }
+
+    /// <summary>Gives the song its own cover, or with null returns it to the drawn one.</summary>
+    /// <returns>False for a name the worker would not write or a song that does not exist.</returns>
+    public bool SetCover(string run, string song, CoverImage? image)
+    {
+        if (SongDirectory(run, song) is null)
+        {
+            return false;
+        }
+        if (image is null)
+        {
+            covers.Remove($"{run}/{song}");
+        }
+        else
+        {
+            covers.Set($"{run}/{song}", image);
+        }
+        return true;
+    }
+
+    /// <summary>The song's own cover, or null (also when the database cannot be read).</summary>
+    public SongCover? CoverOf(string run, string song) =>
+        SongDirectory(run, song) is null ? null : Read(() => covers.Get($"{run}/{song}"));
 
     /// <summary>The title given to the run in this app, or null (also when the database cannot be read).</summary>
     public string? RenamedTitle(string run) => RunName().IsMatch(run) ? Read(() => titles.Get(run)) : null;
@@ -282,6 +311,7 @@ public sealed partial class SongLibrary(
         ratings.RemoveRun(run);
         versions.RemoveRun(run);
         stems.RemoveRun(run);
+        covers.RemoveRun(run);
     });
 
     /// <summary>The files are gone already; a database that cannot be written only keeps a row nobody sees.</summary>
@@ -297,7 +327,11 @@ public sealed partial class SongLibrary(
     }
 
     private RunInfo ReadRun(
-        DirectoryInfo run, string? renamed, IReadOnlyDictionary<string, int> rated, IReadOnlyDictionary<string, IReadOnlyList<VersionState>> sung)
+        DirectoryInfo run,
+        string? renamed,
+        IReadOnlyDictionary<string, int> rated,
+        IReadOnlyDictionary<string, DateTimeOffset> covered,
+        IReadOnlyDictionary<string, IReadOnlyList<VersionState>> sung)
     {
         var songs = new List<SongInfo>();
         string title = "", style = "", lyrics = "";
@@ -329,7 +363,8 @@ public sealed partial class SongLibrary(
                 File.Exists(Path.Combine(folder.FullName, "semantic.npy")),
                 Size(folder),
                 rated.TryGetValue(id, out var rating) ? rating : null,
-                sung.GetValueOrDefault(id) ?? []));
+                sung.GetValueOrDefault(id) ?? [],
+                covered.TryGetValue(id, out var cover) ? cover : null));
         }
 
         var original = title.Length > 0 ? title : TitleFromName(run.Name);

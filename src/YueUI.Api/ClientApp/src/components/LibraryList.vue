@@ -10,11 +10,14 @@ import { useConfirm } from 'primevue/useconfirm'
 import {
   addVersion,
   audioUrl,
+  coverUrl,
+  deleteCover,
   deleteVersion,
   deleteRun,
   deleteSong,
   listVoices,
   midiToAbc,
+  putCover,
   renameRun,
   render,
   runZipUrl,
@@ -28,7 +31,7 @@ import { current, libraryTracks, play, playing, trackOf, versionTrack } from '..
 import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
 import { shareSong } from '../share'
-import { openExport } from '../export'
+import { openExport, photoCover, pickImage } from '../export'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
 import { needsReview, reviewCount, reviewDayChoices, reviewDays } from '../review'
@@ -269,6 +272,37 @@ function useMidi(run: RunInfo, song: SongInfo): void {
   })
 }
 
+/** Songs whose cover is being saved. */
+const covering = ref(new Set<string>())
+
+/** A photo as the song's cover; the server's library event brings it into the list and the player. */
+function chooseCover(song: SongInfo): void {
+  pickImage(async (file) => {
+    covering.value.add(song.id)
+    try {
+      let photo: Blob
+      try {
+        photo = await photoCover(file)
+      } catch {
+        throw new Error(t('photoUnreadable'))
+      }
+      await putCover(song.id, photo)
+    } catch (caught) {
+      emit('error', t('coverSaveFailed', { message: caught instanceof Error ? caught.message : String(caught) }))
+    } finally {
+      covering.value.delete(song.id)
+    }
+  })
+}
+
+async function removeCover(song: SongInfo): Promise<void> {
+  try {
+    await deleteCover(song.id)
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
+  }
+}
+
 /** A song action beyond play, render, FLAC and ABC: an icon on a wide screen, a line of the "…" menu on a phone. */
 interface SongAction {
   key: string
@@ -290,7 +324,29 @@ function songActions(run: RunInfo, song: SongInfo): SongAction[] {
       key: 'export',
       label: t('exportSong'),
       icon: 'pi pi-download',
-      command: () => openExport({ songId: song.id, title: run.title, style: run.style }),
+      command: () =>
+        openExport({
+          songId: song.id,
+          title: run.title,
+          style: run.style,
+          cover: song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined,
+        }),
+    })
+  }
+  actions.push({
+    key: 'cover',
+    label: t('songCover'),
+    icon: covering.value.has(song.id) ? 'pi pi-spin pi-spinner' : 'pi pi-image',
+    command: () => chooseCover(song),
+    disabled: covering.value.has(song.id),
+    loading: covering.value.has(song.id),
+  })
+  if (song.coverUpdatedAt) {
+    actions.push({
+      key: 'coverRemove',
+      label: t('songCoverRemove'),
+      icon: 'pi pi-eraser',
+      command: () => void removeCover(song),
     })
   }
   if (song.hasScore) {
@@ -730,6 +786,13 @@ const severityByQuality: Record<string, string> = {
                 :class="['song', { 'focused bg-emphasis': focusedSong === song.id }]"
               >
                 <div class="flex flex-wrap gap-x-3 gap-y-1 items-center">
+                  <img
+                    v-if="song.coverUpdatedAt"
+                    :src="coverUrl(song.id, song.coverUpdatedAt)"
+                    alt=""
+                    loading="lazy"
+                    class="h-10 w-10 rounded-md object-cover"
+                  />
                   <Button
                     v-if="song.hasAudio"
                     :icon="isPlaying(song) ? 'pi pi-pause' : 'pi pi-play'"

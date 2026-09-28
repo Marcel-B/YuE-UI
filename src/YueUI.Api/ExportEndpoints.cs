@@ -9,7 +9,7 @@ namespace YueUI.Api;
 /// <summary>
 /// A song as a file for a music library: MP3, M4A or FLAC with title, artist, album, genre, lyrics and cover in the
 /// format's own tags, so a phone or Apple Music shows them. The browser picks the artist, genre and cover (it draws a
-/// default cover itself); everything else comes from the song. Made anew each time into a temporary file, like the
+/// default cover itself); without one the song's own cover goes in, if it has one. Everything else comes from the song. Made anew each time into a temporary file, like the
 /// share endpoint's AAC.
 /// </summary>
 public static class ExportEndpoints
@@ -73,6 +73,10 @@ public static class ExportEndpoints
         if (errors.Count > 0)
         {
             return Results.ValidationProblem(errors);
+        }
+        if (cover is null && library.CoverOf(run, song) is { } own)
+        {
+            image = new CoverImage(await File.ReadAllBytesAsync(own.Path, cancellationToken), own.ContentType);
         }
 
         var extension = format!.ToLowerInvariant();
@@ -144,7 +148,7 @@ public static class ExportEndpoints
     }
 
     /// <summary>Read by its first bytes rather than the declared type, which a browser guesses from the file name.</summary>
-    private static async Task<CoverImage?> ReadCoverAsync(IFormFile cover, CancellationToken cancellationToken)
+    internal static async Task<CoverImage?> ReadCoverAsync(IFormFile cover, CancellationToken cancellationToken)
     {
         if (cover.Length is 0 or > MaxCoverBytes)
         {

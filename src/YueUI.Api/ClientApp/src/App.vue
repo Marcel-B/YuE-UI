@@ -14,7 +14,7 @@ import StemsPanel from './components/StemsPanel.vue'
 import Message from 'primevue/message'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
-import { current, retitle } from './player'
+import { current, refreshTracks } from './player'
 import { loadPlaylists, playlistIds } from './playlist'
 import { ratings, setRatings } from './ratings'
 import { reviewCount, reviewDays } from './review'
@@ -308,7 +308,7 @@ async function loadLibrary(): Promise<void> {
     // The free space is a hint only; the library shows without it.
     const [library, space] = await Promise.all([listLibrary(), getStorage().catch(() => null)])
     runs.value = library
-    retitle(library)
+    refreshTracks(library)
     setRatings(library)
     storage.value = space
     libraryError.value = null

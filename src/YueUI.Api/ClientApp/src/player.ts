@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { audioUrl, versionAudioUrl } from './api'
+import { audioUrl, coverUrl, versionAudioUrl } from './api'
 import { t } from './i18n'
 import { createSpectrumAnalyser, registerSource, visuals, type SpectrumSource } from './spectrum'
 import type { RunInfo, SongInfo, VersionState } from './types'
@@ -15,10 +15,22 @@ export interface Track {
   detail: string
   /** Where a version's audio is; a song's own comes from its id. */
   src?: string
+  /** The song's own cover, for the player and the lock screen; none while it has only the drawn one. */
+  cover?: string
+}
+
+function coverOf(song: SongInfo): string | undefined {
+  return song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined
 }
 
 export function trackOf(run: RunInfo, song: SongInfo): Track {
-  return { id: song.id, songId: song.id, title: run.title || t('untitled'), detail: t('songN', { n: song.index }) }
+  return {
+    id: song.id,
+    songId: song.id,
+    title: run.title || t('untitled'),
+    detail: t('songN', { n: song.index }),
+    cover: coverOf(song),
+  }
 }
 
 /** The song sung with another voice. */
@@ -29,6 +41,7 @@ export function versionTrack(run: RunInfo, song: SongInfo, version: VersionState
     title: run.title || t('untitled'),
     detail: `${t('songN', { n: song.index })} · ${version.voiceLabel}`,
     src: versionAudioUrl(song.id, version.id),
+    cover: coverOf(song),
   }
 }
 
@@ -38,15 +51,23 @@ export function libraryTracks(runs: RunInfo[]): Track[] {
 }
 
 /**
- * A run renamed since its songs were queued: the player and the lock screen take the new title, without
- * interrupting the song.
+ * A run renamed or a cover changed since its songs were queued: the player and the lock screen take the new title and
+ * cover, without interrupting the song.
  */
-export function retitle(runs: RunInfo[]): void {
-  const titles = new Map(runs.flatMap((run) => run.songs.map((song) => [song.id, run.title || t('untitled')] as const)))
-  if (!tracks.value.some((track) => titles.has(track.songId) && titles.get(track.songId) !== track.title)) {
+export function refreshTracks(runs: RunInfo[]): void {
+  const songs = new Map(
+    runs.flatMap((run) =>
+      run.songs.map((song) => [song.id, { title: run.title || t('untitled'), cover: coverOf(song) }] as const),
+    ),
+  )
+  const changed = (track: Track): boolean => {
+    const song = songs.get(track.songId)
+    return song !== undefined && (song.title !== track.title || song.cover !== track.cover)
+  }
+  if (!tracks.value.some(changed)) {
     return
   }
-  tracks.value = tracks.value.map((track) => ({ ...track, title: titles.get(track.songId) ?? track.title }))
+  tracks.value = tracks.value.map((track) => (changed(track) ? { ...track, ...songs.get(track.songId)! } : track))
   if (current.value) {
     showOnLockScreen(current.value)
   }
@@ -186,7 +207,13 @@ function showOnLockScreen(track: Track): void {
   if (!('mediaSession' in navigator)) {
     return
   }
-  navigator.mediaSession.metadata = new MediaMetadata({ title: track.title, artist: track.detail, album: 'YuE UI' })
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: track.title,
+    artist: track.detail,
+    album: 'YuE UI',
+    // An absolute address: the lock screen fetches it outside the page.
+    artwork: track.cover ? [{ src: new URL(track.cover, location.href).href }] : [],
+  })
   navigator.mediaSession.setActionHandler('nexttrack', hasNext.value ? () => void next() : null)
   navigator.mediaSession.setActionHandler('previoustrack', () => previous())
 }
