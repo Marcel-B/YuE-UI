@@ -63,7 +63,7 @@ Jeder Song lässt sich mit 1 bis 5 Sternen bewerten, in der Bibliothek und im Pl
 
 Der Knopf **Teilen** beim Song (auch im Menü von Player und Playlist) öffnet das Teilen-Menü des Handys, etwa um einen Song per Messenger zu verschicken. Geteilt wird nicht die FLAC, sondern eine kleine AAC-Datei (`.m4a`, 128 kbit/s, etwa ein Zehntel der Größe), die der Mac dafür jedes Mal neu mit `afconvert` erzeugt, das zu macOS gehört (anderswo mit `ffmpeg`, falls installiert). Dauert das länger, als Safari einen Tipp gelten lässt, bleibt ein Fenster mit einem zweiten Knopf **Teilen** stehen. Browser ohne Teilen-Menü für Dateien laden die kleine Datei herunter.
 
-**Exportieren** beim Song (auf dem Handy im Menü „…“) macht eine Datei für die Musiksammlung: MP3 (320 kbit/s, braucht `ffmpeg`), M4A (AAC, 256 kbit/s) oder FLAC. Titel, Album (der Songtitel), Jahr, Nummer innerhalb des Laufs, Songtext und Stil samt Seed (als Kommentar) stehen in den Tags des Formats (ID3v2.3, iTunes-Atome, Vorbis-Kommentare). Interpret und Genre fragt der Dialog; der Interpret bleibt pro Browser gespeichert, das Genre schlägt er aus dem Stil vor. Als Cover zeichnet der Browser eins aus Songtitel und einem Farbverlauf, dessen Farben aus der Song-ID kommen; stattdessen lässt sich ein Foto wählen, das quadratisch zugeschnitten wird. Die fertige Datei lässt sich speichern oder, wo der Browser das kann, teilen.
+**Exportieren** beim Song (auf dem Handy im Menü „…“) macht eine Datei für die Musiksammlung: MP3 (320 kbit/s, braucht `ffmpeg`), M4A (AAC, 256 kbit/s) oder FLAC. Titel, Album (der Songtitel), Jahr, Nummer innerhalb des Laufs, Songtext und Stil samt Seed (als Kommentar) stehen in den Tags des Formats (ID3v2.3, iTunes-Atome, Vorbis-Kommentare). Interpret und Genre fragt der Dialog; der Interpret bleibt pro Browser gespeichert, das Genre schlägt er aus dem Stil vor. Als Cover zeichnet der Browser eins aus Songtitel und einem Farbverlauf, dessen Farben aus der Song-ID kommen; stattdessen lässt sich ein Foto wählen, das quadratisch zugeschnitten wird. Ein gewähltes Foto bleibt als Cover beim Song: die Bibliothek zeigt es neben dem Song, der Player und der Sperrbildschirm beim Abspielen, und jeder spätere Export nimmt es. **Cover wählen** beim Song setzt es auch ohne Export, **Cover entfernen** kehrt zum gezeichneten zurück. Die Bilder liegen in `covers/` neben der Datenbank, der Songordner bleibt unberührt. Die fertige Datei lässt sich speichern oder, wo der Browser das kann, teilen.
 
 Das Suchfeld über der Bibliothek sucht wahlweise in **Titel & Stil** oder im **Text**. Getrennt, weil fast jeder Songtext Allerweltswörter wie „Nacht“ enthält und die wenigen Treffer im Titel sonst untergingen. Mehrere Wörter müssen alle vorkommen, in beliebiger Reihenfolge; Groß- und Kleinschreibung und Akzente zählen nicht („traume“ findet „Träume“). Was in Anführungszeichen steht, muss genau so vorkommen, etwa eine erinnerte Zeile. Bei der Textsuche stehen die passenden Zeilen mit markierten Treffern unter dem Stil. Der Player spielt nach einem Song die weiteren Treffer.
 
@@ -229,7 +229,10 @@ Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/`
 | `GET` | `/api/songs/{run}/{song}/audio` | FLAC (Range-fähig; `?download=true` als Download) |
 | `GET` | `/api/songs/{run}/{song}/score` | `score.abc` |
 | `GET` | `/api/songs/{run}/{song}/share` | Song als kleine AAC (`.m4a`, 128 kbit/s) zum Teilen; `501`, wenn weder `afconvert` noch `ffmpeg` da ist |
-| `POST` | `/api/songs/{run}/{song}/export` | Song als MP3, M4A oder FLAC mit Tags und Cover (Formular: `format` = `mp3`/`m4a`/`flac`, `artist`, `genre`, `cover` als JPEG/PNG bis 5 MB); `501`, wenn der Encoder fehlt |
+| `POST` | `/api/songs/{run}/{song}/export` | Song als MP3, M4A oder FLAC mit Tags und Cover (Formular: `format` = `mp3`/`m4a`/`flac`, `artist`, `genre`, `cover` als JPEG/PNG bis 5 MB, ohne `cover` das eigene Cover des Songs); `501`, wenn der Encoder fehlt |
+| `GET` | `/api/songs/{run}/{song}/cover` | Das eigene Cover des Songs; `404` ohne |
+| `PUT` | `/api/songs/{run}/{song}/cover` | Setzt das Cover (Formular: `cover` als JPEG/PNG bis 5 MB) |
+| `DELETE` | `/api/songs/{run}/{song}/cover` | Zurück zum gezeichneten Cover |
 | `GET` | `/api/songs/{run}/{song}/zip` | FLAC und ABC des Songs als ZIP |
 | `GET` | `/api/runs/{run}/zip` | FLAC und ABC aller Songs des Laufs als ZIP |
 | `GET` | `/api/songs/{run}/{song}/logic` | Song als Logic-Projekt (ZIP mit `.logicx`), Hinweise im Header `X-YueToLogic-Diagnostics`; `422`, wenn daraus kein Projekt wird, mit dem Grund |
@@ -288,6 +291,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Songtext-Entwurf mit einer kurzen Anweisung überarbeiten lassen
 - [x] Songs vom Handy teilen (kleine AAC statt FLAC)
 - [x] Export als MP3, M4A oder FLAC mit Songtext, Cover, Titel und Interpret
+- [x] Cover bleibt beim Song (Bibliothek, Player, Sperrbildschirm, Export)
 - [x] Mehrere Playlists
 - [x] Songs mit einer anderen Stimme neu singen (Stem-Trennung, Seed-VC, Remix) und Stimmen hochladen
 - [x] Gemeinsame Warteschlange: Songs, Neuberechnungen und Textentwürfe warten auf den Speicher statt abgelehnt zu werden

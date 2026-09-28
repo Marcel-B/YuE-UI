@@ -15,6 +15,8 @@ export interface ExportTarget {
   songId: string
   title: string
   style: string
+  /** The song's own cover, which the server puts in unless another one is sent. */
+  cover?: string
 }
 
 export const exportTarget = ref<ExportTarget | null>(null)
@@ -146,6 +148,23 @@ export async function drawCover(target: ExportTarget): Promise<Blob> {
   const genre = genreOf(target.style)
   context.fillText(genre ? `YuE · ${genre}` : 'YuE', margin, coverSize - margin, width)
   return jpeg(canvas)
+}
+
+/**
+ * Lets the user pick a photo. The input is made on the spot, so a button anywhere can open the picker; iOS only allows
+ * that inside the click.
+ */
+export function pickImage(picked: (file: File) => void): void {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.addEventListener('change', () => {
+    const file = input.files?.[0]
+    if (file) {
+      picked(file)
+    }
+  })
+  input.click()
 }
 
 /** A photo cut to the middle square, since players show covers square and would otherwise squeeze it. */

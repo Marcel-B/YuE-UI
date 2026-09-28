@@ -188,6 +188,8 @@ export interface SongInfo {
   rating: number | null
   /** The song sung with other voices, oldest first. */
   versions: VersionState[]
+  /** When the song's own cover was chosen, null while it has the drawn one. */
+  coverUpdatedAt: string | null
 }
 
 /**

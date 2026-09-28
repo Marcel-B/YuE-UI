@@ -172,6 +172,23 @@ export async function getStorage(): Promise<StorageInfo> {
   return (await send('/api/storage')).json() as Promise<StorageInfo>
 }
 
+/** The song's own cover; the time it was chosen makes a changed cover a new address, past every cache. */
+export function coverUrl(songId: string, updatedAt: string): string {
+  return `${apiBase}/api/songs/${songId}/cover?v=${encodeURIComponent(updatedAt)}`
+}
+
+/** Keeps the image as the song's cover, for the library, the player and every later export. */
+export async function putCover(songId: string, cover: Blob): Promise<void> {
+  const form = new FormData()
+  form.append('cover', cover, 'cover.jpg')
+  await send(`/api/songs/${songId}/cover`, { method: 'PUT', body: form })
+}
+
+/** Back to the cover the browser draws. */
+export async function deleteCover(songId: string): Promise<void> {
+  await send(`/api/songs/${songId}/cover`, { method: 'DELETE' })
+}
+
 export function audioUrl(songId: string, download = false): string {
   return `${apiBase}/api/songs/${songId}/audio${download ? '?download=true' : ''}`
 }
