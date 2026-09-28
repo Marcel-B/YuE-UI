@@ -10,6 +10,7 @@ import PlayerBar from './components/PlayerBar.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import VoicesPanel from './components/VoicesPanel.vue'
+import StemsPanel from './components/StemsPanel.vue'
 import Message from 'primevue/message'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
 import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
@@ -28,6 +29,7 @@ import type {
   SongState,
   StorageInfo,
   TranscriptionState,
+  StemSetState,
   VersionState,
   QueuedJob,
   VoiceInfo,
@@ -70,6 +72,8 @@ const transcriptions = ref<TranscriptionState[]>([])
 const lyricsDraft = ref<LyricsState | null>(null)
 /** Versions in the works, and those finished while the page was open; by id. */
 const versions = ref<VersionState[]>([])
+/** Stems in the works, and those finished while the page was open. */
+const stemSets = ref<StemSetState[]>([])
 /** Songs, renders and drafts waiting for the memory. */
 const jobs = ref<QueuedJob[]>([])
 /** How long songs may pass a waiting draft or version (Queue:BundleWindow). */
@@ -116,6 +120,15 @@ function upsertVersion(version: VersionState): void {
   }
 }
 
+function upsertStems(set: StemSetState): void {
+  const index = stemSets.value.findIndex((s) => s.id === set.id)
+  if (index >= 0) {
+    stemSets.value[index] = set
+  } else {
+    stemSets.value.push(set)
+  }
+}
+
 function hideFinished(): void {
   hidden.value = new Set([...hidden.value, ...songs.value.filter((s) => s.finished).map((s) => s.id)])
 }
@@ -128,6 +141,7 @@ const unsubscribe = subscribe({
     transcriptions.value = snapshot.transcriptions
     lyricsDraft.value = snapshot.lyrics
     versions.value = snapshot.versions
+    stemSets.value = snapshot.stems ?? []
     jobs.value = snapshot.queue ?? []
     bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
     // The stream (re)opened: whatever was written meanwhile is in the library now, the playlists may have changed on
@@ -160,6 +174,7 @@ const unsubscribe = subscribe({
     lyricsDraft.value = lyrics
   },
   version: upsertVersion,
+  stems: upsertStems,
   queue(queue) {
     jobs.value = queue
   },
@@ -188,11 +203,15 @@ const badges = computed<Partial<Record<View, number>>>(() => ({
   create: songs.value.filter((s) => !s.finished).length + jobs.value.length,
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
   playlist: playlistIds.value.length,
-  voices: versions.value.filter((v) => !v.finished).length,
+  voices: versions.value.filter((v) => !v.finished).length + stemSets.value.filter((s) => !s.finished).length,
 }))
 
-/** Voices need ChangeMyVoice; without it the page is left out of the menu and the library offers no voice. */
-const voiceInfo = ref<VoiceInfo>({ voicesConfigured: false, conversionConfigured: false })
+/**
+ * Voices need ChangeMyVoice, stems StemMyWav; without either the page is left out of the menu, and the library offers
+ * only what is there.
+ */
+const voiceInfo = ref<VoiceInfo>({ voicesConfigured: false, conversionConfigured: false, stemsConfigured: false })
+const voicesPage = computed(() => voiceInfo.value.voicesConfigured || voiceInfo.value.stemsConfigured)
 getVoiceInfo()
   .then((info) => (voiceInfo.value = info))
   .catch(() => undefined)
@@ -210,7 +229,7 @@ watch(view, (value) => {
 
 const menu = computed(() =>
   pages
-    .filter((page) => page.view !== 'voices' || voiceInfo.value.voicesConfigured)
+    .filter((page) => page.view !== 'voices' || voicesPage.value)
     .map((page) => ({
       key: page.view,
       label: t(page.label),
@@ -518,6 +537,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :error="libraryError"
           :busy-ids="busyIds"
           :voices="voiceInfo.conversionConfigured"
+          :stems="voiceInfo.stemsConfigured"
           :live-versions="versions"
           @template="useTemplate"
           @use-score="useSongScore"
@@ -540,13 +560,21 @@ async function useAsNewSong(songId: string): Promise<void> {
     </Card>
   </main>
 
-  <main v-if="voiceInfo.voicesConfigured" v-show="view === 'voices'">
-    <Card>
+  <main v-if="voicesPage" v-show="view === 'voices'" class="flex flex-col gap-4">
+    <Card v-if="voiceInfo.voicesConfigured">
       <template #title>
         <h2>{{ t('voices') }}</h2>
       </template>
       <template #content>
         <VoicesPanel :active="view === 'voices'" :versions="versions" @error="show($event, true)" />
+      </template>
+    </Card>
+    <Card v-if="voiceInfo.stemsConfigured">
+      <template #title>
+        <h2>{{ t('stems') }}</h2>
+      </template>
+      <template #content>
+        <StemsPanel :active="view === 'voices'" :runs="runs" :live="stemSets" @error="show($event, true)" />
       </template>
     </Card>
   </main>

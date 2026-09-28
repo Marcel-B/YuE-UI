@@ -31,7 +31,7 @@ import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../sear
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
 import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
 import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
-import { focusedSong, focusRequest, openOnLogicPage, view } from '../view'
+import { focusedSong, focusRequest, openOnLogicPage, openStems, view } from '../view'
 import PlaylistToggle from './PlaylistToggle.vue'
 
 const props = defineProps<{
@@ -42,6 +42,8 @@ const props = defineProps<{
   busyIds: Set<string>
   /** ChangeMyVoice and StemMyWav are configured, so songs can be sung with another voice. */
   voices: boolean
+  /** StemMyWav is configured, so songs can be split into stems on the voices page. */
+  stems?: boolean
   /** Versions as the event stream reports them, newer than the listing while they are in the works. */
   liveVersions: VersionState[]
 }>()
@@ -287,6 +289,9 @@ function songActions(run: RunInfo, song: SongInfo): SongAction[] {
       icon: 'pi pi-user-edit',
       command: () => void startSinging(run, song),
     })
+  }
+  if (props.stems && song.hasAudio) {
+    actions.push({ key: 'stems', label: t('splitStems'), icon: 'pi pi-sliders-v', command: () => openStems(song.id) })
   }
   const busy = props.busyIds.has(song.id)
   actions.push({
