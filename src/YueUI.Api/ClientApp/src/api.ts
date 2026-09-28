@@ -210,6 +210,30 @@ export async function songShareFile(songId: string): Promise<File> {
   return new File([await response.blob()], name, { type: 'audio/mp4' })
 }
 
+/**
+ * The song as MP3, M4A or FLAC with its tags and cover, named after its title. The server encodes it first, which
+ * takes a few seconds (not for FLAC, which only gets its tags).
+ */
+export async function exportSongFile(
+  songId: string,
+  format: 'mp3' | 'm4a' | 'flac',
+  artist: string,
+  genre: string,
+  cover: Blob | null,
+): Promise<File> {
+  const form = new FormData()
+  form.append('format', format)
+  form.append('artist', artist)
+  form.append('genre', genre)
+  if (cover) {
+    form.append('cover', cover, 'cover.jpg')
+  }
+  const response = await send(`/api/songs/${songId}/export`, { method: 'POST', body: form })
+  const name = fileName(response.headers.get('Content-Disposition')) ?? `YuE.${format}`
+  const blob = await response.blob()
+  return new File([blob], name, { type: blob.type })
+}
+
 /** Saves a fetched file the way a download link would. */
 export function saveBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)

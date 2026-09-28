@@ -363,7 +363,7 @@ public sealed partial class SongLibrary(
         run.Length > 16 ? run[16..].Replace('-', ' ').Trim() : "";
 
     /// <summary>The worker names runs by its local time.</summary>
-    private static DateTimeOffset? CreatedAt(string run) =>
+    internal static DateTimeOffset? CreatedAt(string run) =>
         DateTime.TryParseExact(run.AsSpan(0, 15), "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var created)
             ? new DateTimeOffset(created)
             : null;

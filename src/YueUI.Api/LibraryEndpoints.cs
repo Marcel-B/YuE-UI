@@ -72,7 +72,7 @@ public static partial class LibraryEndpoints
         var temp = Path.Combine(Path.GetTempPath(), $"yueui-share-{Guid.NewGuid():N}.m4a");
         try
         {
-            if (!await encoder.EncodeAsync(Path.Combine(directory, "audio.flac"), temp, cancellationToken))
+            if (!await encoder.EncodeAsync(Path.Combine(directory, "audio.flac"), temp, AudioFormat.M4a, AacEncoder.BitRate, cancellationToken))
             {
                 return Results.Problem(title: "Neither afconvert nor ffmpeg is installed.", statusCode: StatusCodes.Status501NotImplemented);
             }
