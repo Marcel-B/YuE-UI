@@ -1,9 +1,9 @@
 import { ref } from 'vue'
 
 /** The pages the menu bar switches between. */
-export type View = 'create' | 'transcribe' | 'songs' | 'playlist' | 'voices' | 'logic' | 'lab'
+export type View = 'create' | 'queue' | 'transcribe' | 'songs' | 'playlist' | 'voices' | 'logic' | 'lab'
 
-const views: readonly View[] = ['create', 'transcribe', 'songs', 'playlist', 'voices', 'logic', 'lab']
+const views: readonly View[] = ['create', 'queue', 'transcribe', 'songs', 'playlist', 'voices', 'logic', 'lab']
 
 /**
  * The page lives in the URL's hash (`#/songs`), so the back button, a reload and a bookmark on the home screen keep it,
