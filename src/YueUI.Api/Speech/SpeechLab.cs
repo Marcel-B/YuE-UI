@@ -99,6 +99,8 @@ public sealed class SpeechLab(
             {
                 if (take.Stage == "queued")
                 {
+                    // Into the snapshot as well, so the queue shows it before its turn comes.
+                    host.UpdateSpeech(take);
                     _queue.Writer.TryWrite(take.Id);
                 }
                 else

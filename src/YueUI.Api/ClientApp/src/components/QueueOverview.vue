@@ -2,11 +2,11 @@
 import { computed } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import { holderOf, modelOf, type Model, type VoiceWork } from '../queueModels'
-import type { LyricsState, QueuedJob, SongState, WorkerInfo } from '../types'
+import type { LyricsState, QueuedJob, SongState, SpeechTake, WorkerInfo } from '../types'
 
 /**
- * One line over the queue: the three models that take turns in the 24 GB, which one holds the memory now and how
- * much waits for each. The jobs' own wait reasons are in QueueList, under each job.
+ * One line over the queue: the models that take turns in the 24 GB, which one holds the memory now and how much waits
+ * for each. The jobs' own wait reasons are in QueueList, under each job.
  */
 const props = defineProps<{
   songs: SongState[]
@@ -15,15 +15,21 @@ const props = defineProps<{
   lyricsDraft: LyricsState | null
   /** Voice versions and stem separations. */
   versions: VoiceWork[]
+  /** The speech lab's takes in the works. */
+  takes: SpeechTake[]
 }>()
 
 const models: { model: Model; icon: string; label: MessageKey }[] = [
   { model: 'yue', icon: 'pi pi-sparkles', label: 'modelYue' },
   { model: 'lyrics', icon: 'pi pi-pen-to-square', label: 'modelLyrics' },
   { model: 'voice', icon: 'pi pi-user', label: 'modelVoice' },
+  { model: 'speech', icon: 'pi pi-comments', label: 'modelSpeech' },
 ]
 
-const holder = computed(() => holderOf(props.worker, props.lyricsDraft, props.versions))
+/** The speech lab is an experiment: its tile only takes room on the phone while it has takes in the works. */
+const shown = computed(() => models.filter((m) => m.model !== 'speech' || props.takes.some((take) => !take.finished)))
+
+const holder = computed(() => holderOf(props.worker, props.lyricsDraft, props.versions, props.takes))
 
 function running(model: Model): number {
   switch (model) {
@@ -33,12 +39,20 @@ function running(model: Model): number {
       return props.lyricsDraft?.stage === 'writing' ? 1 : 0
     case 'voice':
       return props.versions.filter((v) => !v.finished && v.stage !== 'queued').length
+    case 'speech':
+      return props.takes.filter((take) => !take.finished && take.stage !== 'queued').length
   }
 }
 
 function waiting(model: Model): number {
-  const queued = props.jobs.filter((j) => modelOf(j) === model).length
-  return model === 'voice' ? props.versions.filter((v) => v.stage === 'queued').length : queued
+  switch (model) {
+    case 'voice':
+      return props.versions.filter((v) => v.stage === 'queued').length
+    case 'speech':
+      return props.takes.filter((take) => take.stage === 'queued').length
+    default:
+      return props.jobs.filter((j) => modelOf(j) === model).length
+  }
 }
 
 function state(model: Model): string {
@@ -59,9 +73,15 @@ function state(model: Model): string {
 </script>
 
 <template>
-  <div class="flex gap-1 mb-3" role="list" :aria-label="t('memory')" :title="t('memoryHint')">
+  <!-- Four tiles in a row leave a phone only their first letters, so the speech lab's makes two rows there. -->
+  <div
+    :class="['gap-1 mb-3', shown.length > 3 ? 'grid grid-cols-2 sm:flex' : 'flex']"
+    role="list"
+    :aria-label="t('memory')"
+    :title="t('memoryHint')"
+  >
     <div
-      v-for="m in models"
+      v-for="m in shown"
       :key="m.model"
       role="listitem"
       :class="[

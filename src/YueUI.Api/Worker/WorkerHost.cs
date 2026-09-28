@@ -51,6 +51,8 @@ public sealed class WorkerHost(
     private readonly Dictionary<string, TranscriptionState> _transcriptions = [];
     private readonly Dictionary<string, VersionState> _versions = [];
     private readonly Dictionary<string, StemSetState> _stems = [];
+    /// <summary>The speech lab's takes in the works, in the order they are spoken (a list, since several share a time).</summary>
+    private readonly List<Speech.SpeechTake> _speech = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
     /// <summary>Songs a render was asked for and that have not started yet; the worker's started event does not say.</summary>
     private readonly HashSet<string> _renders = [];
@@ -310,10 +312,27 @@ public sealed class WorkerHost(
     }
 
     /// <summary>
-    /// Sends a take of the speech lab (Speech/SpeechLab.cs) to the browsers. Not kept for the snapshot: the lab page
-    /// lists its takes itself and reads them again when the stream reopens.
+    /// Keeps a take of the speech lab (Speech/SpeechLab.cs) for the snapshot, so the queue shows what holds or waits for
+    /// the memory after a reload, and sends it to the browsers; a finished take leaves the snapshot with the next change,
+    /// since the lab page lists it from then on.
     /// </summary>
-    public void UpdateSpeech(Speech.SpeechTake take) => Publish("speech", take);
+    public void UpdateSpeech(Speech.SpeechTake take)
+    {
+        lock (_gate)
+        {
+            _speech.RemoveAll(other => other.Finished && other.Id != take.Id);
+            var index = _speech.FindIndex(other => other.Id == take.Id);
+            if (index >= 0)
+            {
+                _speech[index] = take;
+            }
+            else
+            {
+                _speech.Add(take);
+            }
+        }
+        Publish("speech", take);
+    }
 
     /// <summary>Cancels every song. Does not start a worker just for that.</summary>
     public async Task StopAllAsync(CancellationToken cancellationToken)
@@ -751,7 +770,8 @@ public sealed class WorkerHost(
         [.. _versions.Values.OrderBy(v => v.CreatedAt)],
         _queue,
         queueOptions.Value.BundleWindow.TotalSeconds,
-        [.. _stems.Values.OrderBy(s => s.CreatedAt)]);
+        [.. _stems.Values.OrderBy(s => s.CreatedAt)],
+        [.. _speech]);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);

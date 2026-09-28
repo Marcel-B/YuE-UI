@@ -159,7 +159,7 @@ YuE2 kann nur singen. Das **Sprachlabor** probiert aus, welches lokale Sprachmod
 
 Angeboten werden Chatterbox Multilingual v3 (MIT), Qwen3-TTS 1.7B (Apache 2.0), Higgs Audio v2 (Apache 2.0), Higgs Audio v3 (nur für Forschung und nicht-kommerzielle Nutzung; Podcasts erlaubt, wenn Boson AI genannt wird) und MOSS-TTS Local v1.5 (Apache 2.0). Alle können Deutsch und klonen Stimmen. Die Liste lässt sich unter `Speech:Models` ersetzen (je Modell `id`, `label`, `repo`, `langCode`, `options` usw., siehe `Speech/SpeechModels.cs`). Keins davon ist bisher auf dem Mac gehört worden.
 
-Ein Modell wird für jedes Ergebnis geladen und danach wieder freigegeben. Es wartet wie eine Fassung, bis YuE2, das Textmodell und Stimmumwandlungen den Speicher freigeben, und so lange warten diese. Beim ersten Mal lädt sich ein Modell herunter (3 bis 9 GB), das dauert.
+Ein Modell wird für jedes Ergebnis geladen und danach wieder freigegeben. Es wartet wie eine Fassung, bis YuE2, das Textmodell und Stimmumwandlungen den Speicher freigeben, und so lange warten diese. Die Warteschlange auf **Erstellen** listet laufende und wartende Sprachtests unter **Sprachlabor** (mit Abbrechen) und zeigt dann eine vierte Kachel **Sprache**. Beim ersten Mal lädt sich ein Modell herunter (3 bis 9 GB), das dauert.
 
 **Einrichtung.** Das Labor braucht eine eigene Python-Umgebung mit mlx-audio, getrennt von der von YuE Studio. Einmal auf dem Mac im Repository ausführen, nachdem `deploy/install.sh` gelaufen ist:
 

@@ -69,6 +69,8 @@ export interface StatusSnapshot {
   bundleWindowSeconds: number | null
   /** Songs being split into stems, and the last set that finished. */
   stems: StemSetState[] | null
+  /** The speech lab's takes in the works, in the order they are spoken, and the last one that finished. */
+  speech: SpeechTake[] | null
 }
 
 export type JobKind = 'song' | 'render' | 'lyrics'

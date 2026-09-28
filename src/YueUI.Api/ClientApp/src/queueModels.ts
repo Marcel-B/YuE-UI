@@ -1,11 +1,11 @@
 import { formatDuration, t } from './i18n'
-import type { LyricsState, QueuedJob, WorkerInfo } from './types'
+import type { LyricsState, QueuedJob, SpeechTake, WorkerInfo } from './types'
 
 /**
- * The three large models that take turns in the memory (Queue/JobQueue.cs): YuE2 for songs and renders, the lyrics
- * model in LM Studio, and separation plus Seed-VC for voice versions and stems.
+ * The large models that take turns in the memory (Queue/JobQueue.cs): YuE2 for songs and renders, the lyrics model in
+ * LM Studio, separation plus Seed-VC for voice versions and stems, and the speech lab's text-to-speech models.
  */
-export type Model = 'yue' | 'lyrics' | 'voice'
+export type Model = 'yue' | 'lyrics' | 'voice' | 'speech'
 
 export function modelOf(job: QueuedJob): Model {
   return job.kind === 'lyrics' ? 'lyrics' : 'yue'
@@ -21,8 +21,21 @@ export interface VoiceWork {
   finished: boolean
 }
 
+/** A take of the speech lab that is loading its model or speaking holds the memory (Speech/SpeechLab.cs). */
+export function speaking(takes: SpeechTake[]): boolean {
+  return takes.some((take) => take.stage === 'loading' || take.stage === 'speaking')
+}
+
 /** Which model holds the memory now, or null while none works. */
-export function holderOf(worker: WorkerInfo, lyrics: LyricsState | null, versions: VoiceWork[]): Model | null {
+export function holderOf(
+  worker: WorkerInfo,
+  lyrics: LyricsState | null,
+  versions: VoiceWork[],
+  takes: SpeechTake[] = [],
+): Model | null {
+  if (speaking(takes)) {
+    return 'speech'
+  }
   if (lyrics?.stage === 'writing') {
     return 'lyrics'
   }
@@ -36,7 +49,6 @@ export function holderOf(worker: WorkerInfo, lyrics: LyricsState | null, version
  * Why a job still waits, in the words of the queue's own rules (JobQueue.TryStartAsync, MayPassLocked,
  * VersionOverdue): the model that holds the memory, the bundling window, or the job before it.
  * @param windowSeconds Queue:BundleWindow; null for a server from before it was sent.
- * @param speaking A take of the speech lab holds the memory; everything waits for it (Speech/SpeechLab.cs).
  */
 export function waitReason(
   jobs: QueuedJob[],
@@ -45,10 +57,10 @@ export function waitReason(
   versions: VoiceWork[],
   windowSeconds: number | null,
   now: number,
-  speaking = false,
 ): string {
   const job = jobs[index]!
-  if (speaking) {
+  if (holder === 'speech') {
+    // While a take speaks, JobQueue starts nothing (SpeechActivity.IsSpeaking).
     return t('waitSpeech')
   }
   const left = (since: string) => (windowSeconds ?? 0) - (now - new Date(since).getTime()) / 1000
@@ -82,4 +94,25 @@ export function waitReason(
     return t('waitBehindDraft')
   }
   return index === 0 ? t('waitStarting') : t('waitTurn')
+}
+
+/**
+ * Why a take of the speech lab still waits (SpeechLab.WaitForMemoryAsync): its takes are spoken one at a time, in the
+ * order they were asked for, each once YuE2, the lyrics model and the voices have let go of the memory.
+ * @param index Its place among the takes in the works, the one being spoken included.
+ */
+export function speechWaitReason(index: number, holder: Model | null): string {
+  if (holder === 'speech' || index > 0) {
+    return t('waitTurn')
+  }
+  switch (holder) {
+    case 'yue':
+      return t('waitYue')
+    case 'lyrics':
+      return t('waitLyrics')
+    case 'voice':
+      return t('waitVoice')
+    default:
+      return t('waitStarting')
+  }
 }
