@@ -8,6 +8,7 @@ import {
   assignInstrument,
   convertScore,
   exportLogicProject,
+  exportMusicXml,
   type LogicProgress,
   listAssignments,
   listInstruments,
@@ -20,6 +21,7 @@ import { deletePreset, loadPresets, savePreset, type Preset } from '../logic/pre
 import { clearFormState, defaultFormState, loadFormState, saveFormState, toConversionOptions } from '../logic/options'
 import { baseName, download } from '../logic/score'
 import type { Assignments, ConversionResult, Diagnostic, Instrument } from '../logic/types'
+import { audioUrl } from '../api'
 import type { RunInfo, SongInfo } from '../types'
 import { logicSong, replaceLogicSong } from '../view'
 import FileDropZone from './logic/FileDropZone.vue'
@@ -121,6 +123,10 @@ const source = computed<ScoreSource | null>(() => {
   }
   return file.value ? { file: file.value, audio: audio.value } : null
 })
+/** The recording the preview shows and plays along: the library song's audio.flac, or the FLAC brought along. */
+const recording = computed<string | File | null>(() =>
+  mode.value === 'library' ? (chosen.value?.song.hasAudio ? audioUrl(chosen.value.song.id) : null) : audio.value,
+)
 /** A library song brings its own audio.flac, which the server takes from the song's folder. */
 const hasAudio = computed(() => (mode.value === 'library' ? !!chosen.value?.song.hasAudio : audio.value !== null))
 
@@ -147,6 +153,7 @@ function forgetResult(): void {
   error.value = null
   logicError.value = null
   logicWarnings.value = []
+  musicXmlError.value = null
 }
 
 // ---- Instruments ------------------------------------------------------------------------------------
@@ -365,6 +372,29 @@ async function exportLogic(): Promise<void> {
   }
 }
 
+const musicXmlBusy = ref(false)
+const musicXmlError = ref<string | null>(null)
+
+async function downloadMusicXml(): Promise<void> {
+  const from = source.value
+  if (!from) {
+    return
+  }
+
+  musicXmlBusy.value = true
+  musicXmlError.value = null
+  try {
+    download(await exportMusicXml(from, conversionOptions(), outputName.value), `${outputName.value}.musicxml`)
+  } catch (caught) {
+    musicXmlError.value =
+      caught instanceof ApiError && caught.status === 0
+        ? t('networkError')
+        : `${t('musicXmlFailed')}: ${caught instanceof Error ? caught.message : String(caught)}`
+  } finally {
+    musicXmlBusy.value = false
+  }
+}
+
 /** Back to a fresh start: no song or files, default parameters, no result. */
 function reset(): void {
   forgetResult()
@@ -547,6 +577,7 @@ function reset(): void {
       :stale="stale"
       :instruments="instruments"
       :assignments="assignments"
+      :recording="recording"
       @assign="assign"
       @manage-instruments="openInstruments"
     />
@@ -561,7 +592,10 @@ function reset(): void {
       :logic-progress="logicProgress"
       :logic-error="logicError"
       :logic-warnings="logicWarnings"
+      :music-xml-busy="musicXmlBusy"
+      :music-xml-error="musicXmlError"
       @export-logic="exportLogic"
+      @export-music-xml="downloadMusicXml"
     />
 
     <InstrumentDialog ref="instrumentDialog" :instruments="instruments" @changed="instrumentsChanged" />

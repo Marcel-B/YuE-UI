@@ -5,7 +5,8 @@ import Slider from 'primevue/slider'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { t } from '../../logic/i18n'
 import { effectiveRouting, instrumentOf } from '../../logic/instruments'
-import { loadRoutings, saveRoutings } from '../../logic/options'
+import { loadRecordingSettings, loadRoutings, saveRecordingSettings, saveRoutings } from '../../logic/options'
+import { decodeRecording, RecordingPlayer, type Recording } from '../../logic/recording'
 import {
   contentHeight,
   draw,
@@ -14,6 +15,8 @@ import {
   ticksAtX,
   totalWidth,
   trackColour,
+  WAVE_HEIGHT,
+  type Waveform,
   xAtTicks,
 } from '../../logic/pianoRoll'
 import {
@@ -47,6 +50,8 @@ const props = defineProps<{
   instruments: Instrument[]
   /** Track name → instrument id, kept on the server by the app. */
   assignments: Assignments
+  /** The song's recording: the URL of a library song's audio.flac, or the FLAC brought along; null without one. */
+  recording: string | File | null
 }>()
 
 const emit = defineEmits<{
@@ -69,6 +74,114 @@ const canAskForMidi = ref(false)
 // Kept out of Vue's deep reactivity: thousands of notes that nothing renders from directly.
 const voices = shallowRef(playableVoices(props.score, props.includeChords))
 const lanes = shallowRef(lanesOf(voices.value))
+
+// ---- The recording ----------------------------------------------------------------------------------
+
+const recordingSettings = ref(loadRecordingSettings())
+watch(recordingSettings, (value) => saveRecordingSettings(value), { deep: true })
+const decoded = shallowRef<Recording | null>(null)
+const recordingState = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle')
+/** Where the loaded recording came from, so a new score of the same song does not decode it again. */
+let loadedFrom: string | File | null = null
+let loadToken = 0
+let recordingContext: AudioContext | null = null
+let recordingPlayer: RecordingPlayer | null = null
+const showWave = computed(() => recordingSettings.value.show && decoded.value !== null)
+const waveHeight = computed(() => (showWave.value ? WAVE_HEIGHT : 0))
+
+/**
+ * Fetches and decodes the recording once it is to be shown. A library song's FLAC is tens of megabytes, which is why
+ * nothing is loaded while the recording is switched off.
+ */
+async function loadRecording(): Promise<void> {
+  const from = props.recording
+  if (!from || !recordingSettings.value.show || from === loadedFrom) {
+    return
+  }
+  const token = ++loadToken
+  forgetRecording()
+  loadedFrom = from
+  recordingState.value = 'loading'
+  try {
+    const file = typeof from === 'string' ? await fetchRecording(from) : from
+    recordingContext ??= new AudioContext()
+    const result = await decodeRecording(file, recordingContext)
+    if (token !== loadToken) {
+      return
+    }
+    decoded.value = result
+    recordingState.value = result ? 'ready' : 'failed'
+    if (result) {
+      recordingPlayer = new RecordingPlayer(recordingContext, result.buffer, recordingSettings.value.volume)
+      if (playing.value) {
+        startRecording(playhead.value ?? 0)
+      }
+    }
+  } catch {
+    if (token === loadToken) {
+      recordingState.value = 'failed'
+    }
+  }
+}
+
+async function fetchRecording(url: string): Promise<Blob> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+  return response.blob()
+}
+
+function forgetRecording(): void {
+  recordingPlayer?.close()
+  recordingPlayer = null
+  decoded.value = null
+  loadedFrom = null
+  recordingState.value = 'idle'
+}
+
+/** The recording's first sample sits where the count-in ends, so the audio lines up with the notes behind it. */
+function startRecording(fromTicks: number): void {
+  if (recordingSettings.value.show) {
+    recordingPlayer?.start((fromTicks - (props.score.countInTicks ?? 0)) * secondsPerTick.value)
+  }
+}
+
+watch(
+  () => [props.recording, recordingSettings.value.show] as const,
+  ([from, show]) => {
+    if (!from) {
+      loadToken++
+      forgetRecording()
+    } else if (show) {
+      void loadRecording()
+    } else {
+      recordingPlayer?.stop()
+    }
+  },
+)
+
+watch(
+  () => recordingSettings.value.volume,
+  (volume) => recordingPlayer?.setVolume(volume),
+)
+
+const waveform = computed<Waveform | null>(() =>
+  showWave.value && decoded.value
+    ? {
+        peaks: decoded.value.peaks,
+        secondsPerPeak: decoded.value.secondsPerPeak,
+        startTicks: props.score.countInTicks ?? 0,
+        secondsPerTick: secondsPerTick.value,
+      }
+    : null,
+)
+
+// The waveform takes a lane of its own above the tracks, which moves every lane down.
+watch(waveHeight, (height) => {
+  lanes.value = lanesOf(voices.value, height)
+  requestAnimationFrame(render)
+})
 
 const trackIds = computed(() => voices.value.map((voice) => voice.id))
 /** The routing chosen by hand per track; an instrument, where one is assigned, overrides it without touching it. */
@@ -185,7 +298,7 @@ let scrollTicks = 0
 
 const secondsPerTick = computed(() => 60 / props.score.tempoBpm / props.score.ticksPerQuarterNote)
 const contentWidth = computed(() => totalWidth(props.score, pxPerBar.value) + GUTTER_WIDTH)
-const height = computed(() => contentHeight(lanes.value))
+const height = computed(() => contentHeight(lanes.value, waveHeight.value))
 
 function render(): void {
   if (canvas.value) {
@@ -195,6 +308,8 @@ function render(): void {
       pxPerBar: pxPerBar.value,
       scrollTicks,
       playhead: playhead.value,
+      waveform: waveform.value,
+      waveformLabel: t('previewRecording'),
     })
   }
 }
@@ -235,6 +350,7 @@ function step(): void {
 function stop(): void {
   cancelAnimationFrame(frame)
   player?.stop()
+  recordingPlayer?.stop()
   playing.value = false
   render()
 }
@@ -243,6 +359,7 @@ function stop(): void {
 function release(): void {
   cancelAnimationFrame(frame)
   player?.stop()
+  recordingPlayer?.stop()
   player = null
   playing.value = false
 }
@@ -250,12 +367,14 @@ function release(): void {
 function play(fromTicks = playhead.value ?? 0): void {
   if (!player) {
     player = createPlayer(scheduleOf(props.score, voices.value, audible.value), pool, () => {
+      recordingPlayer?.stop()
       playing.value = false
       playhead.value = null
       render()
     })
   }
   player.play(fromTicks * secondsPerTick.value)
+  startRecording(fromTicks)
   playing.value = true
   cancelAnimationFrame(frame)
   frame = requestAnimationFrame(step)
@@ -345,6 +464,7 @@ async function loadPorts(): Promise<void> {
 
 onMounted(async () => {
   void loadSounds()
+  void loadRecording()
   if (viewport.value) {
     observer.observe(viewport.value)
     viewportWidth.value = viewport.value.clientWidth
@@ -365,6 +485,8 @@ onBeforeUnmount(() => {
   observer.disconnect()
   release()
   pool.close()
+  recordingPlayer?.close()
+  void recordingContext?.close().catch(() => {})
   window.removeEventListener('pagehide', stop)
 })
 
@@ -377,7 +499,7 @@ watch(
     release()
     playhead.value = null
     voices.value = playableVoices(score, includeChords)
-    lanes.value = lanesOf(voices.value)
+    lanes.value = lanesOf(voices.value, waveHeight.value)
     routings.value = loadRoutings(trackIds.value, defaultRoutings(voices.value))
     solos.value = []
     scrollTicks = 0
@@ -389,6 +511,16 @@ watch(
 )
 
 watch(routings, (value) => saveRoutings(trackIds.value, value), { deep: true })
+
+// Switched on while playing, the recording joins at the playhead.
+watch(
+  () => recordingSettings.value.show,
+  (show) => {
+    if (show && playing.value) {
+      startRecording(playhead.value ?? 0)
+    }
+  },
+)
 
 // Re-routing - by hand, by instrument or by a port coming or going - rebuilds the schedule; playback picks up
 // where it was rather than jumping back to the start. Compared as text, so a refreshed port list alone changes nothing.
@@ -482,6 +614,30 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
 
     <template #content>
       <p v-if="stale" class="hint warning mt-0">{{ t('stale') }}</p>
+
+      <div v-if="recording" class="mb-2 flex flex-wrap items-center gap-3 text-sm">
+        <div class="flex items-center gap-2">
+          <Checkbox v-model="recordingSettings.show" binary input-id="preview-recording" />
+          <label for="preview-recording" class="cursor-pointer">{{ t('previewRecordingShow') }}</label>
+        </div>
+        <div v-if="recordingSettings.show && recordingState === 'ready'" class="flex items-center gap-2">
+          <span id="preview-recording-volume" class="text-muted-color">{{ t('previewRecordingVolume') }}</span>
+          <Slider
+            :model-value="Math.round(recordingSettings.volume * 100)"
+            :min="0"
+            :max="100"
+            aria-labelledby="preview-recording-volume"
+            class="w-28"
+            @update:model-value="recordingSettings.volume = ($event as number) / 100"
+          />
+        </div>
+        <span v-if="recordingSettings.show && recordingState === 'loading'" class="muted">
+          <i class="pi pi-spin pi-spinner mr-1" aria-hidden="true" />{{ t('previewRecordingLoading') }}
+        </span>
+        <span v-if="recordingSettings.show && recordingState === 'failed'" class="text-(--warning-text)">
+          {{ t('previewRecordingFailed') }}
+        </span>
+      </div>
 
       <div ref="viewport" class="viewport" @scroll.passive="onScroll" @click="seek">
         <div :style="{ width: `${contentWidth}px`, height: `${height}px` }">

@@ -16,10 +16,12 @@ const props = defineProps<{
   logicProgress: LogicProgress | null
   logicError: string | null
   logicWarnings: Diagnostic[]
+  musicXmlBusy: boolean
+  musicXmlError: string | null
 }>()
 
 const logicNote = computed(() => (props.hasAudio ? t('logicHint') : t('logicWithoutAudio')))
-const emit = defineEmits<{ exportLogic: [] }>()
+const emit = defineEmits<{ exportLogic: []; exportMusicXml: [] }>()
 
 /** Percent of the upload or download, or null while building or when the size is unknown. */
 const logicPercent = computed(() => {
@@ -175,6 +177,15 @@ function downloadJson(): void {
             @click="downloadJson"
           />
           <Button
+            :label="musicXmlBusy ? t('buildingMusicXml') : t('downloadMusicXml')"
+            icon="pi pi-file"
+            severity="secondary"
+            outlined
+            :loading="musicXmlBusy"
+            :disabled="musicXmlBusy"
+            @click="emit('exportMusicXml')"
+          />
+          <Button
             :label="logicLabel"
             icon="pi pi-box"
             severity="secondary"
@@ -192,7 +203,9 @@ function downloadJson(): void {
           :aria-label="logicLabel"
         />
         <p class="hint muted">{{ logicNote }}</p>
+        <p class="hint muted">{{ t('musicXmlHint') }}</p>
         <p v-if="logicError" class="hint danger" role="alert">{{ logicError }}</p>
+        <p v-if="musicXmlError" class="hint danger" role="alert">{{ musicXmlError }}</p>
         <div v-if="logicWarnings.length" class="logic-warnings">
           <h3>{{ t('logicWarnings') }}</h3>
           <ul class="diagnostics">

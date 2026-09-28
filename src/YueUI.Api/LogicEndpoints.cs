@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using YueToLogic.Core.Conversion;
 using YueToLogic.Core.Diagnostics;
 using YueToLogic.Core.Logic;
+using YueToLogic.Core.MusicXml;
 using YueToLogic.Core.Serialization;
 using YueUI.Api.Data;
 using YueUI.Api.Library;
@@ -51,6 +52,9 @@ public static class LogicEndpoints
 
         var logic = api.MapGroup("/logic");
         logic.MapPost("/convert", ConvertAsync)
+            .DisableAntiforgery()
+            .WithFormOptions(multipartBodyLengthLimit: MaxScoreBytes + 64 * 1024);
+        logic.MapPost("/musicxml", MusicXmlAsync)
             .DisableAntiforgery()
             .WithFormOptions(multipartBodyLengthLimit: MaxScoreBytes + 64 * 1024);
         logic.MapPost("/export", ExportAsync)
@@ -125,6 +129,48 @@ public static class LogicEndpoints
             result,
             YueToLogicJsonContext.Default.ConversionResult,
             statusCode: result.Success ? StatusCodes.Status200OK : StatusCodes.Status422UnprocessableEntity);
+    }
+
+    /// <summary>
+    /// The score as MusicXML for notation programs, converted with the page's options like the preview; a score that
+    /// cannot be read answers 422 with the <see cref="ConversionResult"/> that says why.
+    /// </summary>
+    private static async Task<IResult> MusicXmlAsync(
+        [FromForm] string? song,
+        IFormFile? file,
+        [FromForm] string? options,
+        [FromForm] string? name,
+        SongLibrary library,
+        IScoreConverter converter,
+        IMusicXmlWriter writer,
+        CancellationToken cancellationToken)
+    {
+        if (ParseOptions(options) is not { } parsed)
+        {
+            return BadRequest("Invalid options", "Form field 'options' is not valid ConversionOptions JSON.");
+        }
+        var source = OpenScore(song, file, library);
+        if (source.Problem is not null)
+        {
+            return source.Problem;
+        }
+        var fallbackName = source.Directory is { } directory
+            ? $"{LibraryEndpoints.FileName(library.TitleOf(source.Run!, directory), source.Run!)}-{source.Song}"
+            : Path.GetFileNameWithoutExtension(file!.FileName);
+        var fileName = PackageName(name, fallbackName);
+        ConversionResult result;
+        await using (var score = source.Score!)
+        {
+            result = await converter.ConvertAsync(score, parsed, cancellationToken);
+        }
+        if (!result.Success)
+        {
+            return Results.Json(result, YueToLogicJsonContext.Default.ConversionResult, statusCode: StatusCodes.Status422UnprocessableEntity);
+        }
+        // The song's title, since YuE2's scores leave T: empty.
+        var title = source.Directory is { } songDirectory ? library.TitleOf(source.Run!, songDirectory) : fileName;
+        var xml = writer.Write(result.Score!, new MusicXmlOptions { IncludeChordTrack = parsed.IncludeChordTrack }, title);
+        return Results.File(xml, "application/vnd.recordare.musicxml+xml", $"{fileName}.musicxml");
     }
 
     /// <summary>The Logic page's export, with its options, the instruments the tracks play and a name of its choosing.</summary>

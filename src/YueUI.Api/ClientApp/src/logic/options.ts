@@ -212,3 +212,35 @@ export function saveRoutings(ids: string[], routings: Routing[]): void {
     // Remembering the routing is a convenience only.
   }
 }
+
+const recordingKey = 'yue-ui.logic.recording'
+
+/** Whether the preview shows and plays the song's recording, and how loud; per browser, like the routing. */
+export interface RecordingSettings {
+  show: boolean
+  /** Linear gain, 0 to 1. */
+  volume: number
+}
+
+export function loadRecordingSettings(): RecordingSettings {
+  try {
+    const saved = JSON.parse(localStorage.getItem(recordingKey) ?? 'null') as Partial<RecordingSettings> | null
+    if (saved) {
+      return {
+        show: saved.show !== false,
+        volume: typeof saved.volume === 'number' ? Math.min(1, Math.max(0, saved.volume)) : 0.8,
+      }
+    }
+  } catch {
+    // Unavailable or corrupt storage: start from the defaults.
+  }
+  return { show: true, volume: 0.8 }
+}
+
+export function saveRecordingSettings(settings: RecordingSettings): void {
+  try {
+    localStorage.setItem(recordingKey, JSON.stringify(settings))
+  } catch {
+    // Remembering it is a convenience only.
+  }
+}

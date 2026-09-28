@@ -4,6 +4,7 @@ using YueToLogic.Core.Arrangement;
 using YueToLogic.Core.Conversion;
 using YueToLogic.Core.Logic;
 using YueToLogic.Core.Midi;
+using YueToLogic.Core.MusicXml;
 
 // Placed in the DI namespace by convention so that AddYueToLogic() is found without an extra using.
 namespace Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,7 @@ public static class YueToLogicServiceCollectionExtensions
         services.TryAddSingleton<ILogicProjectWriter>(_ => new LogicProjectWriter());
         services.TryAddSingleton<IAbcScoreWriter, AbcScoreWriter>();
         services.TryAddSingleton<IMidiToAbcConverter, MidiToAbcConverter>();
+        services.TryAddSingleton<IMusicXmlWriter, MusicXmlWriter>();
         return services;
     }
 }
