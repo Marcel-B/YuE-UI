@@ -20,6 +20,7 @@ import { setRatings } from './ratings'
 import { shareState } from './share'
 import { checkForUpdate, reload, standalone, updateAvailable } from './update'
 import { visuals } from './spectrum'
+import QueueOverview from './components/QueueOverview.vue'
 import { navigate, view, type View } from './view'
 import type {
   LogEntry,
@@ -205,6 +206,7 @@ onBeforeUnmount(unsubscribe)
 
 const pages: { view: View; label: MessageKey; icon: string }[] = [
   { view: 'create', label: 'menuCreate', icon: 'pi pi-sparkles' },
+  { view: 'queue', label: 'menuQueue', icon: 'pi pi-hourglass' },
   { view: 'transcribe', label: 'menuTranscribe', icon: 'pi pi-microphone' },
   { view: 'songs', label: 'menuSongs', icon: 'pi pi-list' },
   { view: 'playlist', label: 'menuPlaylist', icon: 'pi pi-play-circle' },
@@ -214,16 +216,24 @@ const pages: { view: View; label: MessageKey; icon: string }[] = [
 ]
 
 /**
- * The badge counts what the page holds that is worth a look: songs and transcriptions in the works or waiting, songs
- * in the playlist.
+ * Everything the queue page shows as in the works or waiting: songs, queued jobs, voice versions, stems and the speech
+ * lab's takes.
  */
-const badges = computed<Partial<Record<View, number>>>(() => ({
-  create:
+const queueCount = computed(
+  () =>
     songs.value.filter((s) => !s.finished).length +
     jobs.value.length +
     versions.value.filter((v) => !v.finished).length +
     stemSets.value.filter((s) => !s.finished).length +
     speechTakes.value.filter((take) => !take.finished).length,
+)
+
+/**
+ * The badge counts what the page holds that is worth a look: songs and transcriptions in the works or waiting, songs
+ * in the playlist.
+ */
+const badges = computed<Partial<Record<View, number>>>(() => ({
+  queue: queueCount.value,
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
   playlist: playlistIds.value.length,
   voices: versions.value.filter((v) => !v.finished).length + stemSets.value.filter((s) => !s.finished).length,
@@ -425,6 +435,23 @@ async function useAsNewSong(songId: string): Promise<void> {
     </template>
     <template #end>
       <div class="flex items-center gap-2">
+        <!--
+          The queue concerns every page (songs, drafts, versions, stems), so what is in the works shows here too: on a
+          phone the menu's badges hide behind the menu button.
+        -->
+        <Button
+          v-if="queueCount > 0 && view !== 'queue'"
+          as="a"
+          href="#/queue"
+          icon="pi pi-hourglass"
+          :label="String(queueCount)"
+          severity="secondary"
+          text
+          size="small"
+          :aria-label="t('queueActive', { n: queueCount })"
+          v-tooltip.bottom="t('queueActive', { n: queueCount })"
+          @click.prevent="navigate('queue')"
+        />
         <Tag
           :value="workerLabel(worker.status, worker.busy)"
           :severity="workerSeverity"
@@ -463,7 +490,7 @@ async function useAsNewSong(songId: string): Promise<void> {
   <!--
     v-show rather than v-if: a page keeps what was typed or uploaded on it while another one is open.
     On wide screens the song's fields are the left column; the right one holds the advanced parameters, collapsed since
-    a normal song needs none of them, and the queue below. On a phone everything is one column in that order.
+    a normal song needs none of them, and a line with the models below. On a phone everything is one column in that order.
   -->
   <main v-show="view === 'create'" class="grid gap-4 grid-cols-1 md:grid-cols-2 items-start">
     <Card>
@@ -499,38 +526,58 @@ async function useAsNewSong(songId: string): Promise<void> {
         @error="show($event, true)"
       />
 
-      <Card>
-        <template #title>
-          <div class="flex flex-wrap justify-between">
-            <h2>{{ t('queue') }}</h2>
-            <Button
-              icon="pi pi-stop-filled"
-              text
-              rounded
-              v-if="worker.busy"
-              @click="queueList?.run(queueList?.stopAll)"
-            />
-          </div>
-        </template>
-        <template #content>
-          <QueueList
-            ref="queueList"
-            :songs="queue"
-            :jobs="jobs"
-            :listed="listedIds"
-            :worker="worker"
-            :lyrics-draft="lyricsDraft"
-            :versions="versions"
-            :stems="stemSets"
-            :bundle-window-seconds="bundleWindowSeconds"
-            :takes="speechTakes"
-            :log="log"
-            @hide-finished="hideFinished"
-            @error="show($event, true)"
-          />
-        </template>
-      </Card>
+      <!-- The whole queue has a page of its own; here only which model holds the memory, after a song was sent. -->
+      <a
+        v-if="queueCount > 0"
+        href="#/queue"
+        class="block text-color no-underline"
+        :title="t('queueActive', { n: queueCount })"
+        @click.prevent="navigate('queue')"
+      >
+        <QueueOverview
+          :songs="songs"
+          :jobs="jobs"
+          :worker="worker"
+          :lyrics-draft="lyricsDraft"
+          :versions="[...versions, ...stemSets]"
+          :takes="speechTakes"
+        />
+      </a>
     </div>
+  </main>
+
+  <main v-show="view === 'queue'">
+    <Card>
+      <template #title>
+        <div class="flex flex-wrap justify-between">
+          <h2>{{ t('queue') }}</h2>
+          <Button
+            icon="pi pi-stop-filled"
+            text
+            rounded
+            v-if="worker.busy"
+            @click="queueList?.run(queueList?.stopAll)"
+          />
+        </div>
+      </template>
+      <template #content>
+        <QueueList
+          ref="queueList"
+          :songs="queue"
+          :jobs="jobs"
+          :listed="listedIds"
+          :worker="worker"
+          :lyrics-draft="lyricsDraft"
+          :versions="versions"
+          :stems="stemSets"
+          :bundle-window-seconds="bundleWindowSeconds"
+          :takes="speechTakes"
+          :log="log"
+          @hide-finished="hideFinished"
+          @error="show($event, true)"
+        />
+      </template>
+    </Card>
   </main>
 
   <main v-show="view === 'transcribe'">
