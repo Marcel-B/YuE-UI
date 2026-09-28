@@ -197,7 +197,7 @@ const messages = {
     abcNeedsPlanning: 'Eine eigene Partitur braucht eine Planung („Melodie und Akkorde“ oder „Nur Melodie“).',
     generate: 'Erzeugen',
     generating: 'Wird gesendet …',
-    queued: 'In der Warteschlange. Der Fortschritt steht unten.',
+    queued: 'In der Warteschlange. Der Fortschritt steht auf der Seite „Warteschlange“.',
     waiting: 'Wartet in der Warteschlange, bis der Speicher frei ist.',
     resetForm: 'Leeren',
 
@@ -381,6 +381,8 @@ const messages = {
     menuVoices: 'Stimmen',
     menuLogic: 'Logic',
     menuLab: 'Sprachlabor',
+    menuQueue: 'Warteschlange',
+    queueActive: '{n} in Arbeit oder wartend – zur Warteschlange',
     labIntro:
       'Hier lässt sich ausprobieren, welches lokale Sprachmodell eine Stimme natürlich klingen lässt, etwa für einen Podcast. Jedes gewählte Modell spricht den Text nacheinander, auf Wunsch mit einer hier aufgenommenen Stimme. YuE2, das Textmodell und Stimmumwandlungen warten so lange.',
     labNotInstalled: 'Die Sprachmodelle sind noch nicht eingerichtet. Einmal auf dem Mac im YuE-UI-Ordner ausführen:',
@@ -758,7 +760,7 @@ const messages = {
     abcNeedsPlanning: 'Your own score needs planning (“Melody and chords” or “Melody only”).',
     generate: 'Generate',
     generating: 'Sending …',
-    queued: 'Queued. Progress is shown below.',
+    queued: 'Queued. Progress is shown on the Queue page.',
     waiting: 'Waiting in the queue until the memory is free.',
     resetForm: 'Clear',
 
@@ -941,6 +943,8 @@ const messages = {
     menuVoices: 'Voices',
     menuLogic: 'Logic',
     menuLab: 'Speech lab',
+    menuQueue: 'Queue',
+    queueActive: '{n} in the works or waiting – open the queue',
     labIntro:
       'Try out which local speech model makes a voice sound natural, for a podcast for instance. Each chosen model speaks the text in turn, with a voice recorded here if you like. YuE2, the lyrics model and voice conversions wait meanwhile.',
     labNotInstalled: 'The speech models are not set up yet. Run once on the Mac, in the YuE UI folder:',

@@ -43,7 +43,7 @@ Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ 
 
 ## Seiten, Player und Playlists
 
-Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter, Warteschlange), **Transkription** (SheetSage2), **Titel** (die Bibliothek), **Playlist**, **Logic** (siehe unten), **Stimmen** (nur mit ChangeMyVoice oder StemMyWav, siehe unten) und **Sprachlabor** (siehe unten); auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
+Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter), **Warteschlange** (was gerade rechnet und was wartet, mit Protokoll), **Transkription** (SheetSage2), **Titel** (die Bibliothek), **Playlist**, **Logic** (siehe unten), **Stimmen** (nur mit ChangeMyVoice oder StemMyWav, siehe unten) und **Sprachlabor** (siehe unten); auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also. Solange etwas rechnet oder wartet, steht neben dem Worker-Status eine Sanduhr mit der Anzahl, auch auf dem Handy; sie führt zur Warteschlange. Auf **Erstellen** zeigt dann eine Zeile, welches Modell gerade den Speicher hat.
 
 In der Warteschlange zeigt jeder Song seine Schritte als waagerechte Zeitleiste: Warten, Partitur, Tokens, Synthese und Audio, mit der Dauer jedes erledigten Schritts. Der Kreis des laufenden Schritts füllt sich mit dessen Fortschritt, darunter steht, was der Worker gerade meldet. Ein neu gerenderter Entwurf beginnt gleich bei der Synthese. Fertige Songs klappen auf eine Zeile mit der Gesamtdauer zusammen; **Schritte** öffnet die Zeitleiste wieder.
 
