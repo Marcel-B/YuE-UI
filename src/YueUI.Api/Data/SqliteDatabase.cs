@@ -22,6 +22,7 @@ namespace YueUI.Api.Data;
 /// Version 8: the Logic page's browser synthesizer: the sound each track plays in the preview and named sounds to reuse
 /// (<see cref="SqliteSynthStore"/>).
 /// Version 9: the preview's mixer (volume and pan per track, master), one row (<see cref="SqliteSynthStore"/>).
+/// Version 10: the speech lab's recorded voices and takes (<see cref="SqliteSpeechStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -256,6 +257,40 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                     );
                     PRAGMA user_version = 9;
+                    """);
+            }
+            if (current < 10)
+            {
+                // Takes keep the voice's label rather than a foreign key: a take stays worth hearing after its
+                // recording is deleted.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE speech_voices (
+                        id TEXT PRIMARY KEY,
+                        label TEXT NOT NULL,
+                        transcript TEXT NOT NULL,
+                        seconds REAL NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE speech_takes (
+                        id TEXT PRIMARY KEY,
+                        model_id TEXT NOT NULL,
+                        model_label TEXT NOT NULL,
+                        text TEXT NOT NULL,
+                        voice_id TEXT,
+                        voice_label TEXT,
+                        stage TEXT NOT NULL,
+                        message TEXT,
+                        seconds REAL,
+                        load_seconds REAL,
+                        speak_seconds REAL,
+                        peak_memory_gb REAL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 10;
                     """);
             }
             _ready = true;

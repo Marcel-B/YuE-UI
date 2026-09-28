@@ -43,7 +43,7 @@ Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ 
 
 ## Seiten, Player und Playlists
 
-Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter, Warteschlange), **Transkription** (SheetSage2), **Titel** (die Bibliothek), **Playlist**, **Logic** (siehe unten) und **Stimmen** (nur mit ChangeMyVoice, siehe unten); auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
+Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter, Warteschlange), **Transkription** (SheetSage2), **Titel** (die Bibliothek), **Playlist**, **Logic** (siehe unten), **Stimmen** (nur mit ChangeMyVoice, siehe unten) und **Sprachlabor** (siehe unten); auf dem Handy steckt sie hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also.
 
 In der Warteschlange zeigt jeder Song seine Schritte als waagerechte Zeitleiste: Warten, Partitur, Tokens, Synthese und Audio, mit der Dauer jedes erledigten Schritts. Der Kreis des laufenden Schritts füllt sich mit dessen Fortschritt, darunter steht, was der Worker gerade meldet. Ein neu gerenderter Entwurf beginnt gleich bei der Synthese. Fertige Songs klappen auf eine Zeile mit der Gesamtdauer zusammen; **Schritte** öffnet die Zeitleiste wieder.
 
@@ -145,6 +145,27 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 
 **Einrichtung.** ChangeMyVoice braucht einen eigenen Schlüssel für YuE UI (`scripts/neuer-zugang.sh` im ChangeMyVoice-Repository) und muss Anfragen von der Adresse zulassen, von der YuE UI kommt (bei `Voice:BaseUrl` über die Tailscale-Adresse des Macs ist es diese). Den Schlüssel liest YuE UI aus `Voice:ApiKey` oder einer Datei (`Voice:ApiKeyFile`). Der Schlüssel für StemMyWav liegt schon in `~/.config/stemmywav/mac-api-key`, dort sucht YuE UI ihn von selbst. Die Tonlage braucht ChangeMyVoice mit Halbton-Versatz (`setup-inference.sh --with-f0`). Ohne `Voice:BaseUrl` gibt es weder die Seite noch den Knopf; ohne StemMyWav nur die Seite.
 
+## Sprachlabor
+
+YuE2 kann nur singen. Das **Sprachlabor** probiert aus, welches lokale Sprachmodell (Text-to-Speech über [mlx-audio](https://github.com/Blaizzy/mlx-audio)) einen Text natürlich spricht, etwa für einen Podcast:
+
+1. Unter **Stimme** einen Satz vorlesen und aufnehmen (oder eine Datei wählen) und speichern. Der Wortlaut steht im Feld darüber, denn mehrere Modelle brauchen ihn. Der Server schneidet die Stille davor und danach ab und behält höchstens 30 Sekunden; 5 bis 15 sind am besten.
+2. Einen Text eingeben, ein oder mehrere Modelle ankreuzen und **Sprechen**. Jedes Modell spricht den Text nacheinander mit der gewählten Stimme oder, mit **Stimme des Modells**, mit einer eigenen.
+3. Die Ergebnisse stehen darunter zum Anhören und Herunterladen (WAV), mit Ladezeit, Sprechzeit und Speicherbedarf zum Vergleichen.
+
+Angeboten werden Chatterbox Multilingual v3 (MIT), Qwen3-TTS 1.7B (Apache 2.0), Higgs Audio v2 (Apache 2.0), Higgs Audio v3 (nur für Forschung und nicht-kommerzielle Nutzung; Podcasts erlaubt, wenn Boson AI genannt wird) und MOSS-TTS Local v1.5 (Apache 2.0). Alle können Deutsch und klonen Stimmen. Die Liste lässt sich unter `Speech:Models` ersetzen (je Modell `id`, `label`, `repo`, `langCode`, `options` usw., siehe `Speech/SpeechModels.cs`). Keins davon ist bisher auf dem Mac gehört worden.
+
+Ein Modell wird für jedes Ergebnis geladen und danach wieder freigegeben. Es wartet wie eine Fassung, bis YuE2, das Textmodell und Stimmumwandlungen den Speicher freigeben, und so lange warten diese. Beim ersten Mal lädt sich ein Modell herunter (3 bis 9 GB), das dauert.
+
+**Einrichtung.** Das Labor braucht eine eigene Python-Umgebung mit mlx-audio, getrennt von der von YuE Studio. Einmal auf dem Mac im Repository ausführen, nachdem `deploy/install.sh` gelaufen ist:
+
+```sh
+deploy/install-speech.sh          # Umgebung anlegen bzw. mlx-audio aktualisieren
+deploy/install-speech.sh --test   # danach jedes Modell einen Testsatz sprechen lassen; lädt alle herunter (etwa 28 GB)
+```
+
+Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/` (`env/`, `models/`), Aufnahmen und Ergebnisse daneben in `speech/voices/` und `speech/takes/`. Das Skript nimmt `uv`, wenn es installiert ist, sonst ein Python ab 3.10 (das von macOS ist 3.9, dann `brew install python@3.12`). Für die Aufnahmen braucht der Server `ffmpeg`.
+
 ## Konfiguration
 
 `appsettings.json` bzw. Umgebungsvariablen:
@@ -170,6 +191,10 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `Voice:StemsApiKey` (`Voice__StemsApiKey`) | – | Schlüssel für StemMyWav; ohne ihn gilt `Voice:StemsApiKeyFile` |
 | `Voice:StemsApiKeyFile` (`Voice__StemsApiKeyFile`) | `~/.config/stemmywav/mac-api-key` | Datei mit dem Schlüssel für StemMyWav |
 | `Voice:StemModel` (`Voice__StemModel`) | `mel-roformer-kim-vocals` | Trennmodell von StemMyWav |
+| `Speech:Root` (`Speech__Root`) | `~/Library/Application Support/YuE UI/speech` | Ordner des Sprachlabors (Python-Umgebung und Modelle) |
+| `Speech:Python` (`Speech__Python`) | `<Root>/env/bin/python` | Python mit mlx-audio |
+| `Speech:ModelCache` (`Speech__ModelCache`) | `<Root>/models` | Hugging-Face-Cache der Sprachmodelle (`HF_HOME`) |
+| `Speech:Timeout` (`Speech__Timeout`) | `01:00:00` | so lange darf ein Ergebnis samt erstem Download dauern |
 | `Push:DataPath` (`Push__DataPath`) | `~/Library/Application Support/YuE UI/push.json` | VAPID-Schlüssel und Abonnements für Benachrichtigungen |
 | `Data:Path` (`Data__Path`) | `~/Library/Application Support/YuE UI/yueui.db` | SQLite-Datenbank von YuE UI (Playlists, geänderte Titel, Bewertungen) |
 | `Push:Subject` (`Push__Subject`) | `https://github.com/Marcel-B/YuE-UI` | Kontaktadresse (`mailto:` oder `https:`) für die Push-Dienste; Apple lehnt Adressen wie `mailto:ich@localhost` ab |
@@ -179,7 +204,7 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | Methode | Pfad | |
 |---|---|---|
 | `GET` | `/api/status` | Worker-Zustand, Songs in Arbeit, Protokoll |
-| `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `transcription`, `lyrics`, `version`, `ping`) |
+| `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `transcription`, `lyrics`, `version`, `speech`, `queue`, `ping`) |
 | `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–15000, abc?, fullSteps?: 1–64, abcSampling?, semanticSampling?, voice? }`; `voice` ist `{ voiceId, semiToneShift?, strength?, diffusionSteps?, keepReverb? }` wie bei den Fassungen und singt jeden fertigen Song danach mit dieser Stimme (`400` für eine unbekannte Stimme, `501` ohne Einrichtung); `abc` braucht `cot` "full" oder "melody", Sampling ist `{ temperature?, topP?, topK?, repetitionPenalty?, penaltyWindow? }`, über 9000 Tokens, `fullSteps` und Sampling nur mit der Worker-Erweiterung; antwortet `202`, ohne Inhalt, wenn der Lauf an den Worker ging, sonst mit dem wartenden Auftrag `{ id, kind, title, createdAt, songId, batch, quality, revision, voiceLabel }` |
 | `POST` | `/api/songs/{run}/{song}/render` | Song aus seinen Tokens neu synthetisieren, z. B. einen Entwurf in voller Qualität; `202` wie bei `generate` |
 | `GET` | `/api/queue` | wartende Aufträge in Reihenfolge (auch im Snapshot und als `queue`-Event) |
@@ -228,6 +253,12 @@ Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für Y
 | `POST` | `/api/songs/{run}/{song}/versions` | Song mit einer Stimme neu singen: `{ voiceId, semiToneShift?: -24–24, strength?: 0–1, diffusionSteps?: 10–100, keepReverb? }`; antwortet `202`, der Fortschritt kommt als `version`-Event (`queued`, `separating`, `converting`, `mixing`, dann `done` oder `failed`); `400` für eine unbekannte Stimme, `501` ohne Einrichtung |
 | `GET` | `/api/songs/{run}/{song}/versions/{id}/audio` | fertige Fassung als FLAC (Range-fähig; `?download=true` als Download) |
 | `DELETE` | `/api/songs/{run}/{song}/versions/{id}` | Fassung abbrechen oder löschen |
+| `GET` | `/api/speech` | Sprachlabor: `{ installed, python, ffmpegInstalled, models, voices, takes }` (Modelle mit `downloaded`, Ergebnisse neueste zuerst) |
+| `POST` | `/api/speech/voices` | Stimme aufnehmen: Formular mit `label`, `transcript` (Wortlaut) und `file` (jedes Format, das ffmpeg liest, bis 50 MB); `400` bei weniger als 2 Sekunden Sprache |
+| `GET` / `DELETE` | `/api/speech/voices/{id}[/audio]` | Aufnahme als WAV (24 kHz mono) bzw. löschen |
+| `POST` | `/api/speech/takes` | `{ text, voiceId?, models }`: ein Ergebnis je Modell, antwortet `202` mit ihnen; der Fortschritt kommt als `speech`-Event (`queued`, `loading`, `speaking`, dann `done` oder `failed` mit `message`); `501` ohne mlx-audio |
+| `GET` | `/api/speech/takes/{id}/audio` | fertiges Ergebnis als WAV (`?download=true` als Download) |
+| `DELETE` | `/api/speech/takes/{id}` | Ergebnis abbrechen oder löschen |
 | `GET` | `/api/playlists` | `[{ id, name, songIds }]`: alle Playlists, älteste zuerst, Songs in Reihenfolge (`run/songN`), gelöschte weggelassen |
 | `POST` | `/api/playlists` | `{ name }`: neue, leere Playlist (`201`) |
 | `PUT` | `/api/playlists/{id}/name` | `{ name }`: umbenennen (1 bis 100 Zeichen) |

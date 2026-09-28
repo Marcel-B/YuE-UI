@@ -17,7 +17,7 @@ namespace YueUI.Api.Voices;
 /// singer in another song. Converting afterwards is what makes a voice recognizable across songs.
 /// The Mac has 24 GB, and YuE2, a separation model and Seed-VC do not fit beside each other, so this works like the
 /// lyrics writer: a version waits while songs are generated or lyrics written, an idle YuE worker is shut down
-/// first, and while <see cref="IsConverting"/> no song or draft starts. Queued versions survive a restart; one that
+/// first, and while <see cref="IsConverting"/> no song or draft starts. A take of the speech lab is waited for the same way. Queued versions survive a restart; one that
 /// was halfway is marked failed, since its intermediate files are gone.
 /// </remarks>
 public sealed class VoiceConverter(
@@ -25,6 +25,7 @@ public sealed class VoiceConverter(
     SongLibrary library,
     WorkerHost host,
     LyricsWriter lyrics,
+    Speech.SpeechActivity speech,
     VoiceClient voices,
     StemClient stems,
     IAudioMixer mixer,
@@ -244,7 +245,7 @@ public sealed class VoiceConverter(
             await Task.Delay(options.Value.WaitInterval, time, cancellationToken);
         }
 
-        bool Occupied() => host.Snapshot().Worker.Busy || lyrics.IsWriting;
+        bool Occupied() => host.Snapshot().Worker.Busy || lyrics.IsWriting || speech.IsSpeaking;
     }
 
     /// <summary>ChangeMyVoice says how long it expects; the fraction is the time since the start against that.</summary>

@@ -26,6 +26,7 @@ export function holderOf(worker: WorkerInfo, lyrics: LyricsState | null, version
  * Why a job still waits, in the words of the queue's own rules (JobQueue.TryStartAsync, MayPassLocked,
  * VersionOverdue): the model that holds the memory, the bundling window, or the job before it.
  * @param windowSeconds Queue:BundleWindow; null for a server from before it was sent.
+ * @param speaking A take of the speech lab holds the memory; everything waits for it (Speech/SpeechLab.cs).
  */
 export function waitReason(
   jobs: QueuedJob[],
@@ -34,8 +35,12 @@ export function waitReason(
   versions: VersionState[],
   windowSeconds: number | null,
   now: number,
+  speaking = false,
 ): string {
   const job = jobs[index]!
+  if (speaking) {
+    return t('waitSpeech')
+  }
   const left = (since: string) => (windowSeconds ?? 0) - (now - new Date(since).getTime()) / 1000
 
   if (modelOf(job) === 'lyrics') {

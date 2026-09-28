@@ -18,6 +18,7 @@ import menubar from '@primeuix/themes/aura/menubar'
 import message from '@primeuix/themes/aura/message'
 import paginator from '@primeuix/themes/aura/paginator'
 import progressbar from '@primeuix/themes/aura/progressbar'
+import radiobutton from '@primeuix/themes/aura/radiobutton'
 import panel from '@primeuix/themes/aura/panel'
 import rating from '@primeuix/themes/aura/rating'
 import ripple from '@primeuix/themes/aura/ripple'
@@ -62,6 +63,7 @@ export default {
     message,
     paginator,
     progressbar,
+    radiobutton,
     panel,
     rating,
     ripple,

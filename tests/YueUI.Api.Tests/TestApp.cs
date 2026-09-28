@@ -12,6 +12,7 @@ using YueUI.Api.Data;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
 using YueUI.Api.Share;
+using YueUI.Api.Speech;
 using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
@@ -59,6 +60,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public FakeStems Stems { get; } = new();
 
     public FakeMixer Mixer { get; } = new();
+
+    public FakeSpeech Speech { get; } = new();
 
     /// <summary>Where the fake ChangeMyVoice is expected; set to null before the first request to switch voices off.</summary>
     public string? VoiceBaseUrl { get; set; } = "http://voice.test";
@@ -149,6 +152,13 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddHttpClient(VoiceClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeVoiceService.Handler(Voice));
             services.AddHttpClient(StemClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeStems.Handler(Stems));
             services.AddSingleton<IAudioMixer>(Mixer);
+
+            services.AddSingleton<ISpeechEngine>(Speech);
+            services.Configure<SpeechOptions>(options =>
+            {
+                options.Root = Path.Combine(Root, "speech");
+                options.WaitInterval = TimeSpan.FromMilliseconds(10);
+            });
 
             services.Configure<Queue.QueueOptions>(options => options.BundleWindow = BundleWindow);
             services.Configure<PushOptions>(options => options.DataPath = Path.Combine(Root, "push.json"));
@@ -604,5 +614,85 @@ public sealed class FakeMixer : IAudioMixer
         };
         File.WriteAllBytes(output, Flac);
         return Task.CompletedTask;
+    }
+}
+
+/// <summary>mlx-audio and ffmpeg: records what it was asked to speak and writes a WAV of the length a test sets.</summary>
+public sealed class FakeSpeech : ISpeechEngine
+{
+    public bool Installed { get; set; } = true;
+
+    public bool CanPrepareVoices { get; set; } = true;
+
+    /// <summary>How long a prepared recording is, after the silence is cut.</summary>
+    public double VoiceSeconds { get; set; } = 8;
+
+    /// <summary>Held open to keep a take speaking; completed by default.</summary>
+    public TaskCompletionSource Gate { get; set; } = CompletedGate();
+
+    /// <summary>Set to make the next takes fail with it.</summary>
+    public string? Failure { get; set; }
+
+    public List<SpeechJob> Jobs { get; } = [];
+
+    /// <summary>The first four bytes of each recording posted, in hex.</summary>
+    public List<string> Recordings { get; } = [];
+
+    public bool Downloaded(SpeechModel model) => model.Id == "chatterbox";
+
+    public async Task PrepareVoiceAsync(string input, string output, CancellationToken cancellationToken)
+    {
+        lock (Recordings)
+        {
+            Recordings.Add(Convert.ToHexString(File.ReadAllBytes(input), 0, 4));
+        }
+        await File.WriteAllBytesAsync(output, Wav(VoiceSeconds), cancellationToken);
+    }
+
+    public async Task<SpeechResult> SpeakAsync(SpeechJob job, Action<string> stage, CancellationToken cancellationToken)
+    {
+        lock (Jobs)
+        {
+            Jobs.Add(job);
+        }
+        stage("loading");
+        stage("speaking");
+        await Gate.Task.WaitAsync(cancellationToken);
+        if (Failure is { } failure)
+        {
+            throw new SpeechException(failure);
+        }
+        await File.WriteAllBytesAsync(job.Output, Wav(2.5), cancellationToken);
+        return new SpeechResult(12.5, 3.25, 4.8);
+    }
+
+    /// <summary>16-bit mono PCM at 24 kHz, as ffmpeg writes a recording; silent.</summary>
+    public static byte[] Wav(double seconds)
+    {
+        const int rate = 24000;
+        var data = (int)(seconds * rate) * 2;
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write("RIFF"u8);
+        writer.Write(36 + data);
+        writer.Write("WAVEfmt "u8);
+        writer.Write(16);
+        writer.Write((short)1);
+        writer.Write((short)1);
+        writer.Write(rate);
+        writer.Write(rate * 2);
+        writer.Write((short)2);
+        writer.Write((short)16);
+        writer.Write("data"u8);
+        writer.Write(data);
+        writer.Write(new byte[data]);
+        return stream.ToArray();
+    }
+
+    private static TaskCompletionSource CompletedGate()
+    {
+        var gate = new TaskCompletionSource();
+        gate.SetResult();
+        return gate;
     }
 }

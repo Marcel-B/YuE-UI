@@ -338,3 +338,65 @@ export interface VersionRequest {
   /** Mixes the original's reverb back in. */
   keepReverb: boolean
 }
+
+/** A text-to-speech model the speech lab offers (SpeechModelInfo in Speech/SpeechModels.cs). */
+export interface SpeechModelInfo {
+  id: string
+  label: string
+  /** The Hugging Face repository mlx-audio loads. */
+  repo: string
+  /** Roughly what the first take downloads. */
+  downloadGb: number
+  clones: boolean
+  license: string
+  note: string
+  /** Already in the model cache, so the first take does not download. */
+  downloaded: boolean
+}
+
+/** A recorded voice to clone (Speech/SpeechModels.cs). */
+export interface SpeechVoice {
+  id: string
+  label: string
+  /** What is said in the recording; several models need it. */
+  transcript: string
+  seconds: number
+  createdAt: string
+}
+
+export type SpeechStage = 'queued' | 'loading' | 'speaking' | 'done' | 'failed' | 'cancelled'
+
+/** One text spoken by one model; live changes arrive as `speech` events. */
+export interface SpeechTake {
+  id: string
+  modelId: string
+  modelLabel: string
+  text: string
+  voiceId: string | null
+  voiceLabel: string | null
+  stage: SpeechStage
+  message: string | null
+  /** How long the spoken audio is. */
+  seconds: number | null
+  /** Loading the model, including a first download. */
+  loadSeconds: number | null
+  speakSeconds: number | null
+  peakMemoryGb: number | null
+  createdAt: string
+  updatedAt: string
+  finished: boolean
+}
+
+/** Everything the lab page draws (SpeechInfo in Speech/SpeechModels.cs). */
+export interface SpeechInfo {
+  /** The Python environment with mlx-audio exists. */
+  installed: boolean
+  /** Where the server looks for it. */
+  python: string
+  /** Recordings need ffmpeg on the server. */
+  ffmpegInstalled: boolean
+  models: SpeechModelInfo[]
+  voices: SpeechVoice[]
+  /** Newest first. */
+  takes: SpeechTake[]
+}

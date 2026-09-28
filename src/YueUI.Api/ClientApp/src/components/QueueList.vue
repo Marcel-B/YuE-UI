@@ -19,6 +19,8 @@ const props = defineProps<{
   versions: VersionState[]
   /** Queue:BundleWindow; null for a server from before it was sent. */
   bundleWindowSeconds: number | null
+  /** A take of the speech lab holds the memory. */
+  speaking?: boolean
   log: LogEntry[]
   /** Songs the library lists; those have a place on the songs page to jump to. */
   listed: Set<string>
@@ -70,7 +72,7 @@ onBeforeUnmount(() => clearInterval(timer))
 const reasons = computed(() => {
   const holder = holderOf(props.worker, props.lyricsDraft, props.versions)
   return props.jobs.map((_, i) =>
-    waitReason(props.jobs, i, holder, props.versions, props.bundleWindowSeconds, now.value),
+    waitReason(props.jobs, i, holder, props.versions, props.bundleWindowSeconds, now.value, props.speaking),
   )
 })
 

@@ -87,7 +87,7 @@ public sealed partial class LyricsWriter(
     /// <param name="revision">Lyrics to change as instructed, instead of new ones.</param>
     /// <param name="id">The id the draft was promised under while it waited in the queue; a new one otherwise.</param>
     /// <param name="memoryTaken">
-    /// Whatever else holds the memory besides YuE2 (a voice conversion, which cannot be asked from here without a
+    /// Whatever else holds the memory besides YuE2 (a voice conversion or a speech take, which cannot be asked from here without a
     /// dependency cycle); checked once this draft has claimed it.
     /// </param>
     /// <exception cref="LyricsBusyException">Another draft is in progress, or YuE2 is generating.</exception>

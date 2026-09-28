@@ -291,6 +291,12 @@ public sealed class WorkerHost(
         Publish("version", version);
     }
 
+    /// <summary>
+    /// Sends a take of the speech lab (Speech/SpeechLab.cs) to the browsers. Not kept for the snapshot: the lab page
+    /// lists its takes itself and reads them again when the stream reopens.
+    /// </summary>
+    public void UpdateSpeech(Speech.SpeechTake take) => Publish("speech", take);
+
     /// <summary>Cancels every song. Does not start a worker just for that.</summary>
     public async Task StopAllAsync(CancellationToken cancellationToken)
     {

@@ -10,6 +10,9 @@ import type {
   RunInfo,
   SongRequest,
   SongState,
+  SpeechInfo,
+  SpeechTake,
+  SpeechVoice,
   StatusSnapshot,
   StorageInfo,
   TranscriptionList,
@@ -336,6 +339,47 @@ export function versionAudioUrl(songId: string, versionId: string, download = fa
   return `${apiBase}/api/songs/${songId}/versions/${versionId}/audio${download ? '?download=true' : ''}`
 }
 
+/** The speech lab's models, recorded voices and takes. */
+export async function getSpeech(): Promise<SpeechInfo> {
+  return (await send('/api/speech')).json() as Promise<SpeechInfo>
+}
+
+/** Stores a recording (any format the server's ffmpeg reads) as a voice to clone, with what is said in it. */
+export async function addSpeechVoice(
+  label: string,
+  transcript: string,
+  recording: Blob,
+  fileName: string,
+): Promise<SpeechVoice> {
+  const form = new FormData()
+  form.append('label', label)
+  form.append('transcript', transcript)
+  form.append('file', recording, fileName)
+  return (await send('/api/speech/voices', { method: 'POST', body: form })).json() as Promise<SpeechVoice>
+}
+
+export async function deleteSpeechVoice(id: string): Promise<void> {
+  await send(`/api/speech/voices/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function speechVoiceAudioUrl(id: string): string {
+  return `${apiBase}/api/speech/voices/${encodeURIComponent(id)}/audio`
+}
+
+/** One take per model, spoken one after the other; their progress arrives as `speech` events. */
+export async function speak(text: string, voiceId: string | null, models: string[]): Promise<SpeechTake[]> {
+  return (await send('/api/speech/takes', json('POST', { text, voiceId, models }))).json() as Promise<SpeechTake[]>
+}
+
+/** Stops a take that is being spoken, or removes a finished one with its audio. */
+export async function deleteSpeechTake(id: string): Promise<void> {
+  await send(`/api/speech/takes/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function speechTakeAudioUrl(id: string, download = false): string {
+  return `${apiBase}/api/speech/takes/${encodeURIComponent(id)}/audio${download ? '?download=true' : ''}`
+}
+
 export interface EventHandlers {
   snapshot(snapshot: StatusSnapshot): void
   song(song: SongState): void
@@ -346,6 +390,8 @@ export interface EventHandlers {
   transcription(transcription: TranscriptionState): void
   lyrics(lyrics: LyricsState): void
   version(version: VersionState): void
+  /** A take of the speech lab changed; a deleted one arrives as cancelled. */
+  speech(take: SpeechTake): void
   queue(queue: QueuedJob[]): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */
   connection(open: boolean): void
@@ -369,6 +415,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on<LyricsState>('lyrics', handlers.lyrics)
   on<QueuedJob[]>('queue', handlers.queue)
   on<VersionState>('version', handlers.version)
+  on<SpeechTake>('speech', handlers.speech)
   source.onerror = () => handlers.connection(false)
   return () => source.close()
 }
