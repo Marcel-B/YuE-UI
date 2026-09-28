@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 
 /**
  * A recording's waveform with the chosen part highlighted and the playback position as a line; a tap seeks there.
@@ -12,7 +12,12 @@ const props = defineProps<{
   start: number
   end: number
   position: number
+  /** Lower, for lists of several waveforms. */
+  compact?: boolean
 }>()
+
+/** Each instance clips with its own path; with a shared id every waveform would take the first one's part. */
+const clipId = `waveform-part-${useId()}`
 
 const emit = defineEmits<{ seek: [seconds: number] }>()
 
@@ -40,21 +45,30 @@ function seek(event: MouseEvent): void {
 
 <template>
   <svg
-    class="waveform block h-16 w-full cursor-pointer"
+    class="waveform block w-full cursor-pointer"
+    :class="compact ? 'h-10' : 'h-16'"
     :viewBox="`0 0 ${peaks.length} 100`"
     preserveAspectRatio="none"
     aria-hidden="true"
     @click="seek"
   >
     <defs>
-      <clipPath id="waveform-part">
+      <clipPath :id="clipId">
         <rect :x="x(start)" y="0" :width="Math.max(0, x(end) - x(start))" height="100" />
       </clipPath>
     </defs>
     <rect :x="x(start)" y="0" :width="Math.max(0, x(end) - x(start))" height="100" class="part" />
     <path :d="path" class="outside" />
-    <path :d="path" class="inside" clip-path="url(#waveform-part)" />
-    <line :x1="x(position)" :x2="x(position)" y1="0" y2="100" class="position" vector-effect="non-scaling-stroke" />
+    <path :d="path" class="inside" :clip-path="`url(#${clipId})`" />
+    <line
+      v-if="position > 0"
+      :x1="x(position)"
+      :x2="x(position)"
+      y1="0"
+      y2="100"
+      class="position"
+      vector-effect="non-scaling-stroke"
+    />
   </svg>
 </template>
 

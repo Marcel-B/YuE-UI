@@ -76,7 +76,8 @@ public sealed partial class SongLibrary(
     YuePaths paths,
     SqliteRunTitleStore titles,
     SqliteSongRatingStore ratings,
-    SqliteVersionStore versions)
+    SqliteVersionStore versions,
+    SqliteStemStore stems)
 {
     public string OutputDir => paths.OutputDir;
 
@@ -139,6 +140,7 @@ public sealed partial class SongLibrary(
         {
             ratings.Remove($"{run}/{song}");
             versions.RemoveSong($"{run}/{song}");
+            stems.RemoveSong($"{run}/{song}");
         });
         var runDirectory = new DirectoryInfo(Path.Combine(paths.OutputDir, run));
         if (!SongFolders(runDirectory).Any())
@@ -279,6 +281,7 @@ public sealed partial class SongLibrary(
         titles.Remove(run);
         ratings.RemoveRun(run);
         versions.RemoveRun(run);
+        stems.RemoveRun(run);
     });
 
     /// <summary>The files are gone already; a database that cannot be written only keeps a row nobody sees.</summary>

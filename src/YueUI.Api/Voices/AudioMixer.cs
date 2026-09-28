@@ -16,6 +16,9 @@ public interface IAudioMixer
 {
     /// <summary>Writes the mix as FLAC to <paramref name="output"/>.</summary>
     Task MixAsync(MixInput input, string output, CancellationToken cancellationToken);
+
+    /// <summary>Writes <paramref name="input"/> (a WAV) as FLAC to <paramref name="output"/>, keeping its sample rate.</summary>
+    Task EncodeFlacAsync(string input, string output, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -82,6 +85,16 @@ public sealed partial class FfmpegMixer(ILogger<FfmpegMixer> logger) : IAudioMix
             + $"{sources}amix=inputs={inputs}:normalize=0:duration=first,alimiter=limit=0.95:level=disabled[m]");
         arguments.AddRange(["-filter_complex", filter, "-map", "[m]", "-ar", "48000", "-sample_fmt", "s16", "-c:a", "flac", output]);
         await RunAsync(ffmpeg, arguments, cancellationToken);
+    }
+
+    /// <remarks>
+    /// Separation models write 32-bit float WAVs; FLAC has no float, and 24 bits keep far more than anyone hears while
+    /// the file shrinks to a third or less. That matters: the phone streams them over Tailscale.
+    /// </remarks>
+    public async Task EncodeFlacAsync(string input, string output, CancellationToken cancellationToken)
+    {
+        var ffmpeg = AacEncoder.FindFfmpeg() ?? throw new VoiceServiceException("ffmpeg is not installed.", System.Net.HttpStatusCode.NotImplemented);
+        await RunAsync(ffmpeg, ["-nostdin", "-loglevel", "error", "-y", "-i", input, "-map", "0:a", "-sample_fmt", "s32", "-bits_per_raw_sample", "24", "-c:a", "flac", output], cancellationToken);
     }
 
     /// <summary>ffmpeg's volumedetect in dBFS.</summary>

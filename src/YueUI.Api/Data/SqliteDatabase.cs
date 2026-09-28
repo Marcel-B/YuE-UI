@@ -22,6 +22,7 @@ namespace YueUI.Api.Data;
 /// Version 8: the Logic page's browser synthesizer: the sound each track plays in the preview and named sounds to reuse
 /// (<see cref="SqliteSynthStore"/>).
 /// Version 9: the preview's mixer (volume and pan per track, master), one row (<see cref="SqliteSynthStore"/>).
+/// Version 10: songs split into stems (<see cref="SqliteStemStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -256,6 +257,29 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
                     );
                     PRAGMA user_version = 9;
+                    """);
+            }
+            if (current < 10)
+            {
+                // The stems' names, lengths and waveforms as one JSON column: they are only ever read and written whole.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE song_stems (
+                        id TEXT PRIMARY KEY,
+                        song_id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        dereverb INTEGER NOT NULL,
+                        stage TEXT NOT NULL,
+                        message TEXT NULL,
+                        stems TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX song_stems_song ON song_stems (song_id);
+                    PRAGMA user_version = 10;
                     """);
             }
             _ready = true;
