@@ -193,6 +193,14 @@ export function audioUrl(songId: string, download = false): string {
   return `${apiBase}/api/songs/${songId}/audio${download ? '?download=true' : ''}`
 }
 
+/**
+ * What the player plays: a small AAC copy, since the Mac's home upload is too slow for the FLAC on the road. The
+ * FLAC (audioUrl) stays for downloads and the Logic page, whose waveform lines up with the notes.
+ */
+export function streamUrl(songId: string): string {
+  return `${apiBase}/api/songs/${songId}/stream`
+}
+
 export function scoreUrl(songId: string): string {
   return `${apiBase}/api/songs/${songId}/score`
 }
@@ -383,6 +391,11 @@ export async function deleteVersion(songId: string, versionId: string): Promise<
 
 export function versionAudioUrl(songId: string, versionId: string, download = false): string {
   return `${apiBase}/api/songs/${songId}/versions/${versionId}/audio${download ? '?download=true' : ''}`
+}
+
+/** The version's AAC copy for the player, as streamUrl for the song. */
+export function versionStreamUrl(songId: string, versionId: string): string {
+  return `${apiBase}/api/songs/${songId}/versions/${versionId}/stream`
 }
 
 /** The separation models StemMyWav offers, this server's default marked; at least that one. */

@@ -473,8 +473,14 @@ public sealed class FakeEncoder : IAudioEncoder
 
     public int? BitRate { get; private set; }
 
+    /// <summary>How often it encoded, to see a streaming copy made once.</summary>
+    public int Calls => _calls;
+
+    private int _calls;
+
     public Task<bool> EncodeAsync(string flac, string m4a, AudioFormat format, int bitRate, CancellationToken cancellationToken)
     {
+        Interlocked.Increment(ref _calls);
         Source = flac;
         Target = m4a;
         Format = format;

@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using YueUI.Api.Data;
 using YueUI.Api.Export;
+using YueUI.Api.Share;
 using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
@@ -81,7 +82,8 @@ public sealed partial class SongLibrary(
     SqliteSongRatingStore ratings,
     SqliteVersionStore versions,
     SqliteStemStore stems,
-    SqliteCoverStore covers)
+    SqliteCoverStore covers,
+    StreamCopies streams)
 {
     public string OutputDir => paths.OutputDir;
 
@@ -148,6 +150,7 @@ public sealed partial class SongLibrary(
             stems.RemoveSong($"{run}/{song}");
             covers.Remove($"{run}/{song}");
         });
+        streams.ForgetSong(run, song);
         var runDirectory = new DirectoryInfo(Path.Combine(paths.OutputDir, run));
         if (!SongFolders(runDirectory).Any())
         {
@@ -312,6 +315,7 @@ public sealed partial class SongLibrary(
         versions.RemoveRun(run);
         stems.RemoveRun(run);
         covers.RemoveRun(run);
+        streams.ForgetRun(run);
     });
 
     /// <summary>The files are gone already; a database that cannot be written only keeps a row nobody sees.</summary>

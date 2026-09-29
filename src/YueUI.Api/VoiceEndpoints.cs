@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using YueUI.Api.Data;
 using YueUI.Api.Library;
+using YueUI.Api.Share;
 using YueUI.Api.Voices;
 
 namespace YueUI.Api;
@@ -37,6 +38,8 @@ public static class VoiceEndpoints
         // Range requests, as for the song itself: the player seeks and starts before the whole FLAC is there.
         api.MapGet("/songs/{run}/{song}/versions/{id}/audio", (string run, string song, string id, bool? download, SqliteVersionStore store, SongLibrary library) =>
             VersionAudio(run, song, id, download == true, store, library));
+        // The player's copy, as for the song itself (LibraryEndpoints.StreamAsync).
+        api.MapGet("/songs/{run}/{song}/versions/{id}/stream", VersionStreamAsync);
         api.MapDelete("/songs/{run}/{song}/versions/{id}", (string run, string song, string id, SqliteVersionStore store, VoiceConverter converter) =>
         {
             if (store.Get(id) is not { } version || version.SongId != $"{run}/{song}")
@@ -139,6 +142,17 @@ public static class VoiceEndpoints
             var version = converter.Enqueue($"{run}/{song}", library.TitleOf(run, directory), voice, request);
             return Results.Accepted($"/api/songs/{run}/{song}/versions/{version.Id}/audio", version);
         });
+    }
+
+    private static async Task<IResult> VersionStreamAsync(string run, string song, string id, SqliteVersionStore store, StreamCopies streams, HttpContext context)
+    {
+        if (store.Get(id) is not { Stage: "done" } version || version.SongId != $"{run}/{song}" || !File.Exists(store.FilePath(id)))
+        {
+            return Results.NotFound();
+        }
+        return await streams.VersionAsync(id) is { } copy
+            ? LibraryEndpoints.StreamFile(context, copy, "audio/mp4")
+            : LibraryEndpoints.StreamFile(context, store.FilePath(id), "audio/flac");
     }
 
     private static IResult VersionAudio(string run, string song, string id, bool download, SqliteVersionStore store, SongLibrary library)
