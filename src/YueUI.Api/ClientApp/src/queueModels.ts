@@ -1,14 +1,20 @@
 import { formatDuration, t } from './i18n'
-import type { LyricsState, QueuedJob, SpeechTake, WorkerInfo } from './types'
+import type { LyricsState, QueuedJob, SpeechTake, TranscriptionState, WorkerInfo } from './types'
 
 /**
  * The large models that take turns in the memory (Queue/JobQueue.cs): YuE2 for songs and renders, the lyrics model in
- * LM Studio, separation plus Seed-VC for voice versions and stems, and the speech lab's text-to-speech models.
+ * LM Studio, separation plus Seed-VC for voice versions and stems, and the speech lab's text-to-speech models. A
+ * transcription is small and runs beside YuE2, but inside the worker, so the other three wait for it.
  */
-export type Model = 'yue' | 'lyrics' | 'voice' | 'speech'
+export type Model = 'yue' | 'lyrics' | 'voice' | 'speech' | 'transcription'
 
 export function modelOf(job: QueuedJob): Model {
-  return job.kind === 'lyrics' ? 'lyrics' : 'yue'
+  return job.kind === 'lyrics' ? 'lyrics' : job.kind === 'transcription' ? 'transcription' : 'yue'
+}
+
+/** SheetSage2 transcribes one recording at a time, in the worker. */
+export function transcribing(transcriptions: TranscriptionState[]): boolean {
+  return transcriptions.some((tr) => !tr.finished)
 }
 
 /**
@@ -32,6 +38,7 @@ export function holderOf(
   lyrics: LyricsState | null,
   versions: VoiceWork[],
   takes: SpeechTake[] = [],
+  transcriptions: TranscriptionState[] = [],
 ): Model | null {
   if (speaking(takes)) {
     return 'speech'
@@ -42,13 +49,18 @@ export function holderOf(
   if (versions.some((v) => !v.finished && v.stage !== 'queued')) {
     return 'voice'
   }
-  return worker.busy ? 'yue' : null
+  if (worker.busy) {
+    return 'yue'
+  }
+  return transcribing(transcriptions) ? 'transcription' : null
 }
 
 /**
  * Why a job still waits, in the words of the queue's own rules (JobQueue.TryStartAsync, MayPassLocked,
- * VersionOverdue): the model that holds the memory, the bundling window, or the job before it.
+ * VersionOverdue, TranscriptionMayGoLocked): the model that holds the memory, the bundling window, or the job before
+ * it. Transcriptions keep a lane of their own, so songs and drafts count their places without them.
  * @param windowSeconds Queue:BundleWindow; null for a server from before it was sent.
+ * @param transcriptionRuns A transcription is in the worker, which holds back drafts and the next transcription.
  */
 export function waitReason(
   jobs: QueuedJob[],
@@ -57,6 +69,7 @@ export function waitReason(
   versions: VoiceWork[],
   windowSeconds: number | null,
   now: number,
+  transcriptionRuns = false,
 ): string {
   const job = jobs[index]!
   if (holder === 'speech') {
@@ -64,11 +77,40 @@ export function waitReason(
     return t('waitSpeech')
   }
   const left = (since: string) => (windowSeconds ?? 0) - (now - new Date(since).getTime()) / 1000
+  const oldest = versions.filter((v) => v.stage === 'queued').sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
+  const versionFirst = oldest !== undefined && windowSeconds !== null && left(oldest.createdAt) <= 0
+
+  if (job.kind === 'transcription') {
+    if (holder === 'lyrics') {
+      return t('waitLyrics')
+    }
+    if (holder === 'voice') {
+      return t('waitVoice')
+    }
+    if (versionFirst) {
+      return t('waitVersionFirst')
+    }
+    if (transcriptionRuns) {
+      return t('waitTranscription')
+    }
+    const ahead = jobs.slice(0, index)
+    if (ahead.some((j) => j.kind === 'transcription')) {
+      return t('waitTurn')
+    }
+    // Like songs, it passes a draft only while YuE2 is loaded anyway (within the window, which is not checked here).
+    if (holder !== 'yue' && ahead.some((j) => j.kind === 'lyrics')) {
+      return t('waitBehindDraft')
+    }
+    return t('waitStarting')
+  }
+
+  const lane = jobs.filter((j) => j.kind !== 'transcription')
+  const place = lane.indexOf(job)
 
   if (modelOf(job) === 'lyrics') {
     if (holder === 'yue') {
       // Songs go ahead of a draft at the front while YuE2 is loaded anyway, until the draft has waited the window.
-      const rest = index === 0 ? left(job.createdAt) : 0
+      const rest = place === 0 ? left(job.createdAt) : 0
       return rest > 0 ? t('waitYueBundle', { time: formatDuration(rest) }) : t('waitYue')
     }
     if (holder === 'voice') {
@@ -77,7 +119,10 @@ export function waitReason(
     if (holder === 'lyrics') {
       return t('waitDraft')
     }
-    return index === 0 ? t('waitStarting') : t('waitTurn')
+    if (transcriptionRuns) {
+      return t('waitTranscription')
+    }
+    return place === 0 ? t('waitStarting') : t('waitTurn')
   }
 
   if (holder === 'lyrics') {
@@ -86,14 +131,13 @@ export function waitReason(
   if (holder === 'voice') {
     return t('waitVoice')
   }
-  const oldest = versions.filter((v) => v.stage === 'queued').sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
-  if (oldest && windowSeconds !== null && left(oldest.createdAt) <= 0) {
+  if (versionFirst) {
     return t('waitVersionFirst')
   }
-  if (index > 0 && modelOf(jobs[0]!) === 'lyrics') {
+  if (place > 0 && modelOf(lane[0]!) === 'lyrics') {
     return t('waitBehindDraft')
   }
-  return index === 0 ? t('waitStarting') : t('waitTurn')
+  return place === 0 ? t('waitStarting') : t('waitTurn')
 }
 
 /**
@@ -112,6 +156,8 @@ export function speechWaitReason(index: number, holder: Model | null): string {
       return t('waitLyrics')
     case 'voice':
       return t('waitVoice')
+    case 'transcription':
+      return t('waitTranscription')
     default:
       return t('waitStarting')
   }

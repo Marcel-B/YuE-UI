@@ -226,7 +226,7 @@ public sealed class SpeechLab(
             await Task.Delay(options.Value.WaitInterval, time, cancellationToken);
         }
 
-        bool Occupied() => host.Snapshot().Worker.Busy || lyrics.IsWriting || voices.IsConverting;
+        bool Occupied() => host.InUse || lyrics.IsWriting || voices.IsConverting;
     }
 
     /// <summary>Stores the change (a take deleted meanwhile stays deleted) and tells the browsers.</summary>

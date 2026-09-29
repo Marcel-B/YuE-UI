@@ -111,6 +111,34 @@ public sealed class WorkerHost(
     }
 
     /// <summary>
+    /// Songs or a transcription keep the worker: it must not be shut down to make room for another model. A
+    /// transcription holds little memory (SheetSage2 runs on the CPU), but it runs inside the worker's process and
+    /// would end with it. Unlike <see cref="IsBusy"/> this does not mean that YuE2 is loaded, so songs still go ahead.
+    /// </summary>
+    public bool InUse
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return BusyLocked() || TranscribingLocked();
+            }
+        }
+    }
+
+    /// <summary>A transcription is running, or about to be sent (see <see cref="TranscribeAsync"/>).</summary>
+    public bool IsTranscribing
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return TranscribingLocked();
+            }
+        }
+    }
+
+    /// <summary>
     /// Counts the worker as busy from now until the started event of the command about to be sent. Without it the
     /// lyrics writer or a voice conversion could see an idle worker in between, shut it down and lose the command.
     /// Announce before checking whether the memory is free, as they check the worker after claiming it.
@@ -173,16 +201,33 @@ public sealed class WorkerHost(
     /// Hands an uploaded recording to SheetSage2 through the worker, which runs one transcription at a time; its
     /// progress arrives as <c>transcription</c> events.
     /// </summary>
-    /// <returns>False when a transcription is already running.</returns>
-    public async Task<bool> TranscribeAsync(TranscriptionState transcription, string audioPath, bool offline, CancellationToken cancellationToken)
+    /// <param name="memoryTaken">
+    /// Asked after the transcription has claimed the worker (<see cref="InUse"/>): the lyrics writer, the voice
+    /// converter and the speech lab claim the memory first and then look at the worker, so one side always sees the
+    /// other and none shuts the worker down under a transcription.
+    /// </param>
+    /// <returns>False when a transcription is already running or another model holds the memory; nothing was sent.</returns>
+    public async Task<bool> TranscribeAsync(
+        TranscriptionState transcription, string audioPath, bool offline, CancellationToken cancellationToken, Func<bool>? memoryTaken = null)
     {
         lock (_gate)
         {
-            if (_transcriptions.Values.Any(t => !t.Finished))
+            if (TranscribingLocked())
             {
                 return false;
             }
             _transcriptions[transcription.Id] = transcription;
+        }
+        if (memoryTaken?.Invoke() == true)
+        {
+            lock (_gate)
+            {
+                _transcriptions.Remove(transcription.Id);
+            }
+            return false;
+        }
+        lock (_gate)
+        {
             PruneFinishedTranscriptionsLocked();
         }
         Publish("transcription", transcription);
@@ -775,6 +820,8 @@ public sealed class WorkerHost(
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);
+
+    private bool TranscribingLocked() => _transcriptions.Values.Any(t => !t.Finished);
 
     private bool BusyLocked()
     {

@@ -91,7 +91,7 @@ Die Auswahl folgt dem [Prompt-Leitfaden von YuE](https://github.com/multimodal-a
 
 Unter **Transkription** lässt sich eine Aufnahme hochladen (jedes Format, das macOS lesen kann, bis 300 MB). SheetSage2 macht daraus eine Melodie-Partitur im ABC-Format ohne Akkorde. **Als Partitur übernehmen** setzt sie als eigene Partitur ins Formular und stellt die Planung auf „Nur Melodie“, die Grundlage für ein Cover mit neuem Stil und Text. Jede Transkription landet als Ordner in `~/Music/YuE Studio/transcriptions` (Partitur, MIDI-Spuren, Analyse); die Liste zeigt auch die, die in YuE Studio entstanden sind.
 
-SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI installiert beides nicht selbst, sondern nutzt die Installation von YuE Studio: dort einmal **Transcribe recording** öffnen und **Install transcription support** wählen. Transkribiert wird auf der CPU, das dauert einige Minuten, immer eine Aufnahme zur Zeit.
+SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. YuE UI installiert beides nicht selbst, sondern nutzt die Installation von YuE Studio: dort einmal **Transcribe recording** öffnen und **Install transcription support** wählen. Transkribiert wird auf der CPU, das dauert einige Minuten, immer eine Aufnahme zur Zeit. Weitere Aufnahmen warten in der Warteschlange, ebenso eine, während ein Textentwurf, eine Stimme oder das Sprachlabor den Speicher belegt; Songs laufen neben einer Transkription weiter. Umgekehrt warten Textentwurf, Stimme und Sprachlabor, bis die Transkription fertig ist, weil sie sonst den Worker samt Transkription beenden würden.
 
 ## Songtext entwerfen mit LM Studio
 

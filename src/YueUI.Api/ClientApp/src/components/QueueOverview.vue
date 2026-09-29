@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import { holderOf, modelOf, type Model, type VoiceWork } from '../queueModels'
-import type { LyricsState, QueuedJob, SongState, SpeechTake, WorkerInfo } from '../types'
+import type { LyricsState, QueuedJob, SongState, SpeechTake, TranscriptionState, WorkerInfo } from '../types'
 
 /**
  * One line over the queue: the models that take turns in the 24 GB, which one holds the memory now and how much waits
@@ -17,6 +17,8 @@ const props = defineProps<{
   versions: VoiceWork[]
   /** The speech lab's takes in the works. */
   takes: SpeechTake[]
+  /** SheetSage2's, running or finished; the waiting ones are in jobs. */
+  transcriptions: TranscriptionState[]
 }>()
 
 const models: { model: Model; icon: string; label: MessageKey }[] = [
@@ -24,12 +26,29 @@ const models: { model: Model; icon: string; label: MessageKey }[] = [
   { model: 'lyrics', icon: 'pi pi-pen-to-square', label: 'modelLyrics' },
   { model: 'voice', icon: 'pi pi-user', label: 'modelVoice' },
   { model: 'speech', icon: 'pi pi-comments', label: 'modelSpeech' },
+  { model: 'transcription', icon: 'pi pi-microphone', label: 'modelTranscription' },
 ]
 
-/** The speech lab is an experiment: its tile only takes room on the phone while it has takes in the works. */
-const shown = computed(() => models.filter((m) => m.model !== 'speech' || props.takes.some((take) => !take.finished)))
+/**
+ * The speech lab and transcriptions are occasional: their tiles only take room on the phone while they have something
+ * in the works.
+ */
+const shown = computed(() =>
+  models.filter((m) => {
+    switch (m.model) {
+      case 'speech':
+        return props.takes.some((take) => !take.finished)
+      case 'transcription':
+        return running('transcription') + waiting('transcription') > 0
+      default:
+        return true
+    }
+  }),
+)
 
-const holder = computed(() => holderOf(props.worker, props.lyricsDraft, props.versions, props.takes))
+const holder = computed(() =>
+  holderOf(props.worker, props.lyricsDraft, props.versions, props.takes, props.transcriptions),
+)
 
 function running(model: Model): number {
   switch (model) {
@@ -41,6 +60,8 @@ function running(model: Model): number {
       return props.versions.filter((v) => !v.finished && v.stage !== 'queued').length
     case 'speech':
       return props.takes.filter((take) => !take.finished && take.stage !== 'queued').length
+    case 'transcription':
+      return props.transcriptions.filter((tr) => !tr.finished).length
   }
 }
 
@@ -55,10 +76,15 @@ function waiting(model: Model): number {
   }
 }
 
+/** A transcription runs beside YuE2, so it is working even when YuE2 is the one that holds the memory. */
+function working(model: Model): boolean {
+  return holder.value === model || (model === 'transcription' && running(model) > 0)
+}
+
 function state(model: Model): string {
   const parts: string[] = []
   const busy = running(model)
-  if (holder.value === model) {
+  if (working(model)) {
     parts.push(busy > 1 ? t('modelBusyN', { n: busy }) : t('modelBusy'))
   } else if (model === 'yue' && props.worker.status === 'ready') {
     // Loaded but idle: the next song starts without loading, a draft or version first shuts it down.
@@ -73,7 +99,8 @@ function state(model: Model): string {
 </script>
 
 <template>
-  <!-- Four tiles in a row leave a phone only their first letters, so the speech lab's makes two rows there. -->
+  <!-- Four tiles in a row leave a phone only their first letters, so the speech lab's or a transcription's makes two
+       rows there. -->
   <div
     :class="['gap-1 mb-3', shown.length > 3 ? 'grid grid-cols-2 sm:flex' : 'flex']"
     role="list"
@@ -86,7 +113,7 @@ function state(model: Model): string {
       role="listitem"
       :class="[
         'model flex-1 min-w-0 flex items-center gap-2 px-2 py-1 rounded-md',
-        holder === m.model ? 'active' : waiting(m.model) > 0 ? 'queued' : 'idle',
+        working(m.model) ? 'active' : waiting(m.model) > 0 ? 'queued' : 'idle',
       ]"
     >
       <i :class="[m.icon, 'text-sm']" />

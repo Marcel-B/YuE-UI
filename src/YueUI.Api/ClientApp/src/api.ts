@@ -273,7 +273,6 @@ function fileName(disposition: string | null): string | null {
   return disposition?.match(/filename="?([^";]+)"?/i)?.[1] ?? null
 }
 
-/** Uploads a recording for SheetSage2; its progress then arrives as `transcription` events. */
 /** A MIDI file, typically a song edited in Logic, read back into a score. */
 export async function midiToAbc(file: File): Promise<MidiScore> {
   const form = new FormData()
@@ -281,6 +280,10 @@ export async function midiToAbc(file: File): Promise<MidiScore> {
   return (await send('/api/midi/abc', { method: 'POST', body: form })).json() as Promise<MidiScore>
 }
 
+/**
+ * Uploads a recording for SheetSage2; its progress then arrives as `transcription` events, or it waits in the queue
+ * (stage `queued`) while another transcription runs or another model holds the memory.
+ */
 export async function transcribe(file: File, task: TranscriptionTask): Promise<TranscriptionState> {
   const form = new FormData()
   form.append('file', file)

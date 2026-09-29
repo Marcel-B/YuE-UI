@@ -12,7 +12,7 @@ using YueUI.Api.Worker;
 namespace YueUI.Api.Queue;
 
 /// <summary>
-/// One queue for songs, renders and lyrics drafts: what cannot start right away waits here and starts on its turn,
+/// One queue for songs, renders, lyrics drafts and transcriptions: what cannot start right away waits here and starts on its turn,
 /// instead of being refused with 409.
 /// </summary>
 /// <remarks>
@@ -26,8 +26,14 @@ namespace YueUI.Api.Queue;
 /// wait behind it, so the worker runs empty and the draft gets its turn. Voice conversions keep their own queue
 /// (<see cref="VoiceConverter"/>), which waits for the memory in the same way; a version that has waited that long
 /// holds back new songs as well. So does a take of the speech lab (<see cref="SpeechLab"/>), for as long as it speaks.
-/// Waiting jobs are kept in <see cref="SqliteJobStore"/> and resumed after a restart. Transcriptions are not queued
-/// here: SheetSage2 runs beside YuE2 in the worker.
+/// Waiting jobs are kept in <see cref="SqliteJobStore"/> and resumed after a restart.
+/// <para>
+/// Transcriptions run beside YuE2 (SheetSage2 needs about 2 GB and the CPU) but inside the worker's process, which the
+/// other models shut down to make room; so a running one keeps them waiting (<see cref="WorkerHost.InUse"/>), and it
+/// waits for them in turn. They form a lane of their own: the worker takes one at a time, and one waiting for that does
+/// not hold back the songs behind it, nor does a song hold back a transcription. A draft ahead of one does, as it does
+/// songs, bundling aside, so that recordings in a row cannot keep the lyrics model out.
+/// </para>
 /// </remarks>
 public sealed class JobQueue(
     SqliteJobStore store,
@@ -36,6 +42,7 @@ public sealed class JobQueue(
     VoiceConverter voices,
     SpeechActivity speech,
     SongLibrary library,
+    YuePaths paths,
     IOptions<QueueOptions> options,
     TimeProvider time,
     ILogger<JobQueue> logger) : BackgroundService
@@ -106,15 +113,42 @@ public sealed class JobQueue(
         return new LyricsState { Id = id, Stage = queued is null ? "writing" : "queued", UpdatedAt = time.GetUtcNow() };
     }
 
+    /// <summary>
+    /// A recording for SheetSage2, already stored in its upload folder, which is deleted when the transcription ends
+    /// (or leaves the queue).
+    /// </summary>
+    /// <returns>The waiting job, or null when it went to the worker.</returns>
+    /// <exception cref="WorkerUnavailableException">The worker could not be started.</exception>
+    public Task<QueuedJob?> TranscribeAsync(TranscriptionState transcription, string audioPath, CancellationToken cancellationToken)
+    {
+        var job = new QueuedJob(transcription.Id, JobKind.Transcription, transcription.FileName, time.GetUtcNow(), TranscriptionTask: transcription.Task);
+        var payload = new JsonObject
+        {
+            ["audio"] = audioPath,
+            ["uploadDirectory"] = transcription.UploadDirectory,
+            ["fileName"] = transcription.FileName,
+            ["task"] = transcription.Task,
+        };
+        return SubmitAsync(job, payload, cancellationToken);
+    }
+
     /// <returns>False when no such job waits (it may have started meanwhile).</returns>
     public bool Cancel(string id)
     {
+        JsonObject? payload;
         lock (_gate)
         {
-            if (_jobs.RemoveAll(j => j.Job.Id == id) == 0)
+            var index = _jobs.FindIndex(j => j.Job.Id == id);
+            if (index < 0)
             {
                 return false;
             }
+            payload = _jobs[index].Job.Kind == JobKind.Transcription ? _jobs[index].Payload : null;
+            _jobs.RemoveAt(index);
+        }
+        if (payload is not null)
+        {
+            DeleteUpload(payload);
         }
         Persist(() => store.Remove(id));
         Published();
@@ -153,7 +187,10 @@ public sealed class JobQueue(
             bool first;
             lock (_gate)
             {
-                first = _jobs.Count == 0 || (IsYue(job) && !_jobs.Any(j => IsYue(j.Job)) && MayPassLocked());
+                // Transcriptions keep a lane of their own (see the remarks).
+                first = IsTranscription(job)
+                    ? !_jobs.Any(j => IsTranscription(j.Job)) && TranscriptionMayGoLocked(_jobs.Count)
+                    : Lane().Count == 0 || (IsYue(job) && !_jobs.Any(j => IsYue(j.Job)) && MayPassLocked());
             }
             // Behind waiting jobs even if it could start: the order is the one the user sees, bundling aside.
             if (first && await TryStartAsync(job, payload, cancellationToken))
@@ -213,70 +250,138 @@ public sealed class JobQueue(
         }
     }
 
-    /// <summary>
-    /// Starts jobs from the front for as long as they can start, e.g. several songs in a row; when the front is a
-    /// draft that cannot start yet, the first song or render behind it may (see the remarks).
-    /// </summary>
+    /// <summary>Starts what can start in either lane, for as long as anything does.</summary>
     private async Task StartWaitingAsync(CancellationToken stoppingToken)
     {
         while (true)
         {
-            await _starting.WaitAsync(stoppingToken);
-            try
+            var started = await StartTranscriptionAsync(stoppingToken);
+            if (!await StartFrontAsync(stoppingToken) && !started)
             {
-                (QueuedJob Job, JsonObject Payload) next;
-                (QueuedJob Job, JsonObject Payload)? passing;
-                lock (_gate)
-                {
-                    if (_jobs.Count == 0)
-                    {
-                        return;
-                    }
-                    next = _jobs[0];
-                    var index = MayPassLocked() ? _jobs.FindIndex(j => IsYue(j.Job)) : -1;
-                    passing = index > 0 ? _jobs[index] : null;
-                }
-                try
-                {
-                    if (!await TryStartAsync(next.Job, next.Payload, stoppingToken))
-                    {
-                        if (passing is null || !await TryStartAsync(passing.Value.Job, passing.Value.Payload, stoppingToken))
-                        {
-                            return;
-                        }
-                        next = passing.Value;
-                    }
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    Failed(next.Job, exception.Message);
-                }
-                lock (_gate)
-                {
-                    _jobs.RemoveAll(j => j.Job.Id == next.Job.Id);
-                }
-                Persist(() => store.Remove(next.Job.Id));
+                return;
             }
-            finally
-            {
-                _starting.Release();
-            }
-            Published();
         }
     }
 
-    /// <summary>Songs and renders are for YuE2; the rest (drafts) for the lyrics model.</summary>
+    /// <summary>The first waiting transcription, when the worker has none and the memory is free for it.</summary>
+    /// <returns>Whether one left the queue.</returns>
+    private async Task<bool> StartTranscriptionAsync(CancellationToken stoppingToken)
+    {
+        await _starting.WaitAsync(stoppingToken);
+        (QueuedJob Job, JsonObject Payload) next;
+        try
+        {
+            lock (_gate)
+            {
+                var index = _jobs.FindIndex(j => IsTranscription(j.Job));
+                if (index < 0 || !TranscriptionMayGoLocked(index))
+                {
+                    return false;
+                }
+                next = _jobs[index];
+            }
+            try
+            {
+                if (!await TryStartAsync(next.Job, next.Payload, stoppingToken))
+                {
+                    return false;
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                Failed(next.Job, exception.Message);
+                DeleteUpload(next.Payload);
+            }
+            lock (_gate)
+            {
+                _jobs.RemoveAll(j => j.Job.Id == next.Job.Id);
+            }
+            Persist(() => store.Remove(next.Job.Id));
+        }
+        finally
+        {
+            _starting.Release();
+        }
+        Published();
+        return true;
+    }
+
+    /// <summary>
+    /// Starts one job from the front of the songs' and drafts' lane; when the front is a draft that cannot start yet,
+    /// the first song or render behind it may (see the remarks).
+    /// </summary>
+    /// <returns>Whether one left the queue.</returns>
+    private async Task<bool> StartFrontAsync(CancellationToken stoppingToken)
+    {
+        await _starting.WaitAsync(stoppingToken);
+        try
+        {
+            (QueuedJob Job, JsonObject Payload) next;
+            (QueuedJob Job, JsonObject Payload)? passing;
+            lock (_gate)
+            {
+                var lane = Lane();
+                if (lane.Count == 0)
+                {
+                    return false;
+                }
+                next = lane[0];
+                var index = MayPassLocked() ? lane.FindIndex(j => IsYue(j.Job)) : -1;
+                passing = index > 0 ? lane[index] : null;
+            }
+            try
+            {
+                if (!await TryStartAsync(next.Job, next.Payload, stoppingToken))
+                {
+                    if (passing is null || !await TryStartAsync(passing.Value.Job, passing.Value.Payload, stoppingToken))
+                    {
+                        return false;
+                    }
+                    next = passing.Value;
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                Failed(next.Job, exception.Message);
+            }
+            lock (_gate)
+            {
+                _jobs.RemoveAll(j => j.Job.Id == next.Job.Id);
+            }
+            Persist(() => store.Remove(next.Job.Id));
+        }
+        finally
+        {
+            _starting.Release();
+        }
+        Published();
+        return true;
+    }
+
+    /// <summary>Songs and renders are for YuE2; drafts for the lyrics model.</summary>
     private static bool IsYue(QueuedJob job) => job.Kind is JobKind.Song or JobKind.Render;
+
+    private static bool IsTranscription(QueuedJob job) => job.Kind == JobKind.Transcription;
+
+    /// <summary>The waiting songs, renders and drafts, in their order; transcriptions keep a lane of their own.</summary>
+    private List<(QueuedJob Job, JsonObject Payload)> Lane() => [.. _jobs.Where(j => !IsTranscription(j.Job))];
+
+    /// <summary>
+    /// A transcription at <paramref name="index"/> waits behind a draft ahead of it, unless songs may pass that draft
+    /// too: it needs the worker for minutes, and the draft would wait for it (see the remarks).
+    /// </summary>
+    private bool TranscriptionMayGoLocked(int index) =>
+        !_jobs.Take(index).Any(j => j.Job.Kind == JobKind.Lyrics) || MayPassLocked();
 
     /// <summary>
     /// Whether a song may go ahead of the draft at the front: only while YuE2 holds the memory anyway, since otherwise
     /// the draft can start itself, and only until the draft has waited <see cref="QueueOptions.BundleWindow"/>.
     /// </summary>
     private bool MayPassLocked() =>
-        _jobs.Count > 0
-        && _jobs[0].Job.Kind == JobKind.Lyrics
+        Lane() is [var front, ..]
+        && front.Job.Kind == JobKind.Lyrics
         && host.IsBusy
-        && time.GetUtcNow() - _jobs[0].Job.CreatedAt < options.Value.BundleWindow;
+        && time.GetUtcNow() - front.Job.CreatedAt < options.Value.BundleWindow;
 
     /// <summary>A version waiting for longer than the window gets the memory next: new songs wait until it has it.</summary>
     private bool VersionOverdue() =>
@@ -288,6 +393,10 @@ public sealed class JobQueue(
         if (job.Kind == JobKind.Lyrics)
         {
             return StartLyrics(job, payload);
+        }
+        if (job.Kind == JobKind.Transcription)
+        {
+            return await StartTranscriptionAsync(job, payload, cancellationToken);
         }
 
         JsonObject? command = null;
@@ -336,6 +445,47 @@ public sealed class JobQueue(
             throw;
         }
         return true;
+    }
+
+    private async Task<bool> StartTranscriptionAsync(QueuedJob job, JsonObject payload, CancellationToken cancellationToken)
+    {
+        var audio = Text(payload["audio"]);
+        if (!File.Exists(audio))
+        {
+            // The upload lives in the temp folder, which a reboot may have emptied while it waited.
+            throw new InvalidOperationException("The recording is gone.");
+        }
+        var transcription = new TranscriptionState
+        {
+            Id = job.Id,
+            FileName = Text(payload["fileName"]),
+            Task = Text(payload["task"]),
+            UploadDirectory = Text(payload["uploadDirectory"]),
+            UpdatedAt = time.GetUtcNow(),
+        };
+        return await host.TranscribeAsync(
+            transcription,
+            audio,
+            offline: paths.SheetSageModelsCached,
+            cancellationToken,
+            memoryTaken: () => lyrics.IsWriting || voices.IsConverting || speech.IsSpeaking || VersionOverdue());
+    }
+
+    /// <summary>The upload of a transcription that leaves the queue without reaching the worker.</summary>
+    private void DeleteUpload(JsonObject payload)
+    {
+        var directory = Text(payload["uploadDirectory"]);
+        try
+        {
+            if (directory.Length > 0 && Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Could not delete the upload {Directory}", directory);
+        }
     }
 
     private bool StartLyrics(QueuedJob job, JsonObject payload)

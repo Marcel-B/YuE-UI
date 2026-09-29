@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import {
   ApiError,
+  cancelQueued,
   cancelTranscription,
   deleteTranscription,
   listTranscriptions,
@@ -12,13 +13,16 @@ import {
   transcriptionZipUrl,
 } from '../api'
 import { formatBytes, formatDateTime, t } from '../i18n'
-import type { TranscriptionInfo, TranscriptionList, TranscriptionState, TranscriptionTask } from '../types'
+import type { QueuedJob, TranscriptionInfo, TranscriptionList, TranscriptionState, TranscriptionTask } from '../types'
 import FieldHelp from './FieldHelp.vue'
 import Message from 'primevue/message'
 import ProgressBar from 'primevue/progressbar'
 
-/** The live transcriptions from the event stream; the finished ones on disk are loaded here. */
-const props = defineProps<{ transcriptions: TranscriptionState[] }>()
+/**
+ * The live transcriptions from the event stream and those waiting in the server's queue (for the one running, or for
+ * another model to free the memory); the finished ones on disk are loaded here.
+ */
+const props = defineProps<{ transcriptions: TranscriptionState[]; waiting: QueuedJob[] }>()
 const emit = defineEmits<{ useScore: [abc: string, name: string]; error: [message: string] }>()
 
 const file = ref<File | null>(null)
@@ -63,8 +67,11 @@ async function start(): Promise<void> {
   sending.value = true
   message.value = null
   try {
-    await transcribe(file.value, task.value)
-    message.value = { text: t('transcriptionStarted'), error: false }
+    const started = await transcribe(file.value, task.value)
+    message.value = {
+      text: t(started.stage === 'queued' ? 'transcriptionQueued' : 'transcriptionStarted'),
+      error: false,
+    }
   } catch (caught) {
     message.value = {
       text: caught instanceof ApiError && caught.status === 0 ? t('errorNetwork') : String((caught as Error).message),
@@ -75,6 +82,14 @@ async function start(): Promise<void> {
     }
   } finally {
     sending.value = false
+  }
+}
+
+async function removeWaiting(job: QueuedJob): Promise<void> {
+  try {
+    await cancelQueued(job.id)
+  } catch (caught) {
+    emit('error', caught instanceof Error ? caught.message : String(caught))
   }
 }
 
@@ -194,7 +209,7 @@ function taskLabel(value: TranscriptionTask | null): string {
           type="submit"
           :label="sending ? t('uploading') : t('transcribe')"
           :loading="sending"
-          :disabled="!file || sending || running !== null || list?.installed === false"
+          :disabled="!file || sending || list?.installed === false"
         />
         <span v-if="message" :class="message.error ? 'danger' : 'muted'" role="status">{{ message.text }}</span>
       </div>
@@ -219,6 +234,24 @@ function taskLabel(value: TranscriptionTask | null): string {
       {{ lastFailure.fileName }}: {{ t(`transcriptionStage_${lastFailure.stage}`)
       }}{{ lastFailure.message ? ` – ${lastFailure.message}` : '' }}
     </p>
+
+    <div v-if="waiting.length > 0" class="flex flex-col gap-1">
+      <h3 class="m-0 text-sm font-medium text-muted-color">{{ t('transcriptionsWaiting') }}</h3>
+      <div v-for="job in waiting" :key="job.id" class="flex min-w-0 items-center gap-2">
+        <i class="pi pi-clock text-muted-color" />
+        <span class="min-w-0 flex-1 truncate">{{ job.title }}</span>
+        <span class="muted shrink-0 text-sm">{{ taskLabel(job.transcriptionTask ?? null) }}</span>
+        <Button
+          icon="pi pi-times"
+          text
+          rounded
+          size="small"
+          severity="danger"
+          :aria-label="t('removeFromQueue')"
+          @click="removeWaiting(job)"
+        />
+      </div>
+    </div>
 
     <div>
       <h3 class="mt-2 mb-2 text-base">{{ t('transcriptions') }}</h3>
