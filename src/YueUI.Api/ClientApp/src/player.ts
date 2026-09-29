@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { audioUrl, coverUrl, versionAudioUrl } from './api'
+import { coverUrl, streamUrl, versionStreamUrl } from './api'
 import { t } from './i18n'
 import { createSpectrumAnalyser, registerSource, visuals, type SpectrumSource } from './spectrum'
 import type { RunInfo, SongInfo, VersionState } from './types'
@@ -40,7 +40,7 @@ export function versionTrack(run: RunInfo, song: SongInfo, version: VersionState
     songId: song.id,
     title: run.title || t('untitled'),
     detail: `${t('songN', { n: song.index })} · ${version.voiceLabel}`,
-    src: versionAudioUrl(song.id, version.id),
+    src: versionStreamUrl(song.id, version.id),
     cover: coverOf(song),
   }
 }
@@ -195,7 +195,7 @@ function start(): void {
   if (!audio || !track) {
     return
   }
-  audio.src = track.src ?? audioUrl(track.id)
+  audio.src = track.src ?? streamUrl(track.id)
   listen()
   // A refusal (autoplay rules, a deleted file) leaves the player paused with its own controls to try again.
   void audio.play().catch(() => undefined)

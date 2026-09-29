@@ -30,6 +30,8 @@ public static partial class LibraryEndpoints
         // Range requests let the browser's player seek and start before a five-minute FLAC is loaded.
         api.MapGet("/songs/{run}/{song}/audio", (string run, string song, bool? download, SongLibrary library) =>
             SongFile(library, run, song, "audio.flac", "audio/flac", "flac", download == true));
+        // What the player plays: the AAC copy, since the Mac's home upload is too slow for the FLAC on the road.
+        api.MapGet("/songs/{run}/{song}/stream", StreamAsync);
         // For the phone's share sheet: the FLAC is ten times larger than a messenger wants.
         api.MapGet("/songs/{run}/{song}/share", ShareAsync);
         api.MapGet("/songs/{run}/{song}/score", (string run, string song, SongLibrary library) =>
@@ -56,6 +58,29 @@ public static partial class LibraryEndpoints
             Rate(library, host, run, song, request.Rating is 0 ? null : request.Rating));
         api.MapGet("/storage", (YuePaths paths) => Storage(paths.OutputDir));
         return api;
+    }
+
+    private static async Task<IResult> StreamAsync(string run, string song, SongLibrary library, StreamCopies streams, HttpContext context)
+    {
+        if (library.SongDirectory(run, song) is not { } directory || !File.Exists(Path.Combine(directory, "audio.flac")))
+        {
+            return Results.NotFound();
+        }
+        return await streams.SongAsync(run, song, Path.Combine(directory, "audio.flac")) is { } copy
+            ? StreamFile(context, copy, "audio/mp4")
+            : StreamFile(context, Path.Combine(directory, "audio.flac"), "audio/flac");
+    }
+
+    /// <summary>
+    /// With range requests for seeking, and a validator the browser must check each time: a render writes the
+    /// song anew under the same address, and the check costs a 304 without body.
+    /// </summary>
+    internal static IResult StreamFile(HttpContext context, string path, string contentType)
+    {
+        var info = new FileInfo(path);
+        context.Response.Headers.CacheControl = "no-cache";
+        var tag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{info.LastWriteTimeUtc.Ticks:x}-{info.Length:x}\"");
+        return Results.File(path, contentType, lastModified: info.LastWriteTimeUtc, entityTag: tag, enableRangeProcessing: true);
     }
 
     /// <summary>

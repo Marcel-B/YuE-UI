@@ -12,6 +12,9 @@ public sealed class SqliteVersionStore(SqliteDatabase database)
 {
     public string FilePath(string id) => Path.Combine(database.Directory, "versions", $"{id}.flac");
 
+    /// <summary>The version's AAC for the player (<see cref="Share.StreamCopies"/>), deleted with the version.</summary>
+    public string StreamPath(string id) => Path.Combine(database.Directory, "versions", $"{id}.m4a");
+
     public IReadOnlyList<VersionState> All() => Query("SELECT * FROM song_versions ORDER BY created_at");
 
     public IReadOnlyList<VersionState> Unfinished() =>
@@ -94,6 +97,7 @@ public sealed class SqliteVersionStore(SqliteDatabase database)
         try
         {
             File.Delete(FilePath(id));
+            File.Delete(StreamPath(id));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

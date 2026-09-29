@@ -222,6 +222,18 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_finished_song_gets_its_streaming_copy_right_away()
+    {
+        await StartSong();
+        _app.AddSong(Run, "song1");
+        _app.Worker.Emit(new { @event = "song", index = 1, path = _app.AudioPath(Run, "song1"), seconds = 187.5, quality = "draft", seed = 831001 });
+        _app.Worker.Emit(new { @event = "stage", path = _app.AudioPath(Run, "song1"), stage = "ready", detail = "" });
+
+        await TestApp.WaitUntil(() => File.Exists(Path.Combine(_app.Root, "stream", Run, "song1.m4a")));
+        Assert.Equal(_app.AudioPath(Run, "song1"), _app.Encoder.Source);
+    }
+
+    [Fact]
     public async Task A_song_keeps_its_stages_in_order_with_their_start()
     {
         await StartSong();

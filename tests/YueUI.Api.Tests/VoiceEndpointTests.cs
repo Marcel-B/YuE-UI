@@ -185,6 +185,15 @@ public sealed class VoiceEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, audio.StatusCode);
         Assert.Equal(FakeMixer.Flac, await audio.Content.ReadAsByteArrayAsync());
         Assert.Equal("Neon Night-song2-Eurobecca.flac", audio.Content.Headers.ContentDisposition!.FileNameStar);
+
+        // The player's AAC copy is made as soon as the version is done, and goes with it.
+        var copy = Path.Combine(_app.Root, "versions", $"{done.Id}.m4a");
+        await TestApp.WaitUntil(() => File.Exists(copy));
+        var stream = await client.GetAsync($"/api/songs/{Run}/song2/versions/{done.Id}/stream");
+        Assert.Equal("audio/mp4", stream.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(FakeEncoder.M4a, await stream.Content.ReadAsByteArrayAsync());
+        await client.DeleteAsync($"/api/songs/{Run}/song2/versions/{done.Id}");
+        Assert.False(File.Exists(copy));
     }
 
     [Fact]

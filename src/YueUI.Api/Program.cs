@@ -39,6 +39,8 @@ builder.Services.AddYueToLogic();
 
 // Sharing a song from the phone as a small AAC instead of the FLAC.
 builder.Services.AddSingleton<IAudioEncoder, AacEncoder>();
+builder.Services.AddSingleton<StreamCopies>();
+builder.Services.AddHostedService<StreamCopyMaker>();
 // Exporting it as MP3, M4A or FLAC with title, lyrics and cover.
 builder.Services.AddSingleton<IAudioTagger, TagLibTagger>();
 
