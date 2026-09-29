@@ -245,11 +245,31 @@ watch(
 
 <template>
   <section>
-    <div class="flex justify-between">
-      <Button :label="t('clearFinished')" v-if="hasFinished" class="underline" text @click="emit('hideFinished')" />
-      <Button :label="t('stopAll')" v-if="worker.busy" class="danger" @click="run(stopAll)" />
+    <!-- ml-auto keeps the stop button on the right even when there is nothing to hide -->
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <Button
+        :label="t('clearFinished')"
+        v-if="hasFinished"
+        icon="pi pi-eye-slash"
+        severity="secondary"
+        outlined
+        size="small"
+        @click="emit('hideFinished')"
+      />
+      <Button
+        :label="t('stopAll')"
+        v-if="worker.busy"
+        icon="pi pi-stop-circle"
+        severity="danger"
+        size="small"
+        class="ml-auto"
+        @click="run(stopAll)"
+      />
       <Button
         v-else-if="worker.status !== 'stopped'"
+        severity="secondary"
+        size="small"
+        class="ml-auto"
         :label="t('shutdown')"
         :title="t('shutdownHint')"
         @click="run(shutdownWorker)"
