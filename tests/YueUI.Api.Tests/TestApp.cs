@@ -443,8 +443,12 @@ public sealed class FakeTagger : IAudioTagger
     /// <summary>Set to fail like TagLib on a broken file.</summary>
     public string? Failure { get; set; }
 
+    /// <summary>How often it tagged, to see a changed title tag a copy again.</summary>
+    public int Calls { get; private set; }
+
     public void Write(string path, SongTags tags)
     {
+        Calls++;
         Path = path;
         Tags = tags;
         if (Failure is not null)

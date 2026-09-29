@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 
 namespace YueUI.Api.Tests;
 
@@ -107,6 +108,60 @@ public sealed class StreamEndpointTests : IDisposable
 
         await client.DeleteAsync($"/api/runs/{Run}");
         Assert.False(Directory.Exists(Path.Combine(_app.Root, "stream", Run)));
+    }
+
+    [Fact]
+    public async Task The_copy_carries_the_songs_tags_and_its_own_cover()
+    {
+        _app.AddSong(Run, "song2", title: "Neon Night");
+        var client = _app.CreateClient();
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3];
+        var cover = new ByteArrayContent(jpeg);
+        cover.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+        await client.PutAsync($"/api/songs/{Run}/song2/cover", new MultipartFormDataContent { { cover, "cover", "cover.jpg" } });
+
+        await client.GetAsync($"/api/songs/{Run}/song2/stream");
+
+        var tags = _app.Tagger.Tags!;
+        Assert.Equal(("Neon Night", "Neon Night", 2), (tags.Title, tags.Album, tags.Track));
+        Assert.Equal("[verse]\nLa la", tags.Lyrics);
+        Assert.Contains("Dark synthwave", tags.Comment);
+        Assert.Equal(jpeg, tags.Cover!.Data);
+        // Nothing an export asks for: the file is the player's.
+        Assert.Null(tags.Artist);
+    }
+
+    [Fact]
+    public async Task A_new_title_tags_the_copy_again_without_encoding_it()
+    {
+        _app.AddSong(Run, "song1");
+        var client = _app.CreateClient();
+        await client.GetAsync($"/api/songs/{Run}/song1/stream");
+
+        await client.PutAsJsonAsync($"/api/runs/{Run}/title", new { title = "Midnight Drive" });
+        var response = await client.GetAsync($"/api/songs/{Run}/song1/stream");
+        await client.GetAsync($"/api/songs/{Run}/song1/stream");
+
+        Assert.Equal("audio/mp4", response.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("Midnight Drive", _app.Tagger.Tags!.Title);
+        Assert.Equal(1, _app.Encoder.Calls);
+        Assert.Equal(2, _app.Tagger.Calls);
+    }
+
+    [Fact]
+    public async Task A_copy_that_cannot_be_tagged_still_plays()
+    {
+        _app.AddSong(Run, "song1");
+        _app.Tagger.Failure = "Cannot tag taglib/m4a.";
+        var client = _app.CreateClient();
+
+        var response = await client.GetAsync($"/api/songs/{Run}/song1/stream");
+        await client.GetAsync($"/api/songs/{Run}/song1/stream");
+
+        Assert.Equal("audio/mp4", response.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(FakeEncoder.M4a, await response.Content.ReadAsByteArrayAsync());
+        // Not tried again on every request.
+        Assert.Equal(1, _app.Tagger.Calls);
     }
 
     [Theory]
