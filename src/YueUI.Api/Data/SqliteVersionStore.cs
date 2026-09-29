@@ -98,6 +98,7 @@ public sealed class SqliteVersionStore(SqliteDatabase database)
         {
             File.Delete(FilePath(id));
             File.Delete(StreamPath(id));
+            File.Delete(Share.StreamCopies.StampPath(StreamPath(id)));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

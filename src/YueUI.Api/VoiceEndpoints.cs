@@ -144,13 +144,15 @@ public static class VoiceEndpoints
         });
     }
 
-    private static async Task<IResult> VersionStreamAsync(string run, string song, string id, SqliteVersionStore store, StreamCopies streams, HttpContext context)
+    private static async Task<IResult> VersionStreamAsync(
+        string run, string song, string id, SqliteVersionStore store, SongLibrary library, StreamCopies streams, HttpContext context)
     {
-        if (store.Get(id) is not { Stage: "done" } version || version.SongId != $"{run}/{song}" || !File.Exists(store.FilePath(id)))
+        if (store.Get(id) is not { Stage: "done" } version || version.SongId != $"{run}/{song}" || !File.Exists(store.FilePath(id))
+            || library.SongDirectory(run, song) is not { } directory)
         {
             return Results.NotFound();
         }
-        return await streams.VersionAsync(id) is { } copy
+        return await streams.VersionAsync(id, StreamCopies.TagsFor(library, run, song, directory, version.VoiceLabel)) is { } copy
             ? LibraryEndpoints.StreamFile(context, copy, "audio/mp4")
             : LibraryEndpoints.StreamFile(context, store.FilePath(id), "audio/flac");
     }

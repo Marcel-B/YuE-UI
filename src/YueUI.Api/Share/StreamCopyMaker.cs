@@ -52,11 +52,12 @@ public sealed class StreamCopyMaker(WorkerHost host, SongLibrary library, Stream
             case SongState { Stage: "ready" } song when song.Id.Split('/') is [var run, var name] && _made.Add($"song:{song.Id}:{song.Render}"):
                 if (library.SongDirectory(run, name) is { } directory)
                 {
-                    await streams.SongAsync(run, name, Path.Combine(directory, "audio.flac"));
+                    await streams.SongAsync(run, name, Path.Combine(directory, "audio.flac"), StreamCopies.TagsFor(library, run, name, directory));
                 }
                 break;
-            case VersionState { Stage: "done" } version when _made.Add($"version:{version.Id}"):
-                await streams.VersionAsync(version.Id);
+            case VersionState { Stage: "done" } version when _made.Add($"version:{version.Id}")
+                && version.SongId.Split('/') is [var songRun, var songName] && library.SongDirectory(songRun, songName) is { } songDirectory:
+                await streams.VersionAsync(version.Id, StreamCopies.TagsFor(library, songRun, songName, songDirectory, version.VoiceLabel));
                 break;
         }
     }

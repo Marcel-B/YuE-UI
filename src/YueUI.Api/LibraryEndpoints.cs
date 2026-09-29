@@ -66,7 +66,8 @@ public static partial class LibraryEndpoints
         {
             return Results.NotFound();
         }
-        return await streams.SongAsync(run, song, Path.Combine(directory, "audio.flac")) is { } copy
+        var tags = StreamCopies.TagsFor(library, run, song, directory);
+        return await streams.SongAsync(run, song, Path.Combine(directory, "audio.flac"), tags) is { } copy
             ? StreamFile(context, copy, "audio/mp4")
             : StreamFile(context, Path.Combine(directory, "audio.flac"), "audio/flac");
     }
