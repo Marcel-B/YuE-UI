@@ -11,6 +11,12 @@ public enum JobKind
 
     /// <summary>A lyrics draft or revision; its id is the <see cref="Worker.LyricsState"/>'s the form waits for.</summary>
     Lyrics,
+
+    /// <summary>
+    /// A recording for SheetSage2; its id is the <see cref="Worker.TranscriptionState"/>'s. It needs little memory and
+    /// runs beside YuE2, but inside the worker, which a draft, a version or a take would shut down to make room.
+    /// </summary>
+    Transcription,
 }
 
 /// <summary>A job waiting for its turn, as the queue on the create page shows it.</summary>
@@ -20,6 +26,7 @@ public enum JobKind
 /// <param name="Quality">"draft" or "full", for songs and renders.</param>
 /// <param name="Revision">A lyrics job that revises the lyrics rather than drafting new ones.</param>
 /// <param name="VoiceLabel">The voice a new run's songs are sung with once they are ready.</param>
+/// <param name="TranscriptionTask">"melody-full" or "melody-vocal", for a transcription (whose title is the file name).</param>
 public sealed record QueuedJob(
     string Id,
     JobKind Kind,
@@ -29,4 +36,5 @@ public sealed record QueuedJob(
     int? Batch = null,
     string? Quality = null,
     bool Revision = false,
-    string? VoiceLabel = null);
+    string? VoiceLabel = null,
+    string? TranscriptionTask = null);

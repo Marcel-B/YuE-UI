@@ -63,7 +63,7 @@ export interface StatusSnapshot {
   lyrics: LyricsState | null
   /** Songs being sung with another voice, and the last one that finished. */
   versions: VersionState[]
-  /** Songs, renders and lyrics drafts waiting for the memory, in the order they start. */
+  /** Songs, renders, lyrics drafts and transcriptions waiting for the memory, in the order they start. */
   queue: QueuedJob[]
   /** Queue:BundleWindow in seconds: how long songs may pass a waiting lyrics draft or voice version. */
   bundleWindowSeconds: number | null
@@ -73,13 +73,16 @@ export interface StatusSnapshot {
   speech: SpeechTake[] | null
 }
 
-export type JobKind = 'song' | 'render' | 'lyrics'
+export type JobKind = 'song' | 'render' | 'lyrics' | 'transcription'
 
 /** A job waiting in the server's queue (Queue/QueuedJob.cs) until no other model holds the memory. */
 export interface QueuedJob {
   id: string
   kind: JobKind
-  /** The run's title (empty when the worker is to name it), the song's for a render, the keywords for lyrics. */
+  /**
+   * The run's title (empty when the worker is to name it), the song's for a render, the keywords for lyrics, the
+   * recording's file name for a transcription.
+   */
   title: string
   createdAt: string
   /** The song a render is for. */
@@ -90,6 +93,8 @@ export interface QueuedJob {
   revision: boolean
   /** The voice a new run's songs are sung with once they are ready. */
   voiceLabel: string | null
+  /** What a transcription transcribes; null for other jobs and a server from before transcriptions were queued. */
+  transcriptionTask?: TranscriptionTask | null
 }
 
 /** melody-full: the Vocal and Ins melodies; melody-vocal: only the sung one. */
@@ -100,7 +105,8 @@ export interface TranscriptionState {
   id: string
   fileName: string
   task: TranscriptionTask
-  stage: 'starting' | 'progress' | 'done' | 'failed' | 'cancelled'
+  /** queued: only in the answer to an upload that waits in the queue. */
+  stage: 'queued' | 'starting' | 'progress' | 'done' | 'failed' | 'cancelled'
   /** 0–1, null while SheetSage2 only says it is still busy. */
   fraction: number | null
   detail: string

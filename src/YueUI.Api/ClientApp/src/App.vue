@@ -228,8 +228,12 @@ const queueCount = computed(
     jobs.value.length +
     versions.value.filter((v) => !v.finished).length +
     stemSets.value.filter((s) => !s.finished).length +
-    speechTakes.value.filter((take) => !take.finished).length,
+    speechTakes.value.filter((take) => !take.finished).length +
+    transcriptions.value.filter((tr) => !tr.finished).length,
 )
+
+/** Recordings waiting for SheetSage2; they are in the server's queue with the songs. */
+const waitingTranscriptions = computed(() => jobs.value.filter((j) => j.kind === 'transcription'))
 
 /**
  * The badge counts what the page holds that is worth a look: songs and transcriptions in the works or waiting, songs
@@ -238,7 +242,7 @@ const queueCount = computed(
 const badges = computed<Partial<Record<View, number>>>(() => ({
   queue: queueCount.value,
   songs: reviewCount(runs.value, ratings.value, reviewDays.value),
-  transcribe: transcriptions.value.filter((tr) => !tr.finished).length,
+  transcribe: transcriptions.value.filter((tr) => !tr.finished).length + waitingTranscriptions.value.length,
   playlist: playlistIds.value.length,
   voices: versions.value.filter((v) => !v.finished).length + stemSets.value.filter((s) => !s.finished).length,
   lab: speechTakes.value.filter((take) => !take.finished).length,
@@ -546,6 +550,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :lyrics-draft="lyricsDraft"
           :versions="[...versions, ...stemSets]"
           :takes="speechTakes"
+          :transcriptions="transcriptions"
         />
       </a>
     </div>
@@ -577,6 +582,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :stems="stemSets"
           :bundle-window-seconds="bundleWindowSeconds"
           :takes="speechTakes"
+          :transcriptions="transcriptions"
           :log="log"
           @hide-finished="hideFinished"
           @error="show($event, true)"
@@ -591,7 +597,12 @@ async function useAsNewSong(songId: string): Promise<void> {
         <h2>{{ t('transcription') }}</h2>
       </template>
       <template #content>
-        <TranscribePanel :transcriptions="transcriptions" @use-score="useScore" @error="show($event, true)" />
+        <TranscribePanel
+          :transcriptions="transcriptions"
+          :waiting="waitingTranscriptions"
+          @use-score="useScore"
+          @error="show($event, true)"
+        />
       </template>
     </Card>
   </main>

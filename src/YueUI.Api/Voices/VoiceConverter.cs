@@ -435,7 +435,7 @@ public sealed class VoiceConverter(
             await Task.Delay(options.Value.WaitInterval, time, cancellationToken);
         }
 
-        bool Occupied() => host.Snapshot().Worker.Busy || lyrics.IsWriting || speech.IsSpeaking;
+        bool Occupied() => host.InUse || lyrics.IsWriting || speech.IsSpeaking;
     }
 
     /// <summary>ChangeMyVoice says how long it expects; the fraction is the time since the start against that.</summary>

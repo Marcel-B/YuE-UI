@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 
 import {
   cancel,
   cancelQueued,
+  cancelTranscription,
   deleteSpeechTake,
   deleteStems,
   deleteVersion,
@@ -13,7 +14,7 @@ import {
 import { formatDuration, formatTime, stageLabel, t, versionProgress } from '../i18n'
 import QueueOverview from './QueueOverview.vue'
 import SongTimeline from './SongTimeline.vue'
-import { holderOf, speechWaitReason, waitReason } from '../queueModels'
+import { holderOf, speechWaitReason, transcribing, waitReason } from '../queueModels'
 import { navigate, showSong, songHref } from '../view'
 import type {
   LogEntry,
@@ -22,6 +23,7 @@ import type {
   SongState,
   SpeechTake,
   StemSetState,
+  TranscriptionState,
   VersionState,
   WorkerInfo,
 } from '../types'
@@ -41,6 +43,8 @@ const props = defineProps<{
   bundleWindowSeconds: number | null
   /** The speech lab's takes; those in the works wait for the same memory. */
   takes: SpeechTake[]
+  /** SheetSage2's; a running one keeps the worker, the waiting ones are in jobs. */
+  transcriptions: TranscriptionState[]
   log: LogEntry[]
   /** Songs the library lists; those have a place on the songs page to jump to. */
   listed: Set<string>
@@ -57,6 +61,7 @@ const jobIcons: Record<QueuedJob['kind'], string> = {
   song: 'pi pi-sparkles',
   render: 'pi pi-refresh',
   lyrics: 'pi pi-pen-to-square',
+  transcription: 'pi pi-microphone',
 }
 
 function jobTitle(job: QueuedJob): string {
@@ -64,6 +69,10 @@ function jobTitle(job: QueuedJob): string {
     return job.title
   }
   return job.kind === 'render' ? (job.songId ?? '') : job.kind === 'lyrics' ? t('jobLyrics') : t('untitled')
+}
+
+function taskLabel(task: string | null | undefined): string {
+  return task === 'melody-vocal' ? t('taskVocal') : t('taskFull')
 }
 
 function jobDetail(job: QueuedJob): string {
@@ -81,6 +90,8 @@ function jobDetail(job: QueuedJob): string {
       return [t('jobRender'), quality].join(' · ')
     case 'lyrics':
       return t(job.revision ? 'jobRevision' : 'jobLyrics')
+    case 'transcription':
+      return t('jobTranscription', { task: taskLabel(job.transcriptionTask) })
   }
 }
 
@@ -90,11 +101,24 @@ const timer = setInterval(() => (now.value = Date.now()), 15_000)
 onBeforeUnmount(() => clearInterval(timer))
 
 const voiceWork = computed(() => [...props.versions, ...props.stems])
-const holder = computed(() => holderOf(props.worker, props.lyricsDraft, voiceWork.value, props.takes))
+const holder = computed(() =>
+  holderOf(props.worker, props.lyricsDraft, voiceWork.value, props.takes, props.transcriptions),
+)
+
+/** The one transcription in the worker (SheetSage2 takes one at a time). */
+const runningTranscription = computed(() => props.transcriptions.find((tr) => !tr.finished) ?? null)
 
 const reasons = computed(() =>
   props.jobs.map((_, i) =>
-    waitReason(props.jobs, i, holder.value, voiceWork.value, props.bundleWindowSeconds, now.value),
+    waitReason(
+      props.jobs,
+      i,
+      holder.value,
+      voiceWork.value,
+      props.bundleWindowSeconds,
+      now.value,
+      transcribing(props.transcriptions),
+    ),
   ),
 )
 
@@ -166,6 +190,9 @@ function voiceReason(item: VoiceItem): string {
   if (holder.value === 'lyrics') {
     return t('waitLyrics')
   }
+  if (holder.value === 'transcription') {
+    return t('waitTranscription')
+  }
   return holder.value === 'voice' ? t('waitTurn') : t('waitStarting')
 }
 
@@ -236,7 +263,39 @@ watch(
       :lyrics-draft="lyricsDraft"
       :versions="voiceWork"
       :takes="takes"
+      :transcriptions="transcriptions"
     />
+
+    <div v-if="runningTranscription" class="mb-4">
+      <h3 class="m-0 text-sm font-medium text-muted-color">{{ t('modelTranscription') }}</h3>
+      <div class="flex gap-2 items-center">
+        <i class="pi pi-microphone text-muted-color" />
+        <div class="min-w-0 flex-1">
+          <a
+            href="#/transcribe"
+            class="block truncate font-bold text-color no-underline hover:underline"
+            :title="t('queueOpenTranscription')"
+            @click.prevent="navigate('transcribe')"
+            >{{ runningTranscription.fileName }}</a
+          >
+          <span class="block text-sm text-muted-color truncate">{{
+            runningTranscription.detail || taskLabel(runningTranscription.task)
+          }}</span>
+        </div>
+        <Tag class="shrink-0">
+          <i class="pi pi-spin pi-spinner text-xs" />
+          {{ t(`transcriptionStage_${runningTranscription.stage}`) }}
+        </Tag>
+        <Button
+          icon="pi pi-times"
+          text
+          rounded
+          severity="danger"
+          :aria-label="t('queueCancel')"
+          @click="run(() => cancelTranscription(runningTranscription!.id))"
+        />
+      </div>
+    </div>
 
     <div v-if="voiceItems.length > 0" class="mb-4">
       <h3 class="m-0 text-sm font-medium text-muted-color">{{ t('queueVoice') }}</h3>
@@ -317,7 +376,15 @@ watch(
           <i :class="[jobIcons[job.kind], 'text-muted-color']" />
           <div class="min-w-0 flex-1">
             <a
-              v-if="job.songId && listed.has(job.songId)"
+              v-if="job.kind === 'transcription'"
+              href="#/transcribe"
+              class="block truncate font-bold text-color no-underline hover:underline"
+              :title="t('queueOpenTranscription')"
+              @click.prevent="navigate('transcribe')"
+              >{{ jobTitle(job) }}</a
+            >
+            <a
+              v-else-if="job.songId && listed.has(job.songId)"
               :href="songHref(job.songId)"
               class="block truncate font-bold text-color no-underline hover:underline"
               :title="t('showSong')"
@@ -361,7 +428,13 @@ watch(
     </div>
 
     <p
-      v-if="songs.length === 0 && jobs.length === 0 && voiceItems.length === 0 && takesInWork.length === 0"
+      v-if="
+        songs.length === 0 &&
+        jobs.length === 0 &&
+        voiceItems.length === 0 &&
+        takesInWork.length === 0 &&
+        !runningTranscription
+      "
       class="muted empty"
     >
       {{ t('queueEmpty') }}

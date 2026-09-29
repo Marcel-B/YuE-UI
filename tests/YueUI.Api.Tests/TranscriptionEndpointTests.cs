@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using YueUI.Api.Library;
+using YueUI.Api.Queue;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Tests;
@@ -103,14 +104,89 @@ public sealed class TranscriptionEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task Only_one_transcription_runs_at_a_time()
+    public async Task A_second_transcription_waits_for_the_first()
+    {
+        _app.InstallSheetSage();
+        var (first, _) = await StartTranscription();
+
+        var response = await Upload("second.wav");
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var waiting = (await response.Content.ReadFromJsonAsync<TranscriptionState>(TestApp.Json))!;
+        Assert.Equal("queued", waiting.Stage);
+        var job = Assert.Single(_app.Snapshot().Queue!);
+        Assert.Equal((waiting.Id, JobKind.Transcription, "second.wav", "melody-full"), (job.Id, job.Kind, job.Title, job.TranscriptionTask));
+
+        _app.Worker.Emit(new { @event = "transcribe", id = first, stage = "failed", code = "crash", message = "gone" });
+        var command = await _app.Worker.NextCommand();
+        Assert.Equal(("transcribe", waiting.Id), ((string?)command["cmd"], (string?)command["id"]));
+        await _app.WaitForStatus(_client, s => s.Queue is { Count: 0 });
+    }
+
+    [Fact]
+    public async Task A_waiting_transcription_can_be_cancelled_and_its_upload_is_removed()
+    {
+        _app.InstallSheetSage();
+        await StartTranscription();
+        var waiting = (await (await Upload("second.wav")).Content.ReadFromJsonAsync<TranscriptionState>(TestApp.Json))!;
+        var uploads = Directory.GetDirectories(Path.Combine(Path.GetTempPath(), "yueui-uploads"), waiting.Id);
+        Assert.Single(uploads);
+
+        var response = await _client.PostAsync($"/api/transcriptions/{waiting.Id}/cancel", null);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Empty(_app.Snapshot().Queue!);
+        Assert.False(Directory.Exists(uploads[0]));
+    }
+
+    [Fact]
+    public async Task A_running_transcription_keeps_the_lyrics_model_from_shutting_the_worker_down()
+    {
+        _app.InstallSheetSage();
+        var (id, _) = await StartTranscription();
+
+        var draft = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+
+        Assert.Equal("queued", (await draft.Content.ReadFromJsonAsync<LyricsState>(TestApp.Json))!.Stage);
+        Assert.Equal([JobKind.Lyrics], _app.Snapshot().Queue!.Select(j => j.Kind));
+        await Task.Delay(100);
+        Assert.False(_app.Launcher.Current!.Disposed);
+
+        _app.Worker.Emit(new { @event = "transcribe", id, stage = "failed", code = "crash", message = "gone" });
+        var status = await _app.WaitForStatus(_client, s => s.Lyrics is { Finished: true } && s.Queue is { Count: 0 });
+        Assert.Equal("done", status.Lyrics!.Stage);
+    }
+
+    [Fact]
+    public async Task A_transcription_waits_while_a_draft_holds_the_memory()
+    {
+        _app.InstallSheetSage();
+        var gate = _app.LmStudio.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var draft = await _client.PostAsJsonAsync("/api/lyrics", new { keywords = "summer" });
+        var draftId = (await draft.Content.ReadFromJsonAsync<LyricsState>(TestApp.Json))!.Id;
+        await _app.WaitForStatus(_client, s => s.Lyrics?.Id == draftId);
+
+        var response = await Upload("My Song.mp3");
+
+        Assert.Equal("queued", (await response.Content.ReadFromJsonAsync<TranscriptionState>(TestApp.Json))!.Stage);
+        Assert.Equal(0, _app.Launcher.Launches);
+
+        gate.SetResult();
+        var command = await (await _app.StartedWorker()).NextCommand();
+        Assert.Equal("transcribe", (string?)command["cmd"]);
+    }
+
+    [Fact]
+    public async Task Songs_run_beside_a_transcription()
     {
         _app.InstallSheetSage();
         await StartTranscription();
 
-        var response = await Upload("second.wav");
+        var response = await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "[verse]\nLa", title = "Beside" });
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("Beside", (string?)(await _app.Worker.NextCommand())["title"]);
+        Assert.Empty(_app.Snapshot().Queue!);
     }
 
     [Fact]

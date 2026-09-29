@@ -1,13 +1,15 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using YueUI.Api.Library;
+using YueUI.Api.Queue;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api;
 
 /// <summary>
 /// Recordings to melody scores with SheetSage2: upload and follow a transcription (its progress comes with the
-/// worker's event stream), and the finished ones on disk with their score and all their files, or deleted.
+/// worker's event stream; one waits in the <see cref="JobQueue"/> while another runs or another model holds the
+/// memory), and the finished ones on disk with their score and all their files, or deleted.
 /// </summary>
 public static partial class TranscriptionEndpoints
 {
@@ -22,8 +24,8 @@ public static partial class TranscriptionEndpoints
             .DisableAntiforgery()
             .WithFormOptions(multipartBodyLengthLimit: MaxUploadBytes)
             .WithMetadata(new RequestSizeLimitAttribute(MaxUploadBytes));
-        api.MapPost("/transcriptions/{id}/cancel", async (string id, WorkerHost host, CancellationToken cancellationToken) =>
-            await host.CancelTranscriptionAsync(id, cancellationToken)
+        api.MapPost("/transcriptions/{id}/cancel", async (string id, WorkerHost host, JobQueue queue, CancellationToken cancellationToken) =>
+            queue.Cancel(id) || await host.CancelTranscriptionAsync(id, cancellationToken)
                 ? Results.Accepted()
                 : Results.Problem(title: "Not running", statusCode: StatusCodes.Status404NotFound));
         api.MapGet("/transcriptions/{id}/score", (string id, bool? download, TranscriptionLibrary library) =>
@@ -42,7 +44,7 @@ public static partial class TranscriptionEndpoints
     }
 
     private static async Task<IResult> Transcribe(
-        IFormFile? file, [FromForm] string? task, YuePaths paths, WorkerHost host, TimeProvider time, CancellationToken cancellationToken)
+        IFormFile? file, [FromForm] string? task, YuePaths paths, JobQueue queue, TimeProvider time, CancellationToken cancellationToken)
     {
         task ??= "melody-full";
         var errors = new Dictionary<string, string[]>();
@@ -87,10 +89,9 @@ public static partial class TranscriptionEndpoints
         };
         try
         {
-            if (!await host.TranscribeAsync(transcription, audioPath, offline: paths.SheetSageModelsCached, cancellationToken))
+            if (await queue.TranscribeAsync(transcription, audioPath, cancellationToken) is not null)
             {
-                Directory.Delete(uploadDirectory, recursive: true);
-                return Results.Problem(title: "A transcription is already running", statusCode: StatusCodes.Status409Conflict);
+                return Results.Accepted(value: transcription with { Stage = "queued" });
             }
         }
         catch (WorkerUnavailableException exception)

@@ -111,6 +111,12 @@ public sealed partial class LyricsWriter(
             _gate.Release();
             throw new LyricsBusyException("YuE2 is generating; the lyrics model would not fit into memory beside it.");
         }
+        // The worker is shut down below to make room; a transcription in it would end with it.
+        if (worker.IsTranscribing)
+        {
+            _gate.Release();
+            throw new LyricsBusyException("A transcription is running in the worker.");
+        }
         if (memoryTaken?.Invoke() == true)
         {
             _gate.Release();
