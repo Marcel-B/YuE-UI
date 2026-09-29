@@ -1,13 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
+import Menu from 'primevue/menu'
+import type { MenuItem } from 'primevue/menuitem'
 import { disablePush, enablePush, initPush, pushState, updatePushLanguage } from '../push'
-import { locale, t } from '../i18n'
+import { locale, setLocale, t } from '../i18n'
+import { reload, standalone } from '../update'
 
+/**
+ * What is set once per device rather than used while working: notifications, the language and, in the home-screen app,
+ * a reload. Behind one button, so the menu bar keeps its room for the pages.
+ */
 const emit = defineEmits<{ notice: [text: string, error: boolean] }>()
 
-const working = ref(false)
-const label = computed(() => t(pushState.value === 'on' ? 'notificationsOn' : 'notificationsOff'))
+const menu = useTemplateRef<InstanceType<typeof Menu>>('menu')
+const items = computed<MenuItem[]>(() => [
+  {
+    label: t(pushState.value === 'on' ? 'notificationsSwitchOff' : 'notificationsSwitchOn'),
+    icon: pushState.value === 'on' ? 'pi pi-bell-slash' : 'pi pi-bell',
+    disabled: working.value,
+    command: () => void toggle(),
+  },
+  { label: t('language'), icon: 'pi pi-globe', command: () => setLocale(locale.value === 'de' ? 'en' : 'de') },
+  ...(standalone ? [{ label: t('reload'), icon: 'pi pi-refresh', command: reload }] : []),
+])
 
+const working = ref(false)
 onMounted(() => {
   initPush().catch((caught: unknown) => console.warn('Web Push unavailable', caught))
 })
@@ -52,14 +69,15 @@ async function toggle(): Promise<void> {
 
 <template>
   <Button
-    :icon="pushState === 'on' ? 'pi pi-bell' : 'pi pi-bell-slash'"
-    :severity="pushState === 'on' ? undefined : 'secondary'"
-    :loading="working"
-    :aria-label="label"
-    :aria-pressed="pushState === 'on'"
-    v-tooltip.bottom="label"
+    icon="pi pi-cog"
+    severity="secondary"
     text
     rounded
-    @click="toggle"
+    :loading="working"
+    :aria-label="t('settings')"
+    aria-haspopup="true"
+    v-tooltip.bottom="t('settings')"
+    @click="menu?.toggle($event)"
   />
+  <Menu ref="menu" :model="items" popup />
 </template>
