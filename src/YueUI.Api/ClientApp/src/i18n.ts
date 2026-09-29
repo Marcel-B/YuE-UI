@@ -17,8 +17,6 @@ const messages = {
     studioRunning:
       'YuE Studio ist geöffnet und hat einen eigenen Worker. Beide gleichzeitig rechnen zu lassen kann den Speicher sprengen – am besten die App beenden.',
     workerError: 'Der Worker meldet: {message}',
-    notificationsOn: 'Benachrichtigungen an – antippen zum Ausschalten',
-    notificationsOff: 'Benachrichtigen, wenn etwas fertig ist',
     notificationsEnabled: 'Benachrichtigungen sind an. Eine Test-Nachricht ist unterwegs.',
     notificationsDisabled: 'Benachrichtigungen sind aus.',
     notificationsInstall:
@@ -421,6 +419,10 @@ const messages = {
     menuLogic: 'Logic',
     menuLab: 'Sprachlabor',
     menuQueue: 'Warteschlange',
+    menuTools: 'Werkzeuge',
+    settings: 'Einstellungen',
+    notificationsSwitchOn: 'Benachrichtigungen einschalten',
+    notificationsSwitchOff: 'Benachrichtigungen ausschalten',
     queueActive: '{n} in Arbeit oder wartend – zur Warteschlange',
     labIntro:
       'Hier lässt sich ausprobieren, welches lokale Sprachmodell eine Stimme natürlich klingen lässt, etwa für einen Podcast. Jedes gewählte Modell spricht den Text nacheinander, auf Wunsch mit einer hier aufgenommenen Stimme. YuE2, das Textmodell und Stimmumwandlungen warten so lange.',
@@ -619,8 +621,6 @@ const messages = {
     studioRunning:
       'YuE Studio is open and has a worker of its own. Letting both generate at once can run out of memory – better quit the app.',
     workerError: 'The worker reports: {message}',
-    notificationsOn: 'Notifications on – tap to switch off',
-    notificationsOff: 'Notify me when something finishes',
     notificationsEnabled: 'Notifications are on. A test notification is on its way.',
     notificationsDisabled: 'Notifications are off.',
     notificationsInstall:
@@ -1022,6 +1022,10 @@ const messages = {
     menuLogic: 'Logic',
     menuLab: 'Speech lab',
     menuQueue: 'Queue',
+    menuTools: 'Tools',
+    settings: 'Settings',
+    notificationsSwitchOn: 'Turn notifications on',
+    notificationsSwitchOff: 'Turn notifications off',
     queueActive: '{n} in the works or waiting – open the queue',
     labIntro:
       'Try out which local speech model makes a voice sound natural, for a podcast for instance. Each chosen model speaks the text in turn, with a voice recorded here if you like. YuE2, the lyrics model and voice conversions wait meanwhile.',

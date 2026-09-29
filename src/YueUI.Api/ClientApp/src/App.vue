@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, useTemplateRef, w
 import { getStorage, getVoiceInfo, listLibrary, songRequest, songScore, subscribe } from './api'
 import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
-import NotificationButton from './components/NotificationButton.vue'
+import SettingsMenu from './components/SettingsMenu.vue'
 import QueueList from './components/QueueList.vue'
 import AudioBackground from './components/AudioBackground.vue'
 import PlayerBar from './components/PlayerBar.vue'
@@ -13,14 +13,14 @@ import VoicesPanel from './components/VoicesPanel.vue'
 import StemsPanel from './components/StemsPanel.vue'
 import Message from 'primevue/message'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
-import { formatBytes, locale, setLocale, t, workerLabel, type MessageKey } from './i18n'
+import { formatBytes, t, workerLabel, type MessageKey } from './i18n'
 import { current, refreshTracks } from './player'
 import { loadPlaylists, playlistIds } from './playlist'
 import { ratings, setRatings } from './ratings'
 import { reviewCount, reviewDays } from './review'
 import { shareState } from './share'
 import { exportTarget } from './export'
-import { checkForUpdate, reload, standalone, updateAvailable } from './update'
+import { checkForUpdate, reload, updateAvailable } from './update'
 import { visuals } from './spectrum'
 import QueueOverview from './components/QueueOverview.vue'
 import { navigate, view, type View } from './view'
@@ -207,12 +207,19 @@ onBeforeUnmount(unsubscribe)
 
 // ---- Pages -------------------------------------------------------------------------------------------
 
-const pages: { view: View; label: MessageKey; icon: string }[] = [
+/**
+ * The pages used day to day stand in the bar; the tools around a song (transcribing, voices and stems, Logic, the
+ * speech lab) share one submenu, so the bar fits one line on a laptop. The queue concerns every page and has its
+ * hourglass at the bar's end instead of an entry.
+ */
+type Page = { view: View; label: MessageKey; icon: string }
+const pages: Page[] = [
   { view: 'create', label: 'menuCreate', icon: 'pi pi-sparkles' },
-  { view: 'queue', label: 'menuQueue', icon: 'pi pi-hourglass' },
-  { view: 'transcribe', label: 'menuTranscribe', icon: 'pi pi-microphone' },
   { view: 'songs', label: 'menuSongs', icon: 'pi pi-list' },
   { view: 'playlist', label: 'menuPlaylist', icon: 'pi pi-play-circle' },
+]
+const tools: Page[] = [
+  { view: 'transcribe', label: 'menuTranscribe', icon: 'pi pi-microphone' },
   { view: 'voices', label: 'menuVoices', icon: 'pi pi-users' },
   { view: 'logic', label: 'menuLogic', icon: 'pi pi-box' },
   { view: 'lab', label: 'menuLab', icon: 'pi pi-comments' },
@@ -240,7 +247,6 @@ const waitingTranscriptions = computed(() => jobs.value.filter((j) => j.kind ===
  * left unrated long enough to be heard again, songs in the playlist.
  */
 const badges = computed<Partial<Record<View, number>>>(() => ({
-  queue: queueCount.value,
   songs: reviewCount(runs.value, ratings.value, reviewDays.value),
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length + waitingTranscriptions.value.length,
   playlist: playlistIds.value.length,
@@ -273,17 +279,32 @@ watch(view, (value) => {
   }
 })
 
-const menu = computed(() =>
-  pages
-    .filter((page) => page.view !== 'voices' || voicesPage.value)
-    .map((page) => ({
-      key: page.view,
-      label: t(page.label),
-      icon: page.icon,
-      badge: badges.value[page.view] || undefined,
-      command: () => navigate(page.view),
-    })),
-)
+function menuItem(page: Page) {
+  return {
+    key: page.view,
+    label: t(page.label),
+    icon: page.icon,
+    badge: badges.value[page.view] || undefined,
+    active: page.view === view.value,
+    command: () => navigate(page.view),
+  }
+}
+
+const menu = computed(() => {
+  const toolItems = tools.filter((page) => page.view !== 'voices' || voicesPage.value).map(menuItem)
+  return [
+    ...pages.map(menuItem),
+    {
+      key: 'tools',
+      label: t('menuTools'),
+      icon: 'pi pi-wrench',
+      // What is in the works on a tool's page shows on the closed submenu too.
+      badge: toolItems.reduce((sum, item) => sum + (item.badge ?? 0), 0) || undefined,
+      active: toolItems.some((item) => item.active),
+      items: toolItems,
+    },
+  ]
+})
 
 // ---- Library ----------------------------------------------------------------------------------------
 
@@ -430,35 +451,33 @@ async function useAsNewSong(songId: string): Promise<void> {
   <ExportDialog v-if="exportTarget" />
   <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
     <template #start>
-      <span class="brand">YuE UI</span>
+      <span class="brand whitespace-nowrap">YuE UI</span>
     </template>
-    <template #item="{ item, props }">
-      <a
-        v-bind="props.action"
-        :class="['flex items-center gap-2', { 'text-primary font-semibold': item.key === view }]"
-      >
+    <template #item="{ item, props, hasSubmenu, root }">
+      <a v-bind="props.action" :class="['flex items-center gap-2', { 'text-primary font-semibold': item.active }]">
         <span :class="item.icon" />
         <span>{{ item.label }}</span>
         <Badge v-if="item.badge" :value="item.badge" size="small" />
+        <span v-if="hasSubmenu" :class="['pi text-xs', root ? 'pi-angle-down' : 'pi-angle-right']" />
       </a>
     </template>
     <template #end>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1">
         <!--
-          The queue concerns every page (songs, drafts, versions, stems), so what is in the works shows here too: on a
-          phone the menu's badges hide behind the menu button.
+          The queue concerns every page (songs, drafts, versions, stems), so it sits here rather than in the menu, and
+          on a phone its count stays in sight instead of behind the menu button.
         -->
         <Button
-          v-if="queueCount > 0 && view !== 'queue'"
           as="a"
           href="#/queue"
           icon="pi pi-hourglass"
-          :label="String(queueCount)"
-          severity="secondary"
+          :label="queueCount > 0 ? String(queueCount) : undefined"
+          :severity="view === 'queue' ? undefined : 'secondary'"
           text
           size="small"
-          :aria-label="t('queueActive', { n: queueCount })"
-          v-tooltip.bottom="t('queueActive', { n: queueCount })"
+          :aria-label="queueCount > 0 ? t('queueActive', { n: queueCount }) : t('menuQueue')"
+          :aria-current="view === 'queue' ? 'page' : undefined"
+          v-tooltip.bottom="queueCount > 0 ? t('queueActive', { n: queueCount }) : t('menuQueue')"
           @click.prevent="navigate('queue')"
         />
         <Tag
@@ -467,18 +486,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           rounded
           class="whitespace-nowrap"
         />
-        <NotificationButton @notice="show" />
-        <Button
-          v-if="standalone"
-          icon="pi pi-refresh"
-          severity="secondary"
-          text
-          size="small"
-          :aria-label="t('reload')"
-          v-tooltip.bottom="t('reload')"
-          @click="reload"
-        />
-        <Button :label="t('language')" text size="small" @click="setLocale(locale === 'de' ? 'en' : 'de')" />
+        <SettingsMenu @notice="show" />
       </div>
     </template>
   </Menubar>
