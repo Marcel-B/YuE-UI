@@ -12,8 +12,7 @@ import SynthScope from './SynthScope.vue'
 
 /**
  * A browser sound's controls, analog (`AnalogPanel`) or FM (`FmPanel`), with the switch between the two, its effects
- * (`EffectsPanel`) and, where the caller can hear it, an oscilloscope. Used for a track's sound in `SynthDialog` and
- * for a named sound on the instruments page.
+ * (`EffectsPanel`) and, where the caller can hear it, an oscilloscope. Used for the saved sounds on the instruments page.
  */
 const props = defineProps<{
   kind?: TrackKind

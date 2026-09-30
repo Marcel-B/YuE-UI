@@ -21,7 +21,6 @@ import {
 } from '../../logic/pianoRoll'
 import {
   AUDIO_OUTPUT,
-  auditionPhrase,
   createPlayer,
   defaultRoutings,
   listMidiPorts,
@@ -36,19 +35,27 @@ import {
   type Routing,
 } from '../../logic/midiPlayer'
 import { playableVoices } from '../../logic/score'
-import { hasSynth, normalizePatch, type SynthPatch } from '../../logic/synth'
-import { loadSounds, mixer, trackKey, trackMix, trackSounds } from '../../logic/synths'
+import { clonePatch, normalizePatch, type SynthPatch } from '../../logic/synth'
+import {
+  loadSounds,
+  mixer,
+  namedSounds,
+  resetTrackSound,
+  setTrackSound,
+  trackKey,
+  trackMix,
+  trackSounds,
+} from '../../logic/synths'
 import type { Assignments, Instrument, ScoreDocument, VoiceTrack } from '../../logic/types'
 import { registerSource, setVisual, visuals, type SpectrumSource } from '../../spectrum'
 import SpectrumBars from '../SpectrumBars.vue'
 import MixerPanel, { type MixerTrack } from './MixerPanel.vue'
-import SynthDialog from './SynthDialog.vue'
 
 const props = defineProps<{
   score: ScoreDocument
   includeChords: boolean
   stale: boolean
-  /** The instrument library; with none the table offers ports and channels only. */
+  /** The MIDI instrument library, edited on the instruments page. */
   instruments: Instrument[]
   /** Track name → instrument id, kept on the server by the app. */
   assignments: Assignments
@@ -186,33 +193,43 @@ watch(waveHeight, (height) => {
 })
 
 const trackIds = computed(() => voices.value.map((voice) => voice.id))
-/** The routing chosen by hand per track; an instrument, where one is assigned, overrides it without touching it. */
+/**
+ * Per track whether it is muted, and the channel it would have without an instrument. Ports are no longer chosen by
+ * hand: a track sounds in the browser, or on the port and channel of its instrument, configured on the instruments
+ * page. A port stored by an older version is ignored.
+ */
 const routings = ref<Routing[]>(loadRoutings(trackIds.value, defaultRoutings(voices.value)))
 /**
- * Assigning an instrument is offered wherever there are instruments: it says which channel a track is written
- * on and which hardware the Logic project addresses, neither of which needs the browser. Only driving a port
- * from here does, which is what `canDrivePorts` is about - without it the preview sounds through the browser.
+ * Only Chromium drives MIDI ports; elsewhere the choice offers browser sounds only, and a track that has an
+ * instrument (chosen in Chrome) keeps it, since it also decides the MIDI file's channel and the Logic project's
+ * hardware, but sounds in the browser.
  */
 const canDrivePorts = midiUsable()
-const hasInstruments = computed(() => props.instruments.length > 0)
-/** What the player uses: the instrument's port and channel where a track has one, the manual routing elsewhere. */
+/** What the player uses: the instrument's port and channel where a track has one, the browser elsewhere. */
 const effective = computed(() =>
   routings.value.map((routing, index) =>
-    effectiveRouting(routing, instrumentOf(trackIds.value[index]!, props.assignments, props.instruments), ports.value),
+    effectiveRouting(
+      { ...routing, output: AUDIO_OUTPUT },
+      instrumentOf(trackIds.value[index]!, props.assignments, props.instruments),
+      ports.value,
+    ),
   ),
 )
 
 /**
- * Every track's sound on the browser synthesizer, checked once per change rather than per note: its own where it has
- * one, the default of its kind otherwise. The pool looks it up for every note, so an edit is heard at once.
+ * Every track's sound on the browser synthesizer, checked once per change rather than per note: the saved sound it
+ * was given, so an edit on the instruments page reaches it; the copy it keeps when that sound was deleted or it has
+ * one of its own; the default of its kind otherwise. The pool looks it up for every note.
  */
 const patches = computed(
   () =>
     new Map<string, SynthPatch>(
-      voices.value.map((voice) => [
-        trackKey(voice.id),
-        normalizePatch(trackSounds.value[trackKey(voice.id)]?.patch, voice.kind),
-      ]),
+      voices.value.map((voice) => {
+        const sound = trackSounds.value[trackKey(voice.id)]
+        const preset = sound?.preset?.toUpperCase()
+        const named = preset ? namedSounds.value.find((entry) => entry.name.toUpperCase() === preset) : undefined
+        return [trackKey(voice.id), normalizePatch(named?.patch ?? sound?.patch, voice.kind)]
+      }),
     ),
 )
 const pool = new OutputPool(null, (track) => patches.value.get(trackKey(track)) ?? null, {
@@ -254,46 +271,80 @@ function setSolo(index: number, solo: boolean): void {
   next[index] = solo
   solos.value = next
 }
-const synthDialog = ref<InstanceType<typeof SynthDialog> | null>(null)
-
-/** The middle of a track's range, so a test note or phrase sounds where the track plays. */
+/** The middle of a track's range, so a test note sounds where the track plays. */
 function registerOf(voice: VoiceTrack | undefined): number {
   const pitches = (voice?.notes ?? []).map((entry) => entry.noteNumber).sort((a, b) => a - b)
   return pitches.length > 0 ? pitches[Math.floor(pitches.length / 2)]! : 60
 }
 
-/** The synthesizer is for tracks that sound in the browser; drums keep their kit, hardware its own sound. */
-function editableSound(index: number): boolean {
-  return hasSynth(voices.value[index]?.kind) && effective.value[index]?.routing.output === AUDIO_OUTPUT
+/**
+ * What a track plays, as one choice: `sound:` for the default sound of its kind (the noise kit for drums),
+ * `sound:<name>` for a saved sound, `own` for a sound of its own made in an earlier version's sound dialog, and
+ * `midi:<id>` for an instrument.
+ */
+function choiceOf(index: number): string {
+  const instrument = effective.value[index]?.instrument
+  if (instrument) {
+    return `midi:${instrument.id}`
+  }
+  const sound = trackSounds.value[trackKey(trackIds.value[index]!)]
+  if (!sound) {
+    return 'sound:'
+  }
+  const preset = sound.preset?.toUpperCase()
+  const named = namedSounds.value.find((entry) => entry.name.toUpperCase() === preset)
+  return named ? `sound:${named.name}` : 'own'
 }
 
-function editSound(index: number): void {
-  const voice = voices.value[index]
-  if (voice) {
-    synthDialog.value?.open(voice.id, voice.kind, registerOf(voice))
-  }
+interface ChoiceGroup {
+  label: string
+  items: { label: string; value: string }[]
 }
 
-function audition(track: string, pitch: number): void {
-  const index = trackIds.value.findIndex((id) => id === track)
-  const routing = effective.value[index]?.routing
-  if (routing) {
-    // A phrase, not the song: pool.silence() first, so it is not buried under notes still sounding.
-    pool.silence()
-    auditionPhrase(pool, { ...routing, output: AUDIO_OUTPUT }, track, pitch)
+function choicesFor(index: number): ChoiceGroup[] {
+  const drums = voices.value[index]?.kind === 'Drums'
+  const browser = [
+    { label: t(drums ? 'previewDrumKit' : 'synthReset'), value: 'sound:' },
+    ...(choiceOf(index) === 'own' ? [{ label: t('previewOwnSound'), value: 'own' }] : []),
+    ...(drums ? [] : namedSounds.value.map((sound) => ({ label: sound.name, value: `sound:${sound.name}` }))),
+  ]
+  // Without Web MIDI only an instrument the track already has is listed, so the choice does not look empty.
+  const current = effective.value[index]?.instrument
+  const instruments = canDrivePorts ? props.instruments : current ? [current] : []
+  return [
+    { label: t('previewBrowserSounds'), items: browser },
+    ...(instruments.length > 0
+      ? [
+          {
+            label: t('instrumentsTitle'),
+            items: instruments.map((instrument) => ({ label: instrument.name, value: `midi:${instrument.id}` })),
+          },
+        ]
+      : []),
+  ]
+}
+
+function choose(index: number, value: string): void {
+  const track = trackIds.value[index]!
+  if (value.startsWith('midi:')) {
+    assign(track, Number(value.slice(5)))
+    return
+  }
+  if (effective.value[index]?.instrument) {
+    assign(track, null)
+  }
+  if (value === 'own') {
+    return
+  }
+  const name = value.slice(6)
+  const sound = namedSounds.value.find((entry) => entry.name === name)
+  if (sound) {
+    // The track follows the saved sound (see `patches`); the copy is what it keeps should that be deleted.
+    setTrackSound(track, clonePatch(normalizePatch(sound.patch, voices.value[index]?.kind)), sound.name)
+  } else if (trackSounds.value[trackKey(track)]) {
+    void resetTrackSound(track)
   }
 }
-/** Channels are 0-based in the routing and shown 1-based, as every MIDI device labels them. */
-const channels = Array.from({ length: 16 }, (_, index) => ({ label: `${index + 1}`, value: index }))
-/** The browser's own synth first, then whatever MIDI outputs are known right now. */
-const outputs = computed(() => [
-  { label: t('previewOutputAudio'), value: AUDIO_OUTPUT },
-  ...ports.value.map((port) => ({ label: port.name, value: port.id })),
-])
-const instrumentOptions = computed(() => [
-  { label: t('previewInstrumentNone'), value: null as number | null },
-  ...props.instruments.map((instrument) => ({ label: instrument.name, value: instrument.id as number | null })),
-])
 let player: Player | null = null
 let frame = 0
 let scrollTicks = 0
@@ -427,11 +478,6 @@ function seek(event: MouseEvent): void {
   }
 }
 
-/** Sends every track to the same output, the usual first step with a single interface. */
-function routeAll(output: string): void {
-  routings.value = routings.value.map((routing) => ({ ...routing, output }))
-}
-
 /** The canvas only covers what is on screen, so its width follows the viewport rather than the song. */
 const observer = new ResizeObserver(() => {
   viewportWidth.value = viewport.value?.clientWidth ?? 0
@@ -450,16 +496,6 @@ async function loadPorts(): Promise<void> {
     // Ports come and go while the page is open.
     found.access.onstatechange = async () => {
       ports.value = (await listMidiPorts()).ports
-      const gone = routings.value.some(
-        (routing) => routing.output !== AUDIO_OUTPUT && !ports.value.some((port) => port.id === routing.output),
-      )
-      if (gone) {
-        routings.value = routings.value.map((routing) =>
-          routing.output !== AUDIO_OUTPUT && !ports.value.some((port) => port.id === routing.output)
-            ? { ...routing, output: AUDIO_OUTPUT }
-            : routing,
-        )
-      }
     }
   }
 }
@@ -690,20 +726,6 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
             :label="t('instrumentsManage')"
             @click="emit('manageInstruments')"
           />
-          <div class="flex items-center gap-2 text-sm text-muted-color">
-            <label id="preview-route-all">{{ t('previewRouteAll') }}</label>
-            <!-- An action rather than a setting: it always shows the prompt, and picking an output applies it. -->
-            <Select
-              :model-value="null"
-              :options="outputs"
-              option-label="label"
-              option-value="value"
-              :placeholder="t('previewRouteAllPick')"
-              aria-labelledby="preview-route-all"
-              size="small"
-              @update:model-value="routeAll"
-            />
-          </div>
         </div>
 
         <div class="relative overflow-x-auto">
@@ -711,9 +733,7 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
             <thead>
               <tr class="text-left text-xs text-muted-color">
                 <th class="py-1.5 pr-2 font-medium">{{ t('previewTrack') }}</th>
-                <th v-if="hasInstruments" class="py-1.5 pr-2 font-medium">{{ t('previewInstrument') }}</th>
-                <th class="py-1.5 pr-2 font-medium">{{ t('previewOutput') }}</th>
-                <th class="py-1.5 pr-2 font-medium">{{ t('previewChannel') }}</th>
+                <th class="py-1.5 pr-2 font-medium">{{ t('previewPlaysOn') }}</th>
                 <th class="py-1.5 font-medium">
                   <span class="sr-only">{{ t('previewTest') }}</span>
                 </th>
@@ -734,85 +754,43 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
                     <label :for="`preview-track-${index}`" class="cursor-pointer">{{ trackIds[index] }}</label>
                   </div>
                 </td>
-                <td v-if="hasInstruments" class="py-1 pr-2 align-middle">
+                <td class="py-1 pr-2 align-middle">
                   <Select
-                    :model-value="effective[index]?.instrument?.id ?? null"
-                    :options="instrumentOptions"
+                    :model-value="choiceOf(index)"
+                    :options="choicesFor(index)"
                     option-label="label"
                     option-value="value"
-                    :placeholder="t('previewInstrumentNone')"
-                    :aria-label="`${t('previewInstrument')} ${trackIds[index]}`"
+                    option-group-label="label"
+                    option-group-children="items"
+                    :aria-label="`${t('previewPlaysOn')} ${trackIds[index]}`"
                     size="small"
-                    class="w-full min-w-32"
-                    @update:model-value="assign(trackIds[index]!, $event)"
+                    class="w-full min-w-40"
+                    @update:model-value="choose(index, $event)"
                   />
-                </td>
-                <template v-if="effective[index]?.instrument">
-                  <td v-if="effective[index]?.port" class="whitespace-nowrap py-1 pr-2 align-middle">
-                    {{ effective[index]?.port?.name }}
-                  </td>
                   <!-- Without Web MIDI no port is ever found, so naming one that is missing would be misleading. -->
-                  <td v-else-if="!canDrivePorts" class="muted whitespace-nowrap py-1 pr-2 align-middle">
-                    {{ effective[index]?.instrument?.port }}
-                  </td>
-                  <td v-else class="py-1 pr-2 align-middle text-(--warning-text)">
+                  <div
+                    v-if="canDrivePorts && effective[index]?.instrument && !effective[index]?.port"
+                    class="mt-0.5 text-xs text-(--warning-text)"
+                  >
                     {{ t('previewInstrumentMissing', { port: effective[index]?.instrument?.port ?? '' }) }}
-                  </td>
-                  <td class="whitespace-nowrap py-1 pr-2 align-middle">{{ effective[index]!.routing.channel + 1 }}</td>
-                </template>
-                <template v-else>
-                  <td class="py-1 pr-2 align-middle">
-                    <Select
-                      v-model="routing.output"
-                      :options="outputs"
-                      option-label="label"
-                      option-value="value"
-                      :aria-label="`${t('previewOutput')} ${trackIds[index]}`"
-                      size="small"
-                      class="w-full min-w-32"
-                    />
-                  </td>
-                  <td class="py-1 pr-2 align-middle">
-                    <Select
-                      v-model="routing.channel"
-                      :options="channels"
-                      option-label="label"
-                      option-value="value"
-                      :disabled="routing.output === AUDIO_OUTPUT"
-                      :aria-label="`${t('previewChannel')} ${trackIds[index]}`"
-                      size="small"
-                      class="w-20"
-                    />
-                  </td>
-                </template>
-                <td class="py-1 align-middle">
-                  <div class="flex gap-1">
-                    <Button
-                      size="small"
-                      severity="secondary"
-                      outlined
-                      :label="t('previewTest')"
-                      @click="
-                        testTone(
-                          pool,
-                          effective[index]!.routing,
-                          trackIds[index]!,
-                          voices[index]?.kind === 'Drums',
-                          registerOf(voices[index]),
-                        )
-                      "
-                    />
-                    <Button
-                      v-if="editableSound(index)"
-                      size="small"
-                      severity="secondary"
-                      outlined
-                      icon="pi pi-sliders-h"
-                      :label="t('previewSound')"
-                      :title="t('previewSoundTitle')"
-                      @click="editSound(index)"
-                    />
                   </div>
+                </td>
+                <td class="py-1 align-middle">
+                  <Button
+                    size="small"
+                    severity="secondary"
+                    outlined
+                    :label="t('previewTest')"
+                    @click="
+                      testTone(
+                        pool,
+                        effective[index]!.routing,
+                        trackIds[index]!,
+                        voices[index]?.kind === 'Drums',
+                        registerOf(voices[index]),
+                      )
+                    "
+                  />
                 </td>
               </tr>
             </tbody>
@@ -825,14 +803,7 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
         <p class="muted hint mb-0">{{ t('mixerHint') }}</p>
       </Panel>
 
-      <p class="muted hint">{{ note ?? (hasInstruments ? t('previewInstrumentHint') : t('previewHint')) }}</p>
-      <SynthDialog
-        ref="synthDialog"
-        :playing="playing"
-        :scope="(track) => pool.trackAnalysers(track)"
-        @audition="audition"
-        @toggle="toggle"
-      />
+      <p class="muted hint">{{ note ?? t('previewHint') }}</p>
     </template>
   </Card>
 </template>
