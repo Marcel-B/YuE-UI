@@ -53,8 +53,8 @@ public static class PushTexts
     }
 
     public static (string Title, string Body) Test(string language) => IsGerman(language)
-        ? ("YuE UI", "Benachrichtigungen funktionieren.")
-        : ("YuE UI", "Notifications work.");
+        ? ("Tonwerk", "Benachrichtigungen funktionieren.")
+        : ("Tonwerk", "Notifications work.");
 
     private static bool IsGerman(string language) => language.StartsWith("de", StringComparison.OrdinalIgnoreCase);
 

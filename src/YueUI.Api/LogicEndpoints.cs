@@ -383,7 +383,7 @@ public static class LogicEndpoints
         {
             cleaned = cleaned[..100];
         }
-        return cleaned.Length == 0 ? "YuE" : cleaned;
+        return cleaned.Length == 0 ? "Tonwerk" : cleaned;
     }
 
     private static async Task<IResult> MidiToAbcAsync(IFormFile? file, IMidiToAbcConverter converter, CancellationToken cancellationToken)
