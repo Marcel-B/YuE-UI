@@ -457,47 +457,58 @@ async function useAsNewSong(songId: string): Promise<void> {
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
   <ShareDialog v-if="shareState" />
   <ExportDialog v-if="exportTarget" />
-  <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
-    <template #start>
-      <span class="brand whitespace-nowrap">Tonwerk</span>
-    </template>
-    <template #item="{ item, props, hasSubmenu, root }">
-      <a v-bind="props.action" :class="['flex items-center gap-2', { 'text-primary font-semibold': item.active }]">
-        <span :class="item.icon" />
-        <span>{{ item.label }}</span>
-        <Badge v-if="item.badge" :value="item.badge" size="small" />
-        <span v-if="hasSubmenu" :class="['pi text-xs', root ? 'pi-angle-down' : 'pi-angle-right']" />
-      </a>
-    </template>
-    <template #end>
-      <div class="flex items-center gap-1">
-        <!--
+  <!--
+    Header and player frame the page like the rollers of a scroll: both as wide as the page including its padding,
+    flush at the top and the bottom, and the pages run between them.
+  -->
+  <header class="app-header mb-4">
+    <Menubar
+      :model="menu"
+      breakpoint="640px"
+      class="rounded-none border-0 border-b pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]"
+      :pt="{ button: { 'aria-label': t('menu') } }"
+    >
+      <template #start>
+        <span class="brand whitespace-nowrap">Tonwerk</span>
+      </template>
+      <template #item="{ item, props, hasSubmenu, root }">
+        <a v-bind="props.action" :class="['flex items-center gap-2', { 'text-primary font-semibold': item.active }]">
+          <span :class="item.icon" />
+          <span>{{ item.label }}</span>
+          <Badge v-if="item.badge" :value="item.badge" size="small" />
+          <span v-if="hasSubmenu" :class="['pi text-xs', root ? 'pi-angle-down' : 'pi-angle-right']" />
+        </a>
+      </template>
+      <template #end>
+        <div class="flex items-center gap-1">
+          <!--
           The queue concerns every page (songs, drafts, versions, stems), so it sits here rather than in the menu, and
           on a phone its count stays in sight instead of behind the menu button.
         -->
-        <Button
-          as="a"
-          href="#/queue"
-          icon="pi pi-hourglass"
-          :label="queueCount > 0 ? String(queueCount) : undefined"
-          :severity="view === 'queue' ? undefined : 'secondary'"
-          text
-          size="small"
-          :aria-label="queueCount > 0 ? t('queueActive', { n: queueCount }) : t('menuQueue')"
-          :aria-current="view === 'queue' ? 'page' : undefined"
-          v-tooltip.bottom="queueCount > 0 ? t('queueActive', { n: queueCount }) : t('menuQueue')"
-          @click.prevent="navigate('queue')"
-        />
-        <Tag
-          :value="workerLabel(worker.status, worker.busy)"
-          :severity="workerSeverity"
-          rounded
-          class="whitespace-nowrap"
-        />
-        <SettingsMenu @notice="show" />
-      </div>
-    </template>
-  </Menubar>
+          <Button
+            as="a"
+            href="#/queue"
+            icon="pi pi-hourglass"
+            :label="queueCount > 0 ? String(queueCount) : undefined"
+            :severity="view === 'queue' ? undefined : 'secondary'"
+            text
+            size="small"
+            :aria-label="queueCount > 0 ? t('queueActive', { n: queueCount }) : t('menuQueue')"
+            :aria-current="view === 'queue' ? 'page' : undefined"
+            v-tooltip.bottom="queueCount > 0 ? t('queueActive', { n: queueCount }) : t('menuQueue')"
+            @click.prevent="navigate('queue')"
+          />
+          <Tag
+            :value="workerLabel(worker.status, worker.busy)"
+            :severity="workerSeverity"
+            rounded
+            class="whitespace-nowrap"
+          />
+          <SettingsMenu @notice="show" />
+        </div>
+      </template>
+    </Menubar>
+  </header>
 
   <div class="mb-4 flex flex-col gap-2 empty:hidden">
     <Message v-if="!connected" severity="warn">{{ t('disconnected') }}</Message>
@@ -707,6 +718,18 @@ async function useAsNewSong(songId: string): Promise<void> {
 </template>
 
 <style scoped>
+/* Negative margins undo #app's side padding (style.css), so the header is as wide as the player (72rem at most). */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin-right: calc(-1 * max(1rem, env(safe-area-inset-right)));
+  margin-left: calc(-1 * max(1rem, env(safe-area-inset-left)));
+  padding-top: env(safe-area-inset-top);
+  background: var(--p-content-background);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.08);
+}
+
 .brand {
   margin-right: 0.75rem;
   font-size: 1.15rem;
