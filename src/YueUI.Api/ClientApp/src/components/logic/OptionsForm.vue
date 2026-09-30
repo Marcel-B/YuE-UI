@@ -85,6 +85,7 @@ const harmonyLabels: Record<HarmonyPart, Parameters<typeof t>[0]> = {
   Alto: 'harmonyAlto',
   Tenor: 'harmonyTenor',
   Bass: 'harmonyBass',
+  Drone: 'harmonyDrone',
 }
 // The 24 keys as K: writes them, sharps up to F#, flats from F down, so the name reads as a musician would write it.
 const majorKeys = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']

@@ -189,6 +189,23 @@ public class BackingVocalTests
         Assert.Equal(plainBack.Abc, back.Abc);
     }
 
+    [Fact]
+    public void The_drone_holds_the_tonic_under_each_phrase()
+    {
+        // Two phrases in G major, parted by a rest of a half bar; the lowest sung note is the A.
+        var score = ParseScore(Native("""
+            V: Vocal
+            "G"G4A4B4d4|B4A4z8|"D"A4B4c4d4|B16|
+            """, key: "G"));
+
+        var result = Arrange(score, new HarmonyOptions { Parts = [HarmonyPart.Drone] });
+
+        var drone = result.Score.Voice("Harmony Drone").Notes;
+        Assert.Equal([(0L, 6L * Ppq), (2 * Bar, 2 * Bar)], drone.Select(n => (n.StartTicks, n.DurationTicks)));
+        // The G at least a minor third below each phrase's lowest note: under the first phrase's G that is 55.
+        Assert.Equal([55, 55], drone.Select(n => n.NoteNumber));
+    }
+
     [Theory]
     [InlineData("H#")]
     [InlineData("Dorian")]

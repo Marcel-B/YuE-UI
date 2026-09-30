@@ -85,10 +85,10 @@ export type ChordInversion = 'RootPosition' | 'Closest' | 'First' | 'Second'
 
 export type SwingUnit = 'Eighths' | 'Sixteenths'
 
-export type HarmonyPart = 'ThirdAbove' | 'ThirdBelow' | 'SixthBelow' | 'Alto' | 'Tenor' | 'Bass'
+export type HarmonyPart = 'ThirdAbove' | 'ThirdBelow' | 'SixthBelow' | 'Alto' | 'Tenor' | 'Bass' | 'Drone'
 
 /** Every backing part in the order the form lists them. */
-export const HARMONY_PARTS: HarmonyPart[] = ['ThirdAbove', 'ThirdBelow', 'SixthBelow', 'Alto', 'Tenor', 'Bass']
+export const HARMONY_PARTS: HarmonyPart[] = ['ThirdAbove', 'ThirdBelow', 'SixthBelow', 'Alto', 'Tenor', 'Bass', 'Drone']
 
 /** The track name the converter gives a backing part (`HarmonyGenerator.TrackId`). */
 export function harmonyTrack(part: HarmonyPart): string {
@@ -99,6 +99,7 @@ export function harmonyTrack(part: HarmonyPart): string {
     Alto: 'Harmony Alto',
     Tenor: 'Harmony Tenor',
     Bass: 'Harmony Bass',
+    Drone: 'Harmony Drone',
   }
   return names[part]
 }

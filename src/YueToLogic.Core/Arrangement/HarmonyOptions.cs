@@ -51,4 +51,10 @@ public enum HarmonyPart
 
     /// <summary>Bass of a four-part setting: the chord's bass note, below the tenor.</summary>
     Bass,
+
+    /// <summary>
+    /// A drone (Bordun): the key's tonic held under each phrase of the melody, the "ooh" a backing choir holds while
+    /// the lead sings over it.
+    /// </summary>
+    Drone,
 }

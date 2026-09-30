@@ -17,6 +17,7 @@ namespace YueToLogic.Core.Arrangement;
 /// tones it leaves out (the third least of all), a doubled third and parallel fifths or octaves, and the cheapest
 /// one wins. A melody note outside the chord is a passing note: the alto follows it a third below while tenor
 /// and bass hold.</item>
+/// <item>The drone holds the tonic under each phrase.</item>
 /// </list>
 /// The chords are the score's own; a score without chord symbols gets them from <see cref="ChordGuesser"/>.
 /// </summary>
@@ -109,7 +110,49 @@ internal static class HarmonyGenerator
             }
         }
 
+        if (result.TryGetValue(HarmonyPart.Drone, out var drone))
+        {
+            drone.AddRange(Drone(score, selected, keys, velocity));
+        }
+
         return [.. parts.Select(part => new VoiceTrack(TrackId(part), TrackId(part), result[part], TrackKind.Harmony))];
+    }
+
+    /// <summary>
+    /// The tonic held from the start of each phrase to its end: a phrase ends at a rest of more than a beat, where a
+    /// singer breathes, or where the key changes. It sits at least a minor third below the phrase's lowest note.
+    /// </summary>
+    private static IEnumerable<NoteEvent> Drone(
+        ScoreDocument score,
+        IReadOnlyList<NoteEvent> melody,
+        List<(long Start, ScaleKey Key)> keys,
+        int velocity)
+    {
+        var phrase = new List<NoteEvent>();
+        foreach (var note in melody.Cast<NoteEvent?>().Append(null))
+        {
+            if (phrase.Count > 0 && (note is null
+                || note.StartTicks - phrase.Max(n => n.StartTicks + n.DurationTicks) > score.TicksPerQuarterNote
+                || KeyAt(keys, note.StartTicks) != KeyAt(keys, phrase[0].StartTicks)))
+            {
+                var tonic = KeyAt(keys, phrase[0].StartTicks).TonicPitchClass;
+                var ceiling = phrase.Min(n => n.NoteNumber) - 3;
+                var pitch = ceiling - ScaleKey.Mod12(ceiling - tonic);
+                var start = phrase[0].StartTicks;
+                var end = phrase.Max(n => n.StartTicks + n.DurationTicks);
+                if (pitch >= 0)
+                {
+                    yield return new NoteEvent(start, end - start, pitch, velocity);
+                }
+
+                phrase.Clear();
+            }
+
+            if (note is not null)
+            {
+                phrase.Add(note);
+            }
+        }
     }
 
     public static string TrackId(HarmonyPart part) => part switch
