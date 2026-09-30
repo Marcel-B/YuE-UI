@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import Dialog from 'primevue/dialog'
-import SelectButton from 'primevue/selectbutton'
 import { computed, ref, watch } from 'vue'
 import { t } from '../../logic/i18n'
-import { clonePatch, normalizePatch, type Engine, type SynthPatch } from '../../logic/synth'
+import { clonePatch, normalizePatch, type SynthPatch } from '../../logic/synth'
 import {
   deleteNamedSound,
   namedSounds,
@@ -15,11 +14,10 @@ import {
   trackSounds,
 } from '../../logic/synths'
 import type { TrackKind } from '../../logic/types'
-import AnalogPanel from './AnalogPanel.vue'
-import FmPanel from './FmPanel.vue'
+import SynthEditor from './SynthEditor.vue'
 
 /**
- * The browser synthesizer of one track, analog (`AnalogPanel`) or FM (`FmPanel`). Every change is the track's sound at once (heard from the next note, also while the song plays) and saved
+ * The browser synthesizer of one track (`SynthEditor`). Every change is the track's sound at once (heard from the next note, also while the song plays) and saved
  * on the server; a sound can also be kept under a name and given to other tracks.
  */
 defineProps<{ playing: boolean }>()
@@ -59,24 +57,6 @@ function load(next: SynthPatch, from: string | null): void {
   applied = JSON.stringify(next)
   patch.value = next
   preset.value = from
-  other = null
-}
-
-const engines = computed<{ label: string; value: Engine }[]>(() => [
-  { label: t('synthEngineAnalog'), value: 'analog' },
-  { label: t('synthEngineFm'), value: 'fm' },
-])
-
-/** The sound of the other engine as it was left, so switching back and forth in one sitting loses nothing. */
-let other: SynthPatch | null = null
-
-function switchEngine(engine: Engine): void {
-  if (engine === patch.value.engine) {
-    return
-  }
-  const next = other?.engine === engine ? other : normalizePatch({ engine }, kind.value)
-  other = clonePatch(patch.value)
-  patch.value = next
 }
 
 watch(
@@ -185,23 +165,7 @@ async function reset(): Promise<void> {
 
     <p v-if="soundsError" class="danger text-sm">{{ t('synthError', { message: soundsError }) }}</p>
 
-    <SelectButton
-      :model-value="patch.engine"
-      :options="engines"
-      option-label="label"
-      option-value="value"
-      :allow-empty="false"
-      size="small"
-      class="mb-3"
-      :aria-label="t('synthEngine')"
-      @update:model-value="switchEngine"
-    />
-    <p class="muted mt-0 mb-3 text-xs">
-      {{ t(patch.engine === 'fm' ? 'synthEngineFmHint' : 'synthEngineAnalogHint') }}
-    </p>
-
-    <FmPanel v-if="patch.engine === 'fm'" v-model="patch" />
-    <AnalogPanel v-else v-model="patch" />
+    <SynthEditor v-model="patch" :kind="kind" />
 
     <template #footer>
       <div class="flex w-full flex-wrap items-center justify-between gap-2">

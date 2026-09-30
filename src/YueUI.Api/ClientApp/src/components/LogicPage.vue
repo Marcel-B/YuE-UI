@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import InputGroup from 'primevue/inputgroup'
 import InputGroupAddon from 'primevue/inputgroupaddon'
 import Message from 'primevue/message'
@@ -11,21 +11,21 @@ import {
   exportMusicXml,
   type LogicProgress,
   listAssignments,
-  listInstruments,
   LogicExportError,
   type ScoreSource,
 } from '../logic/api'
 import { t } from '../logic/i18n'
 import { instrumentsForExport, withDrumNotes, withInstrumentChannels } from '../logic/instruments'
+import { instruments, reloadInstruments } from '../logic/instrumentLibrary'
+import { navigate } from '../view'
 import { deletePreset, loadPresets, savePreset, type Preset } from '../logic/presets'
 import { clearFormState, defaultFormState, loadFormState, saveFormState, toConversionOptions } from '../logic/options'
 import { baseName, download } from '../logic/score'
-import type { Assignments, ConversionResult, Diagnostic, Instrument } from '../logic/types'
+import type { Assignments, ConversionResult, Diagnostic } from '../logic/types'
 import { audioUrl } from '../api'
 import type { RunInfo, SongInfo } from '../types'
 import { logicSong, replaceLogicSong } from '../view'
 import FileDropZone from './logic/FileDropZone.vue'
-import InstrumentDialog from './logic/InstrumentDialog.vue'
 import OptionsForm from './logic/OptionsForm.vue'
 import ResultView from './logic/ResultView.vue'
 import ScorePreview from './logic/ScorePreview.vue'
@@ -158,8 +158,6 @@ function forgetResult(): void {
 
 // ---- Instruments ------------------------------------------------------------------------------------
 
-/** The instrument library and which track plays which, both kept on the server. */
-const instruments = ref<Instrument[]>([])
 /**
  * Which track plays which instrument. This is configuration, not playback: it decides the channel a track is
  * written on and the hardware the Logic project addresses, both of which the server produces. It therefore
@@ -167,12 +165,11 @@ const instruments = ref<Instrument[]>([])
  */
 const assignments = ref<Assignments>({})
 const instrumentsError = ref<string | null>(null)
-const instrumentDialog = useTemplateRef<InstanceType<typeof InstrumentDialog>>('instrumentDialog')
 void loadInstruments()
 
 async function loadInstruments(): Promise<void> {
   try {
-    ;[instruments.value, assignments.value] = await Promise.all([listInstruments(), listAssignments()])
+    ;[, assignments.value] = await Promise.all([reloadInstruments(), listAssignments()])
   } catch (caught) {
     // Without the library everything else still works; the routing table then shows ports and channels only.
     instrumentsError.value = t('instrumentsError', {
@@ -181,16 +178,16 @@ async function loadInstruments(): Promise<void> {
   }
 }
 
+/** The library is kept on its own page, where the instruments are also played. */
 function openInstruments(): void {
-  instrumentDialog.value?.open()
+  navigate('instruments')
 }
 
-/** The list after the dialog changed it; a track whose instrument is gone loses its assignment, as on the server. */
-function instrumentsChanged(list: Instrument[]): void {
-  instruments.value = list
+// A track whose instrument was deleted on the instruments page loses its assignment, as on the server.
+watch(instruments, (list) => {
   const ids = new Set(list.map((instrument) => instrument.id))
   assignments.value = Object.fromEntries(Object.entries(assignments.value).filter(([, id]) => ids.has(id)))
-}
+})
 
 /** Shown at once and sent to the server; if that fails the previous choice comes back. */
 async function assign(track: string, instrumentId: number | null): Promise<void> {
@@ -597,8 +594,6 @@ function reset(): void {
       @export-logic="exportLogic"
       @export-music-xml="downloadMusicXml"
     />
-
-    <InstrumentDialog ref="instrumentDialog" :instruments="instruments" @changed="instrumentsChanged" />
   </div>
 </template>
 
