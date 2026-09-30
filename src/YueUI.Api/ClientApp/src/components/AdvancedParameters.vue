@@ -12,7 +12,7 @@ import {
   type FormState,
   type SamplingPhase,
 } from '../form'
-import { abcKey, keyChoices, transposeAbc, transposeToKey, vocalRange } from '../abcTranspose'
+import { abcKey, keyChoices, keyParts, transposeAbc, transposeToKey, vocalRange } from '../abcTranspose'
 import { midiToAbc } from '../api'
 import { formatDuration, t } from '../i18n'
 import { pickMidiFile } from '../midi'
@@ -65,7 +65,12 @@ const steps = computed({
 })
 
 const scoreKey = computed(() => abcKey(form.value.abc))
-const keyOptions = computed(() => keyChoices(form.value.abc))
+const keyOptions = computed(() =>
+  keyChoices().map((key) => {
+    const { root, minor } = keyParts(key)
+    return { value: key, label: t(minor ? 'keyMinor' : 'keyMajor', { root }) }
+  }),
+)
 const scoreRange = computed(() => {
   const range = vocalRange(form.value.abc)
   return range ? t('abcVocalRange', range) : null
@@ -294,6 +299,8 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
                 v-if="scoreKey"
                 :model-value="scoreKey"
                 :options="keyOptions"
+                option-label="label"
+                option-value="value"
                 size="small"
                 :aria-label="t('abcKeyLabel')"
                 v-tooltip="t('abcKeyLabel')"

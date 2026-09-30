@@ -3,6 +3,8 @@
  *
  * The model sings the "Vocal" voice of a supplied score at the written pitch, so this is how a song gets lower or
  * higher before it is generated. Notes are respelled in the new key: a transposed score reads like one YuE2 wrote.
+ * It also turns a score from major into minor on the same root and back (`changeMode`), since YuE2 reads a minor
+ * `K:` as well, but only the notes make the song sound minor.
  */
 
 const letters = 'CDEFGAB'
@@ -124,19 +126,52 @@ function spellName(pitchClass: number, key: Key): string {
   return letter + (alteration > 0 ? '#'.repeat(alteration) : 'b'.repeat(-alteration))
 }
 
-/** "Am7", "F#", "C/E", "Bbmaj7/D": root and bass move, the quality stays. Anything else is left alone. */
-function transposeChord(symbol: string, semitones: number, key: Key): string {
+function pitchClassOf(letter: string, accidental: string): number {
+  return mod12(naturals[letters.indexOf(letter)]! + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0))
+}
+
+// YuE2's chord vocabulary as intervals above the root, to find a chord's new quality after a change of mode.
+const chordIntervals: Record<string, number[]> = {
+  '': [0, 4, 7],
+  m: [0, 3, 7],
+  dim: [0, 3, 6],
+  aug: [0, 4, 8],
+  '7': [0, 4, 7, 10],
+  maj7: [0, 4, 7, 11],
+  m7: [0, 3, 7, 10],
+  dim7: [0, 3, 6, 9],
+  m7b5: [0, 3, 6, 10],
+  sus4: [0, 5, 7],
+  sus2: [0, 2, 7],
+  '6': [0, 4, 7, 9],
+  m6: [0, 3, 7, 9],
+  '7sus4': [0, 5, 7, 10],
+  'm(maj7)': [0, 3, 7, 11],
+}
+
+/**
+ * "Am7", "F#", "C/E", "Bbmaj7/D": root and bass move by `move`. With `tones`, the chord's notes move too and the
+ * quality becomes the one they form (C in C major is Cm in C minor); a quality YuE2 does not know stays. Anything
+ * else is left alone.
+ */
+function rewriteChord(symbol: string, move: (pitchClass: number) => number, key: Key, tones: boolean): string {
   const match = /^([A-G])([#b]?)([^/]*)(?:\/([A-G])([#b]?))?$/.exec(symbol)
   if (!match) {
     return symbol
   }
-  const shift = (letter: string, accidental: string) =>
-    spellName(
-      mod12(naturals[letters.indexOf(letter)]! + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0) + semitones),
-      key,
+  const root = pitchClassOf(match[1]!, match[2]!)
+  const newRoot = mod12(move(root))
+  let quality = match[3]!
+  const intervals = chordIntervals[quality]
+  if (tones && intervals) {
+    const moved = intervals.map((interval) => mod12(move(root + interval) - newRoot)).sort((a, b) => a - b)
+    const found = Object.entries(chordIntervals).find(
+      ([, candidate]) => candidate.length === moved.length && candidate.every((interval, i) => interval === moved[i]),
     )
-  const bass = match[4] ? '/' + shift(match[4], match[5]!) : ''
-  return shift(match[1]!, match[2]!) + match[3] + bass
+    quality = found ? found[0] : quality
+  }
+  const bass = match[4] ? '/' + spellName(mod12(move(pitchClassOf(match[4], match[5]!))), key) : ''
+  return spellName(newRoot, key) + quality + bass
 }
 
 function accidentalText(alteration: number): string {
@@ -194,10 +229,53 @@ export interface Transposition {
   key: string
 }
 
+/** How a rewrite changes keys and notes; `pitch` gets the key the note was written in. */
+interface Rewrite {
+  key(key: Key): Key
+  pitch(pitch: number, from: Key): number
+  /** Whether chords change their quality with their notes (a change of mode) or keep it (a transposition). */
+  chordTones: boolean
+}
+
+function transposition(semitones: number): Rewrite {
+  return { key: (key) => transposeKey(key, semitones), pitch: (pitch) => pitch + semitones, chordTones: false }
+}
+
+function sameRoot(key: Key, minor: boolean): Key {
+  const name = (minor ? minorKeys : majorKeys)[keyRoot(key)]!
+  return { name, minor, sharps: signatures[name]! }
+}
+
+/**
+ * Major to natural minor on the same root and back: third, sixth and seventh go down a semitone (or up). Natural
+ * rather than harmonic minor, since it keeps the chords within YuE2's vocabulary (G7 in C becomes Gm7 in Cm, not
+ * an augmented chord on Eb); a raised seventh already in a minor score stays where it is.
+ */
+const modeChange: Rewrite = {
+  key: (key) => sameRoot(key, !key.minor),
+  pitch: (pitch, from) => {
+    const degree = mod12(pitch - keyRoot(from))
+    if (from.minor) {
+      return degree === 3 || degree === 8 || degree === 10 ? pitch + 1 : pitch
+    }
+    return degree === 4 || degree === 9 || degree === 11 ? pitch - 1 : pitch
+  },
+  chordTones: true,
+}
+
 /** Transposes a whole score. Header fields, comments and anything that is not a note or chord stay as they are. */
 export function transposeAbc(abc: string, semitones: number): Transposition {
+  return rewriteAbc(abc, transposition(semitones))
+}
+
+/** Turns a major score into minor on the same root (D into Dm) or a minor one into major, at every key change. */
+export function changeMode(abc: string): Transposition {
+  return rewriteAbc(abc, modeChange)
+}
+
+function rewriteAbc(abc: string, rewrite: Rewrite): Transposition {
   let oldKey = cMajor
-  let newKey = transposeKey(cMajor, semitones)
+  let newKey = rewrite.key(cMajor)
   let firstKey: string | null = null
   const lines = abc.split('\n').map((line) => {
     const field = /^(\s*K:\s*)(.*)$/.exec(line)
@@ -207,7 +285,7 @@ export function transposeAbc(abc: string, semitones: number): Transposition {
         return line
       }
       oldKey = key
-      newKey = transposeKey(key, semitones)
+      newKey = rewrite.key(key)
       firstKey ??= newKey.name
       return field[1] + field[2]!.replace(/^\S+/, newKey.name)
     }
@@ -215,15 +293,15 @@ export function transposeAbc(abc: string, semitones: number): Transposition {
     if (/^\s*([A-Za-z]:|%)/.test(line)) {
       return line
     }
-    const transposed = transposeMusic(line, semitones, oldKey, newKey)
-    oldKey = transposed.oldKey
-    newKey = transposed.newKey
-    return transposed.text
+    const rewritten = rewriteMusic(line, rewrite, oldKey, newKey)
+    oldKey = rewritten.oldKey
+    newKey = rewritten.newKey
+    return rewritten.text
   })
   return { abc: lines.join('\n'), key: firstKey ?? newKey.name }
 }
 
-function transposeMusic(line: string, semitones: number, oldKey: Key, newKey: Key) {
+function rewriteMusic(line: string, rewrite: Rewrite, oldKey: Key, newKey: Key) {
   const before = new Bar(oldKey)
   const after = new Bar(newKey)
   let out = ''
@@ -240,7 +318,9 @@ function transposeMusic(line: string, semitones: number, oldKey: Key, newKey: Ke
         out += line.slice(i)
         break
       }
-      out += '"' + transposeChord(line.slice(i + 1, end), semitones, after.key) + '"'
+      const from = before.key
+      const move = (pitchClass: number) => rewrite.pitch(pitchClass, from)
+      out += '"' + rewriteChord(line.slice(i + 1, end), move, after.key, rewrite.chordTones) + '"'
       i = end + 1
       continue
     }
@@ -249,7 +329,7 @@ function transposeMusic(line: string, semitones: number, oldKey: Key, newKey: Ke
       const inline = end < 0 ? line.slice(i) : line.slice(i, end + 1)
       const key = inline.startsWith('[K:') ? parseKey(inline.slice(3, end < 0 ? undefined : -1)) : null
       if (key) {
-        const moved = transposeKey(key, semitones)
+        const moved = rewrite.key(key)
         before.reset(key)
         after.reset(moved)
         out += `[K:${moved.name}]`
@@ -281,7 +361,7 @@ function transposeMusic(line: string, semitones: number, oldKey: Key, newKey: Ke
       for (const mark of note[3]!) {
         pitch += mark === "'" ? 12 : -12
       }
-      pitch += before.resolve(letter, explicit) + semitones
+      pitch = rewrite.pitch(pitch + before.resolve(letter, explicit), before.key)
       const spelled = spell(mod12(pitch), after.key)
       out += after.write(spelled.letter, spelled.alteration) + noteText(pitch, spelled.letter, spelled.alteration)
       i += note[0].length
@@ -303,23 +383,32 @@ export function abcKey(abc: string): string | null {
   return (key.minor ? minorKeys : majorKeys)[keyRoot(key)]!
 }
 
-/** The twelve keys in the score's mode (major or minor), to pick a target from. */
-export function keyChoices(abc: string): string[] {
-  const field = /^\s*K:\s*(.*)$/m.exec(abc)
-  const key = field ? parseKey(field[1]!) : null
-  return key?.minor ? [...minorKeys] : [...majorKeys]
+/** Every major and minor key to pick a target from; the other mode changes the notes too (`changeMode`). */
+export function keyChoices(): string[] {
+  return [...majorKeys, ...minorKeys]
+}
+
+/** "F#m" as "F♯" and minor, for a label in the reader's language. */
+export function keyParts(name: string): { root: string; minor: boolean } {
+  const minor = name.endsWith('m')
+  return { root: (minor ? name.slice(0, -1) : name).replace('#', '♯').replace(/(?<=.)b/, '♭'), minor }
 }
 
 /**
- * Transposes the score into the named key (one of `keyChoices`) by the shorter way, at most six semitones down or
- * five up, so the voice stays near where it was; − and + go on from there.
+ * Rewrites the score into the named key (one of `keyChoices`): into the other mode on the same root first if the
+ * target has it, then transposed by the shorter way, at most six semitones down or five up, so the voice stays near
+ * where it was; − and + go on from there.
  */
 export function transposeToKey(abc: string, target: string): Transposition {
   const field = /^\s*K:\s*(.*)$/m.exec(abc)
-  const from = (field ? parseKey(field[1]!) : null) ?? cMajor
+  let from = (field ? parseKey(field[1]!) : null) ?? cMajor
   const to = parseKey(target)
   if (!to) {
     return { abc, key: from.name }
+  }
+  if (to.minor !== from.minor) {
+    abc = changeMode(abc).abc
+    from = sameRoot(from, to.minor)
   }
   const up = mod12(keyRoot(to) - keyRoot(from))
   return transposeAbc(abc, up > 5 ? up - 12 : up)
