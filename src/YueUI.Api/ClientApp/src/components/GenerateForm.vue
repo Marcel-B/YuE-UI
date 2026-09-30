@@ -10,6 +10,7 @@ import type { LyricsModels, LyricsState, ReferenceVoice } from '../types'
 import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
 import FieldHelp from './FieldHelp.vue'
 import StyleBlocks from './StyleBlocks.vue'
+import TextActions from './TextActions.vue'
 import Checkbox from 'primevue/checkbox'
 import SelectButton from 'primevue/selectbutton'
 
@@ -357,6 +358,7 @@ const batchOptions = [
       />
       <label for="gen-style">{{ t('style') }}</label>
     </FloatLabel>
+    <TextActions v-model="form.style" />
     <FieldHelp id="gen-style-help" :hint="t('styleHint')" :more="t('styleMore')" />
     <small v-if="fieldErrors.style" class="danger">{{ fieldErrors.style.join(' ') }}</small>
     <Button
@@ -460,6 +462,7 @@ const batchOptions = [
         aria-describedby="gen-lyrics-help"
       />
       <label for="gen-lyrics">{{ form.instrumental ? t('lyricsOptional') : t('lyrics') }}</label>
+      <TextActions v-model="form.lyrics" />
       <FieldHelp id="gen-lyrics-help" :hint="t('lyricsHint')" :more="t('lyricsMore')" />
       <small v-if="fieldErrors.lyrics" class="danger">{{ fieldErrors.lyrics.join(' ') }}</small>
     </FloatLabel>

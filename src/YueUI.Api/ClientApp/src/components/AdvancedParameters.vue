@@ -19,6 +19,7 @@ import { pickMidiFile } from '../midi'
 import FieldHelp from './FieldHelp.vue'
 import NumberField from './NumberField.vue'
 import SamplingFields from './SamplingFields.vue'
+import TextActions from './TextActions.vue'
 
 /**
  * The parameters beside the song's own fields, in a column of their own on wide screens. They edit the same form as
@@ -276,37 +277,40 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
               <label for="gen-abc">{{ t('abc') }}</label>
             </FloatLabel>
             <FieldHelp id="gen-abc-help" :hint="t('abcHint')" :more="t('abcMore')" />
-            <div v-if="form.abc.trim() !== ''" class="flex items-center gap-1">
-              <Button
-                v-tooltip="t('abcTransposeDown')"
-                :aria-label="t('abcTransposeDown')"
-                icon="pi pi-minus"
-                size="small"
-                text
-                rounded
-                @click="transpose(-1)"
-              />
-              <Button
-                v-tooltip="t('abcTransposeUp')"
-                :aria-label="t('abcTransposeUp')"
-                icon="pi pi-plus"
-                size="small"
-                text
-                rounded
-                @click="transpose(1)"
-              />
-              <Select
-                v-if="scoreKey"
-                :model-value="scoreKey"
-                :options="keyOptions"
-                option-label="label"
-                option-value="value"
-                size="small"
-                :aria-label="t('abcKeyLabel')"
-                v-tooltip="t('abcKeyLabel')"
-                @update:model-value="changeKey"
-              />
-              <small v-if="scoreRange" class="muted ml-1">{{ scoreRange }}</small>
+            <div class="flex items-center gap-1">
+              <template v-if="form.abc.trim() !== ''">
+                <Button
+                  v-tooltip="t('abcTransposeDown')"
+                  :aria-label="t('abcTransposeDown')"
+                  icon="pi pi-minus"
+                  size="small"
+                  text
+                  rounded
+                  @click="transpose(-1)"
+                />
+                <Button
+                  v-tooltip="t('abcTransposeUp')"
+                  :aria-label="t('abcTransposeUp')"
+                  icon="pi pi-plus"
+                  size="small"
+                  text
+                  rounded
+                  @click="transpose(1)"
+                />
+                <Select
+                  v-if="scoreKey"
+                  :model-value="scoreKey"
+                  :options="keyOptions"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  :aria-label="t('abcKeyLabel')"
+                  v-tooltip="t('abcKeyLabel')"
+                  @update:model-value="changeKey"
+                />
+                <small v-if="scoreRange" class="muted ml-1">{{ scoreRange }}</small>
+              </template>
+              <TextActions v-model="form.abc" class="ml-auto" />
             </div>
             <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
             <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
@@ -321,7 +325,6 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
               rounded
               @click="form.abc = exampleScore"
             />
-            <Button v-else icon="pi pi-trash" @click="form.abc = ''" text rounded v-tooltip="t('abcClear')" />
             <Button
               v-tooltip="t('abcFromMidi')"
               :aria-label="t('abcFromMidi')"
