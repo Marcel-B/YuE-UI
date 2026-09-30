@@ -46,11 +46,21 @@ def main() -> int:
 
     emit({"event": "stage", "stage": "loading"})
     started = time.perf_counter()
-    # Imported here so that a missing package shows up as the take's error rather than before the first event.
-    from mlx_audio.tts.generate import generate_audio
-    from mlx_audio.tts.utils import load_model
+    try:
+        # Imported here so that a missing package shows up as the take's error rather than before the first event.
+        from mlx_audio.tts.generate import generate_audio
+        from mlx_audio.tts.utils import load_model
 
-    model = load_model(request["model"])
+        model = load_model(request["model"])
+    except ModuleNotFoundError as missing:
+        # Some models need a package the others do without (Higgs Audio v3 reads its bfloat16 codec through PyTorch);
+        # the server shows this last "Error" line as the take's message, so it says what to do.
+        print(
+            f"Error: this model needs the Python package '{missing.name}', which the speech lab's environment lacks;"
+            " run deploy/install-speech.sh again.",
+            flush=True,
+        )
+        return 1
     loaded = time.perf_counter()
 
     emit({"event": "stage", "stage": "speaking"})

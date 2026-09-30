@@ -226,6 +226,8 @@ public sealed class SpeechEndpointTests : IDisposable
             "Error loading model: Repository Not Found",
             MlxAudioEngine.FailureMessage(["Text: Hallo", "Error loading model: Repository Not Found", "Traceback (most recent call last):", "  File \"x.py\""]));
         Assert.Equal("ModuleNotFoundError: No module named 'mlx_audio'", MlxAudioEngine.FailureMessage(["", "ModuleNotFoundError: No module named 'mlx_audio'"]));
+        const string missing = "Error: this model needs the Python package 'torch', which the speech lab's environment lacks; run deploy/install-speech.sh again.";
+        Assert.Equal(missing, MlxAudioEngine.FailureMessage(["YUEUI {\"event\": \"stage\", \"stage\": \"loading\"}", "Fetching 12 files", missing]));
         Assert.Equal("The model wrote no audio.", MlxAudioEngine.FailureMessage([]));
     }
 
