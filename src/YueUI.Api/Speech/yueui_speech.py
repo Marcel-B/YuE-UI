@@ -14,6 +14,7 @@ Anything else on stdout or stderr is mlx-audio's own output, which the server ke
 The model is loaded for this one take and freed with the process: on 24 GB it must not stay beside YuE2.
 """
 
+import functools
 import json
 import os
 import sys
@@ -36,6 +37,35 @@ def peak_memory_gb() -> float | None:
             return round(mx.metal.get_peak_memory() / 1e9, 2)
         except Exception:
             return None
+
+
+class OwnDefaults:
+    """
+    The model as generate_audio sees it, minus generate_audio's own sampling defaults.
+
+    generate_audio hands every model temperature=0.7 and max_tokens=1200 unless told otherwise, over the model's own
+    defaults. MOSS-TTS samples its audio at 1.7 (its authors call it sensitive to that); at 0.7 it speaks the first
+    line and then drifts into chirping noise, and 1200 tokens cut it off after 96 s. So these two reach the model only
+    when the request names them, and otherwise each model uses what its authors chose. A wrapper rather than a
+    replaced method, so a model that calls its own generate still gets what it asks for.
+    """
+
+    DEFAULTED = ("temperature", "max_tokens")
+
+    def __init__(self, model, named):
+        self._model = model
+
+        @functools.wraps(model.generate)  # generate_audio reads the signature to see whether the model takes ref_text
+        def generate(**kwargs):
+            for key in self.DEFAULTED:
+                if key not in named:
+                    kwargs.pop(key, None)
+            return model.generate(**kwargs)
+
+        self.generate = generate
+
+    def __getattr__(self, name):
+        return getattr(self._model, name)
 
 
 def main() -> int:
@@ -71,7 +101,7 @@ def main() -> int:
     # the path, some samples at their own rate) and joins the segments a long text is split into.
     generate_audio(
         text=request["text"],
-        model=model,
+        model=OwnDefaults(model, kwargs),
         ref_audio=request.get("refAudio"),
         ref_text=request.get("refText"),
         output_path=directory,

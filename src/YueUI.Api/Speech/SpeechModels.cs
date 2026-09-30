@@ -22,7 +22,10 @@ public sealed class SpeechModel
     /// </summary>
     public string? LangCode { get; set; }
 
-    /// <summary>Further keyword arguments for the model's <c>generate</c>, e.g. MOSS-TTS's <c>language</c>.</summary>
+    /// <summary>
+    /// Further keyword arguments for the model's <c>generate</c>, e.g. MOSS-TTS's <c>language</c>. <c>temperature</c> and
+    /// <c>max_tokens</c> reach the model only when set here; otherwise it samples with its own defaults.
+    /// </summary>
     public Dictionary<string, JsonElement>? Options { get; set; }
 
     /// <summary>Roughly what it downloads, in GB, so the page can say what the first take costs.</summary>
