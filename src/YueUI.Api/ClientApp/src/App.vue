@@ -48,6 +48,8 @@ const ShareDialog = defineAsyncComponent(() => import('./components/ShareDialog.
 const ExportDialog = defineAsyncComponent(() => import('./components/ExportDialog.vue'))
 // The Logic page brings the options form, the piano roll and the MIDI preview; loaded only once it is opened.
 const LogicPage = defineAsyncComponent(() => import('./components/LogicPage.vue'))
+// The instruments page shares the Logic page's synthesizers; likewise loaded only once it is opened.
+const InstrumentsPage = defineAsyncComponent(() => import('./components/InstrumentsPage.vue'))
 // The speech lab, likewise loaded and mounted only once it is opened.
 const SpeechLab = defineAsyncComponent(() => import('./components/SpeechLab.vue'))
 
@@ -223,6 +225,7 @@ const tools: Page[] = [
   { view: 'transcribe', label: 'menuTranscribe', icon: 'pi pi-microphone' },
   { view: 'voices', label: 'menuVoices', icon: 'pi pi-users' },
   { view: 'logic', label: 'menuLogic', icon: 'pi pi-box' },
+  { view: 'instruments', label: 'menuInstruments', icon: 'pi pi-sliders-h' },
   { view: 'lab', label: 'menuLab', icon: 'pi pi-comments' },
 ]
 
@@ -271,7 +274,11 @@ getVoiceInfo()
  */
 const logicOpened = ref(view.value === 'logic')
 const labOpened = ref(view.value === 'lab')
+const instrumentsOpened = ref(view.value === 'instruments')
 watch(view, (value) => {
+  if (value === 'instruments') {
+    instrumentsOpened.value = true
+  }
   if (value === 'logic') {
     logicOpened.value = true
   }
@@ -679,6 +686,10 @@ async function useAsNewSong(songId: string): Promise<void> {
 
   <main v-if="logicOpened" v-show="view === 'logic'">
     <LogicPage :runs="runs" />
+  </main>
+
+  <main v-if="instrumentsOpened" v-show="view === 'instruments'">
+    <InstrumentsPage :active="view === 'instruments'" />
   </main>
 
   <main v-if="labOpened" v-show="view === 'lab'">

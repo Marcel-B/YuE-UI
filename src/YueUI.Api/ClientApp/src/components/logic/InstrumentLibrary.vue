@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import Dialog from 'primevue/dialog'
 import Fieldset from 'primevue/fieldset'
-import { computed, ref } from 'vue'
-import { ApiError, createInstrument, deleteInstrument, listInstruments, updateInstrument } from '../../logic/api'
+import { computed, onMounted, ref } from 'vue'
+import { ApiError, createInstrument, deleteInstrument, updateInstrument } from '../../logic/api'
+import { instruments, reloadInstruments } from '../../logic/instrumentLibrary'
 import { t, type MessageKey } from '../../logic/i18n'
 import { noteName, parseNote } from '../../logic/notes'
 import { listMidiPorts, midiAlreadyAllowed, midiSupported, midiUsable, type MidiPort } from '../../logic/midiPlayer'
@@ -11,12 +11,9 @@ import { DRUMS, GENERAL_MIDI_DRUMS, type DrumNotes, type Instrument, type Instru
 /**
  * The instrument library: a name for each MIDI port and channel the user's hardware listens on, and for a
  * drum machine the note each of its drums sits on. Kept on the server, so the list is the same from every
- * browser; this dialog only edits it.
+ * browser; the instruments page edits it here, the Logic page assigns tracks to it.
  */
-const props = defineProps<{ instruments: Instrument[] }>()
-
-/** The list after any change, fetched anew so that ids and order are the server's. */
-const emit = defineEmits<{ changed: [instruments: Instrument[]] }>()
+const emit = defineEmits<{ /** Asks the page's keyboard to play this instrument. */ play: [instrument: Instrument] }>()
 
 /** The port select's value for a port typed by hand, e.g. for an interface that is not plugged in right now. */
 const OTHER_PORT = '\u0000other'
@@ -28,7 +25,6 @@ const OTHER_PORT = '\u0000other'
  */
 const canReadPorts = midiUsable()
 
-const visible = ref(false)
 const ports = ref<MidiPort[]>([])
 const canAskForMidi = ref(false)
 /** The id being edited, or null while adding. */
@@ -57,7 +53,7 @@ const kinds = computed(() => [
 const portNames = computed(() => [
   ...new Set([
     ...ports.value.map((entry) => entry.name.trim()),
-    ...props.instruments.map((entry) => entry.port.trim()),
+    ...instruments.value.map((entry) => entry.port.trim()),
   ]),
 ])
 
@@ -99,10 +95,14 @@ function drumSummary(notes: DrumNotes): string {
   return DRUMS.map((drum) => `${t(`instrumentDrum_${drum}` as MessageKey)} ${noteName(notes[drum])}`).join(' · ')
 }
 
-async function open(): Promise<void> {
+onMounted(async () => {
   startAdding()
   error.value = null
-  visible.value = true
+  try {
+    await reloadInstruments()
+  } catch (caught) {
+    fail(caught)
+  }
   if (!canReadPorts) {
     return
   }
@@ -111,11 +111,7 @@ async function open(): Promise<void> {
   } else {
     canAskForMidi.value = midiSupported()
   }
-}
-
-function close(): void {
-  visible.value = false
-}
+})
 
 async function loadPorts(): Promise<void> {
   const found = await listMidiPorts()
@@ -209,7 +205,7 @@ async function remove(instrument: Instrument): Promise<void> {
 }
 
 async function refresh(): Promise<void> {
-  emit('changed', await listInstruments())
+  await reloadInstruments()
 }
 
 function fail(caught: unknown): void {
@@ -220,21 +216,13 @@ function fail(caught: unknown): void {
         ? t('networkError')
         : `${caught instanceof Error ? caught.message : caught}`
 }
-
-defineExpose({ open })
 </script>
 
 <template>
-  <Dialog
-    v-model:visible="visible"
-    modal
-    :header="t('instrumentsTitle')"
-    :draggable="false"
-    :style="{ width: 'min(40rem, calc(100vw - 2rem))' }"
-  >
+  <div>
     <p class="muted mt-0 mb-4 text-sm">{{ t('instrumentsIntro') }}</p>
 
-    <div v-if="props.instruments.length > 0" class="mb-4 overflow-x-auto">
+    <div v-if="instruments.length > 0" class="mb-4 overflow-x-auto">
       <table class="w-full border-collapse text-sm">
         <thead>
           <tr class="text-left text-muted-color text-xs">
@@ -249,7 +237,7 @@ defineExpose({ open })
         </thead>
         <tbody>
           <tr
-            v-for="instrument in props.instruments"
+            v-for="instrument in instruments"
             :key="instrument.id"
             class="rule"
             :class="{ 'bg-highlight': instrument.id === editing }"
@@ -263,6 +251,14 @@ defineExpose({ open })
             </td>
             <td class="py-1 align-middle">
               <div class="flex gap-1 whitespace-nowrap">
+                <Button
+                  link
+                  size="small"
+                  icon="pi pi-play"
+                  :aria-label="t('instrumentPlay')"
+                  v-tooltip.bottom="t('instrumentPlay')"
+                  @click="emit('play', instrument)"
+                />
                 <Button link size="small" :label="t('instrumentEdit')" :disabled="busy" @click="edit(instrument)" />
                 <Button
                   link
@@ -284,9 +280,6 @@ defineExpose({ open })
 
     <div v-if="!canAdd" class="mt-4 flex flex-col gap-3 rule pt-4">
       <p class="muted m-0 text-sm">{{ t('instrumentsNeedPort') }}</p>
-      <div class="flex flex-wrap gap-2">
-        <Button type="button" severity="secondary" outlined :label="t('instrumentClose')" @click="close" />
-      </div>
     </div>
 
     <form v-else class="mt-4 flex flex-col gap-3 rule pt-4" @submit.prevent="submit">
@@ -388,11 +381,10 @@ defineExpose({ open })
           :label="t('instrumentCancel')"
           @click="startAdding"
         />
-        <Button type="button" severity="secondary" outlined :label="t('instrumentClose')" @click="close" />
       </div>
       <p v-if="error" class="hint danger m-0" role="alert">{{ error }}</p>
     </form>
-  </Dialog>
+  </div>
 </template>
 
 <style scoped>

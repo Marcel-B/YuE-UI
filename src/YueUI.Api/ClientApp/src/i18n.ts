@@ -422,6 +422,7 @@ const messages = {
     menuPlaylist: 'Playlist',
     menuVoices: 'Stimmen',
     menuLogic: 'Logic',
+    menuInstruments: 'Instrumente',
     menuLab: 'Sprachlabor',
     menuQueue: 'Warteschlange',
     menuTools: 'Werkzeuge',
@@ -431,7 +432,8 @@ const messages = {
     queueActive: '{n} in Arbeit oder wartend – zur Warteschlange',
     labIntro:
       'Hier lässt sich ausprobieren, welches lokale Sprachmodell eine Stimme natürlich klingen lässt, etwa für einen Podcast. Jedes gewählte Modell spricht den Text nacheinander, auf Wunsch mit einer hier aufgenommenen Stimme. YuE2, das Textmodell und Stimmumwandlungen warten so lange.',
-    labNotInstalled: 'Die Sprachmodelle sind noch nicht eingerichtet. Einmal auf dem Mac im Ordner des Repositorys ausführen:',
+    labNotInstalled:
+      'Die Sprachmodelle sind noch nicht eingerichtet. Einmal auf dem Mac im Ordner des Repositorys ausführen:',
     labNotInstalledPath: 'Der Server sucht Python unter {path}.',
     labNoFfmpeg: 'ffmpeg fehlt auf dem Server, deshalb lassen sich keine Aufnahmen speichern.',
     labVoice: 'Stimme',
@@ -1030,6 +1032,7 @@ const messages = {
     menuPlaylist: 'Playlist',
     menuVoices: 'Voices',
     menuLogic: 'Logic',
+    menuInstruments: 'Instruments',
     menuLab: 'Speech lab',
     menuQueue: 'Queue',
     menuTools: 'Tools',
