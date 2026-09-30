@@ -28,6 +28,13 @@ public sealed class SpeechModel
     /// </summary>
     public Dictionary<string, JsonElement>? Options { get; set; }
 
+    /// <summary>
+    /// For a model that speaks only about 40 s per generation and splits nothing itself: the longest piece of text it is
+    /// given at once, cut at sentence ends, the pieces joined with a short pause (<c>yueui_speech.py</c>,
+    /// <c>pieces</c>). Null gives it the whole text.
+    /// </summary>
+    public int? ChunkCharacters { get; set; }
+
     /// <summary>Roughly what it downloads, in GB, so the page can say what the first take costs.</summary>
     public double DownloadGb { get; set; }
 
@@ -52,6 +59,8 @@ public sealed class SpeechModel
             Label = "Chatterbox Multilingual v3",
             Repo = "mlx-community/chatterbox-multilingual-v3",
             LangCode = "de",
+            // 1000 tokens at 25 per second; 300 characters are about 20 s of German.
+            ChunkCharacters = 300,
             DownloadGb = 3,
             License = "MIT",
             Note = "23 languages including German; clones from a few seconds.",
@@ -71,6 +80,8 @@ public sealed class SpeechModel
             Id = "higgs-v2",
             Label = "Higgs Audio v2 3B",
             Repo = "mlx-community/higgs-audio-v2-3B-mlx-q8",
+            // 1200 frames at 25 per second, 48 s.
+            ChunkCharacters = 300,
             DownloadGb = 6.5,
             License = "Apache-2.0",
             Note = "Expressive, reads the language off the text; wants the words of the recording.",
@@ -80,6 +91,14 @@ public sealed class SpeechModel
             Id = "higgs-v3",
             Label = "Higgs Audio v3 4B",
             Repo = "bosonai/higgs-audio-v3-tts-4b",
+            // What its model card recommends for cloning; mlx-audio's own defaults are 1.0 without top_k and 2048 tokens.
+            Options = new()
+            {
+                ["temperature"] = JsonSerializer.SerializeToElement(0.8),
+                ["top_k"] = JsonSerializer.SerializeToElement(50),
+                ["max_tokens"] = JsonSerializer.SerializeToElement(1024),
+            },
+            ChunkCharacters = 300,
             DownloadGb = 9.3,
             License = "Research and non-commercial",
             Note = "Conversational, tags such as <|emotion:amusement|> in the text. Podcasts are allowed when Boson AI is credited.",
