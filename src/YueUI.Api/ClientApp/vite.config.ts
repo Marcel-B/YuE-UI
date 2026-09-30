@@ -1,5 +1,8 @@
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { brotliCompressSync, constants, gzipSync } from 'node:zlib'
 import { defineConfig, type Plugin } from 'vite'
 
 // The API (src/YueUI.Api) serves this app under /ui. During `dotnet run`, SpaProxy starts this dev server and
@@ -9,7 +12,7 @@ const apiTarget = process.env.YUE_API_URL ?? 'http://127.0.0.1:5091'
 
 export default defineConfig({
   base: '/ui/',
-  plugins: [vue(), tailwindcss(), presetCoversStyles(), buildVersion()],
+  plugins: [vue(), tailwindcss(), presetCoversStyles(), buildVersion(), precompress()],
   build: {
     rolldownOptions: {
       output: {
@@ -88,6 +91,38 @@ function buildVersion(): Plugin {
     },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: id }) })
+    },
+  }
+}
+
+/**
+ * Writes a Brotli (`.br`) and a gzip (`.gz`) copy next to every script and style sheet. Neither Kestrel nor
+ * `tailscale serve` compresses, so the phone would otherwise download the ~800 kB of the first load as they are;
+ * the server picks the copy the browser accepts (ClientAppAssets.cs). Packing once here, at the highest levels,
+ * costs the Mac nothing per request.
+ */
+function precompress(): Plugin {
+  return {
+    name: 'precompress',
+    apply: 'build',
+    writeBundle(options, bundle) {
+      const dir = options.dir ?? 'dist'
+      for (const fileName of Object.keys(bundle)) {
+        if (!/\.(js|css|svg)$/.test(fileName)) continue
+        const path = join(dir, fileName)
+        const source = readFileSync(path)
+        // Tiny files gain nothing that outweighs a second request header.
+        if (source.length < 1024) continue
+        const brotli = brotliCompressSync(source, {
+          params: {
+            [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY,
+            [constants.BROTLI_PARAM_SIZE_HINT]: source.length,
+          },
+        })
+        const gzip = gzipSync(source, { level: 9 })
+        if (brotli.length < source.length) writeFileSync(`${path}.br`, brotli)
+        if (gzip.length < source.length) writeFileSync(`${path}.gz`, gzip)
+      }
     },
   }
 }

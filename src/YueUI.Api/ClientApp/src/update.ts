@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { playing } from './player'
 
 declare const __BUILD_ID__: string
 
@@ -34,3 +35,16 @@ document.addEventListener('visibilitychange', () => {
 export function reload(): void {
   window.location.reload()
 }
+
+/**
+ * A page loaded on first use (the library, Logic, the speech lab, …) whose file is gone because a deploy replaced the
+ * build this app still runs: Vite reports it here instead of the page staying empty for good. With a newer build on
+ * the server the app reloads by itself, since the page was not shown anyway and the form lives in `localStorage`;
+ * the hash keeps the page that was asked for. While music plays it only offers the reload, so a tap on a menu entry
+ * never stops a song. Without a newer build (offline, the server restarting) the error stands as before.
+ */
+window.addEventListener('vite:preloadError', () => {
+  void checkForUpdate().then(() => {
+    if (updateAvailable.value && !playing.value) reload()
+  })
+})

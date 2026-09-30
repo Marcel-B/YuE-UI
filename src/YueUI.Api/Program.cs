@@ -102,7 +102,7 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler();
 }
 
-app.UseStaticFiles();
+app.UseClientAppAssets();
 
 app.MapOpenApi("/api/openapi");
 
