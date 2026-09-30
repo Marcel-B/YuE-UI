@@ -105,8 +105,6 @@ export interface Output {
   levels?(): Levels
   /** The mix as the spectrum analyzer hears it; only the browser's own output has one. */
   analyser?(): AnalyserNode
-  /** One track after its fader, for the oscilloscope; null before its first note. */
-  trackAnalyser?(track: string): AnalyserNode | null
 }
 
 /** The mixer's settings as the browser output reads them, looked up whenever they change. */
@@ -174,7 +172,7 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
     meter: AnalyserNode
   }
   const strips = new Map<string, Strip>()
-  const samples = new Float32Array(2048)
+  const samples = new Float32Array(512)
 
   function strip(track: string): Strip {
     let found = strips.get(track)
@@ -185,8 +183,7 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
       const panner = context.createStereoPanner()
       panner.pan.value = mix.pan(track)
       const meter = context.createAnalyser()
-      // Long enough for the oscilloscope to show a full cycle of a bass note; the level meter reads only the start.
-      meter.fftSize = 2048
+      meter.fftSize = 512
       fx.output.connect(fader).connect(panner).connect(meter)
       panner.connect(master)
       found = { fx, fader, panner, meter }
@@ -196,11 +193,9 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
   }
 
   function peak(analyser: AnalyserNode): number {
-    // The track meters hold more samples than the master's; each reads its own length.
-    const recent = samples.subarray(0, analyser.fftSize)
-    analyser.getFloatTimeDomainData(recent)
+    analyser.getFloatTimeDomainData(samples)
     let max = 0
-    for (const sample of recent) {
+    for (const sample of samples) {
       max = Math.max(max, Math.abs(sample))
     }
     return max
@@ -313,7 +308,6 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
       }
     },
     analyser: () => spectrum,
-    trackAnalyser: (track) => strips.get(track)?.meter ?? null,
   }
 }
 
@@ -455,11 +449,6 @@ export class OutputPool {
     return [...this.open.values()].flatMap((output) => (output.analyser ? [output.analyser()] : []))
   }
 
-  /** The track in every output that sounds in the browser, for the oscilloscope. */
-  trackAnalysers(track: string): AnalyserNode[] {
-    return [...this.open.values()].flatMap((output) => output.trackAnalyser?.(track) ?? [])
-  }
-
   silence(): void {
     for (const output of this.open.values()) {
       output.silence()
@@ -549,37 +538,4 @@ export function testTone(pool: OutputPool, routing: Routing, track: string, perc
     track,
   }
   pool.get(routing.output).play(note, 0)
-}
-
-/**
- * A few bars for shaping a sound: a held note, then a short phrase, around `pitch`, so attack, decay and release
- * each get heard. Returns how long it lasts in seconds.
- */
-export function auditionPhrase(pool: OutputPool, routing: Routing, track: string, pitch: number): number {
-  const phrase: [offset: number, time: number, duration: number][] = [
-    [0, 0, 1.2],
-    [0, 1.5, 0.15],
-    [4, 1.75, 0.15],
-    [7, 2, 0.15],
-    [12, 2.25, 0.5],
-    [7, 3, 0.25],
-    [0, 3.3, 0.9],
-  ]
-  const output = pool.get(routing.output)
-  for (const [offset, time, duration] of phrase) {
-    output.play(
-      {
-        time,
-        duration,
-        pitch: pitch + offset,
-        velocity: 100,
-        channel: routing.channel,
-        output: routing.output,
-        percussive: false,
-        track,
-      },
-      time,
-    )
-  }
-  return 4.2
 }
