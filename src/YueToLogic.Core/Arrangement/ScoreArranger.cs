@@ -12,7 +12,7 @@ public interface IScoreArranger
 public sealed record ArrangementResult(ScoreDocument Score, IReadOnlyList<Diagnostic> Diagnostics);
 
 /// <summary>
-/// Transposes score voices by octaves, appends the generated chord, bass, drum and guide-tone tracks, and finally
+/// Transposes score voices by octaves, adds backing vocals below the melodies, appends the generated chord, bass, drum and guide-tone tracks, and finally
 /// gives everything its groove and, where asked for, a monophonic shape. The result is a new
 /// <see cref="ScoreDocument"/>, so JSON output, MIDI file and Logic project always show the same arrangement.
 /// Stateless and thread-safe.
@@ -29,6 +29,13 @@ public sealed class ScoreArranger : IScoreArranger
         if (options.Doubling is { } doubling)
         {
             AddDoubling(tracks, doubling, diagnostics);
+        }
+
+        // Derived from the melody as it sounds, so after the octave shifts; placed after the melodies they follow.
+        if (options.Harmony is { } harmony)
+        {
+            var melodies = tracks.FindLastIndex(t => t.Kind is TrackKind.Melody or TrackKind.Doubling) + 1;
+            tracks.InsertRange(melodies, HarmonyGenerator.Generate(score, tracks, harmony, diagnostics));
         }
 
         if (options.Chords is { } chords && score.Chords.Count > 0)
@@ -87,7 +94,7 @@ public sealed class ScoreArranger : IScoreArranger
     /// <summary>Chords and drums are polyphonic by nature; the single-line tracks are the ones a mono synth plays.</summary>
     private static bool IsMonophonic(TrackKind kind, MonoOptions options) => kind switch
     {
-        TrackKind.Melody or TrackKind.Doubling => true,
+        TrackKind.Melody or TrackKind.Doubling or TrackKind.Harmony => true,
         TrackKind.Bass => options.IncludeBass,
         _ => false,
     };

@@ -18,7 +18,7 @@ export interface NoteEvent {
   velocity: number | null
 }
 
-export type TrackKind = 'Melody' | 'Chords' | 'Bass' | 'Drums' | 'GuideTones' | 'Doubling'
+export type TrackKind = 'Melody' | 'Chords' | 'Bass' | 'Drums' | 'GuideTones' | 'Doubling' | 'Harmony'
 
 export interface VoiceTrack {
   id: string
@@ -85,6 +85,25 @@ export type ChordInversion = 'RootPosition' | 'Closest' | 'First' | 'Second'
 
 export type SwingUnit = 'Eighths' | 'Sixteenths'
 
+export type HarmonyPart = 'ThirdAbove' | 'ThirdBelow' | 'SixthBelow' | 'Alto' | 'Tenor' | 'Bass' | 'Drone'
+
+/** Every backing part in the order the form lists them. */
+export const HARMONY_PARTS: HarmonyPart[] = ['ThirdAbove', 'ThirdBelow', 'SixthBelow', 'Alto', 'Tenor', 'Bass', 'Drone']
+
+/** The track name the converter gives a backing part (`HarmonyGenerator.TrackId`). */
+export function harmonyTrack(part: HarmonyPart): string {
+  const names: Record<HarmonyPart, string> = {
+    ThirdAbove: 'Harmony 3rd up',
+    ThirdBelow: 'Harmony 3rd down',
+    SixthBelow: 'Harmony 6th down',
+    Alto: 'Harmony Alto',
+    Tenor: 'Harmony Tenor',
+    Bass: 'Harmony Bass',
+    Drone: 'Harmony Drone',
+  }
+  return names[part]
+}
+
 export interface ConversionOptions {
   ticksPerQuarterNote: number
   includeChordTrack: boolean
@@ -96,6 +115,8 @@ export interface ConversionOptions {
     chords: { pattern: ChordPattern; inversion: ChordInversion; octaveShift: number } | null
     guideTones: { octaveShift: number } | null
     doubling: { voiceId: string; semitones: number } | null
+    /** `key` null takes the score's key where the melody fits it, else the one the melody suggests. */
+    harmony: { parts: HarmonyPart[]; voiceId: string; key: string | null; sections: string[] } | null
     groove: {
       swing: number
       swingUnit: SwingUnit
@@ -117,6 +138,7 @@ export const TRACK_NAMES = [
   'Vocal',
   'Ins',
   'Vocal 8vb',
+  ...HARMONY_PARTS.map(harmonyTrack),
   'Chords',
   'Bass',
   'Drums',

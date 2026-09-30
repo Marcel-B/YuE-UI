@@ -1,5 +1,6 @@
 using System.Globalization;
 using YueToLogic.Core.Abc;
+using YueToLogic.Core.Arrangement;
 using YueToLogic.Core.Diagnostics;
 using YueToLogic.Core.Harmony;
 using YueToLogic.Core.Midi;
@@ -291,7 +292,8 @@ public sealed class MidiToAbcConverter(IAbcScoreWriter writer) : IMidiToAbcConve
         }
 
         var name = source.Name.Split('·', '(')[0].Trim().ToLowerInvariant();
-        if (name.Contains("8vb", StringComparison.Ordinal) || name.Contains("8va", StringComparison.Ordinal) || name.Contains("15m", StringComparison.Ordinal))
+        if (name.Contains("8vb", StringComparison.Ordinal) || name.Contains("8va", StringComparison.Ordinal) || name.Contains("15m", StringComparison.Ordinal)
+            || name.StartsWith(HarmonyGenerator.TrackPrefix.ToLowerInvariant(), StringComparison.Ordinal))
         {
             return MidiTrackRole.Ignore;
         }

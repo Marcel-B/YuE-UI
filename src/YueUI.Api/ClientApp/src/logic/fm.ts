@@ -162,6 +162,7 @@ const BRASS: FmPatch = {
 const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, FmPatch> = {
   Melody: BRASS,
   Doubling: { ...BRASS, volume: 0.5 },
+  Harmony: { ...BRASS, volume: 0.45 },
   Chords: {
     engine: 'fm',
     algorithm: 5,

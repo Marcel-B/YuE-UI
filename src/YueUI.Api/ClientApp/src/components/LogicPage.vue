@@ -474,8 +474,8 @@ function reset(): void {
             <h3 class="m-0 text-base">{{ t('scoreTitle') }}</h3>
             <FileDropZone
               :file="file"
-              extension=".abc"
-              accept=".abc,text/plain,text/vnd.abc"
+              :extension="['.abc', '.mid', '.midi']"
+              accept=".abc,.mid,.midi,text/plain,text/vnd.abc,audio/midi,audio/x-midi"
               :drop-hint="t('dropHint')"
               :wrong-type-hint="t('notAbc')"
               @select="selectFile"

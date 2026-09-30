@@ -6,7 +6,7 @@ import Slider from 'primevue/slider'
 import { computed } from 'vue'
 import { t } from '../../logic/i18n'
 import type { FormState } from '../../logic/options'
-import { TRACK_NAMES } from '../../logic/types'
+import { HARMONY_PARTS, TRACK_NAMES, type HarmonyPart } from '../../logic/types'
 
 const form = defineModel<FormState>({ required: true })
 
@@ -78,6 +78,23 @@ const swingUnits = computed(() => [
 const countInOptions = computed(() =>
   countInBars.map((value) => ({ label: value === 0 ? t('countInOff') : String(value), value })),
 )
+const harmonyLabels: Record<HarmonyPart, Parameters<typeof t>[0]> = {
+  ThirdAbove: 'harmonyThirdAbove',
+  ThirdBelow: 'harmonyThirdBelow',
+  SixthBelow: 'harmonySixthBelow',
+  Alto: 'harmonyAlto',
+  Tenor: 'harmonyTenor',
+  Bass: 'harmonyBass',
+  Drone: 'harmonyDrone',
+}
+// The 24 keys as K: writes them, sharps up to F#, flats from F down, so the name reads as a musician would write it.
+const majorKeys = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
+const minorKeys = ['Cm', 'C#m', 'Dm', 'Ebm', 'Em', 'Fm', 'F#m', 'Gm', 'G#m', 'Am', 'Bbm', 'Bm']
+const harmonyKeys = computed(() => [
+  { label: t('harmonyKeyAuto'), value: null },
+  ...[...majorKeys, ...minorKeys].map((key) => ({ label: key, value: key })),
+])
+const harmonyOn = computed(() => form.value.harmonyParts.length > 0)
 const channelOptions = computed(() => [
   { label: t('midiAuto'), value: 0 },
   ...channels.map((channel) => ({ label: String(channel), value: channel })),
@@ -135,6 +152,36 @@ const channelOptions = computed(() => [
         <Checkbox v-model="form.doubleVocal" binary input-id="opt-double" />
         <label for="opt-double">{{ t('doubleVocal') }}</label>
       </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t('harmony') }}</legend>
+      <div class="parts">
+        <div v-for="part in HARMONY_PARTS" :key="part" class="check">
+          <Checkbox v-model="form.harmonyParts" :value="part" :input-id="`opt-harmony-${part}`" />
+          <label :for="`opt-harmony-${part}`">{{ t(harmonyLabels[part]) }}</label>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" :class="{ disabled: !harmonyOn }">
+          <label for="opt-harmony-key">{{ t('harmonyKey') }}</label>
+          <Select
+            v-model="form.harmonyKey"
+            input-id="opt-harmony-key"
+            :options="harmonyKeys"
+            option-label="label"
+            option-value="value"
+            :placeholder="t('harmonyKeyAuto')"
+            :disabled="!harmonyOn"
+            fluid
+          />
+        </div>
+      </div>
+      <div class="check" :class="{ disabled: !harmonyOn }">
+        <Checkbox v-model="form.harmonyChorusOnly" binary input-id="opt-harmony-chorus" :disabled="!harmonyOn" />
+        <label for="opt-harmony-chorus">{{ t('harmonyChorusOnly') }}</label>
+      </div>
+      <p class="hint muted m-0">{{ t('harmonyHint') }}</p>
     </fieldset>
 
     <fieldset>
@@ -424,6 +471,12 @@ fieldset {
 .check.disabled {
   color: var(--text-muted);
   cursor: default;
+}
+
+.parts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.5rem 0.75rem;
 }
 
 legend {

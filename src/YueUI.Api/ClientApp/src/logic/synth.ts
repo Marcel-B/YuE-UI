@@ -122,6 +122,7 @@ const LEAD: AnalogPatch = {
 const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, AnalogPatch> = {
   Melody: LEAD,
   Doubling: { ...LEAD, volume: 0.5 },
+  Harmony: { ...LEAD, volume: 0.45 },
   Chords: {
     engine: 'analog',
     osc1: { wave: 'sawtooth', octave: 0, detune: -8, level: 0.5, ...PULSE },

@@ -57,10 +57,10 @@ public sealed class MidiRenderer : IMidiRenderer
         ArgumentNullException.ThrowIfNull(destination);
         options ??= new MidiRenderOptions();
 
-        // Track order in Logic: melodies and their doublings, chords, then the generated accompaniment.
+        // Track order in Logic: melodies with their doublings and backing vocals, chords, then the generated accompaniment.
         var chunks = new List<TrackChunk> { BuildConductorTrack(score) };
         var channels = new ChannelAssignment(options.Channels);
-        foreach (var voice in score.Voices.Where(v => v.Kind is TrackKind.Melody or TrackKind.Doubling))
+        foreach (var voice in score.Voices.Where(v => v.Kind is TrackKind.Melody or TrackKind.Doubling or TrackKind.Harmony))
         {
             chunks.Add(BuildVoiceTrack(voice, channels.Of(voice.Id), options.MelodyVelocity, [], Program(options, voice.Id)));
         }
@@ -72,7 +72,7 @@ public sealed class MidiRenderer : IMidiRenderer
             chunks.Add(BuildChordTrack(score.Chords, channels.Of(ChordTrackName), options.ChordVelocity, Program(options, ChordTrackName)));
         }
 
-        foreach (var voice in score.Voices.Where(v => v.Kind is not (TrackKind.Melody or TrackKind.Doubling)))
+        foreach (var voice in score.Voices.Where(v => v.Kind is not (TrackKind.Melody or TrackKind.Doubling or TrackKind.Harmony)))
         {
             if (voice == chordVoice && !options.IncludeChordTrack)
             {

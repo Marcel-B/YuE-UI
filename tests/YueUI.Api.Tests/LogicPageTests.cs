@@ -171,6 +171,57 @@ public sealed class LogicPageTests : IDisposable
         Assert.Contains(result["diagnostics"]!.AsArray(), d => (string?)d!["severity"] == "Error");
     }
 
+    [Fact]
+    public async Task An_uploaded_midi_melody_comes_back_with_backing_vocals()
+    {
+        var response = await _client.PostAsync("/api/logic/convert", new MultipartFormDataContent
+        {
+            { new ByteArrayContent(Melody(60, 64, 67, 72)), "file", "melodie.mid" },
+            { new StringContent("""{"arrangement":{"harmony":{"parts":["ThirdAbove","Alto"],"key":"C"}}}"""), "options" },
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await Json(response);
+        var voices = result["score"]!["voices"]!.AsArray();
+        var above = voices.Single(v => (string?)v!["id"] == "Harmony 3rd up")!;
+        Assert.Equal("Harmony", (string?)above["kind"]);
+        Assert.Equal([64, 67, 72, 76], above["notes"]!.AsArray().Select(n => (int)n!["noteNumber"]!));
+        Assert.Contains(voices, v => (string?)v!["id"] == "Harmony Alto");
+        // What reading the MIDI file said comes along with the conversion's own diagnostics.
+        Assert.Contains(result["diagnostics"]!.AsArray(), d => (string?)d!["code"] == "YTL076");
+    }
+
+    [Fact]
+    public async Task A_midi_file_without_notes_is_refused_with_its_diagnostics()
+    {
+        var response = await _client.PostAsync("/api/logic/convert", new MultipartFormDataContent
+        {
+            { new ByteArrayContent(Melody()), "file", "leer.mid" },
+        });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var result = await Json(response);
+        Assert.Contains(result["diagnostics"]!.AsArray(), d => (string?)d!["code"] == "YTL071");
+    }
+
+    /// <summary>One unnamed track of quarter notes, as a melody exported from anywhere looks.</summary>
+    private static byte[] Melody(params int[] pitches)
+    {
+        var events = new List<Melanchall.DryWetMidi.Core.MidiEvent>();
+        foreach (var pitch in pitches)
+        {
+            events.Add(new Melanchall.DryWetMidi.Core.NoteOnEvent((Melanchall.DryWetMidi.Common.SevenBitNumber)pitch, (Melanchall.DryWetMidi.Common.SevenBitNumber)100));
+            events.Add(new Melanchall.DryWetMidi.Core.NoteOffEvent((Melanchall.DryWetMidi.Common.SevenBitNumber)pitch, (Melanchall.DryWetMidi.Common.SevenBitNumber)0) { DeltaTime = 480 });
+        }
+        var file = new Melanchall.DryWetMidi.Core.MidiFile(new Melanchall.DryWetMidi.Core.TrackChunk(events.ToArray()))
+        {
+            TimeDivision = new Melanchall.DryWetMidi.Core.TicksPerQuarterNoteTimeDivision(480),
+        };
+        using var stream = new MemoryStream();
+        file.Write(stream);
+        return stream.ToArray();
+    }
+
     [Theory]
     [InlineData("song9")]
     [InlineData("../song1")]

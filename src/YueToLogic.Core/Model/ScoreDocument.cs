@@ -85,4 +85,7 @@ public enum TrackKind
 
     /// <summary>A score voice copied to a second track at another octave.</summary>
     Doubling,
+
+    /// <summary>A backing vocal part derived from a melody (a third above, the alto of a choir setting, …).</summary>
+    Harmony,
 }

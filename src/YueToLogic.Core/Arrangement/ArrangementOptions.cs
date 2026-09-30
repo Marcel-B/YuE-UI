@@ -33,6 +33,9 @@ public sealed record ArrangementOptions
     /// <summary>Doubles a score voice at another octave on a track of its own; <c>null</c> for none.</summary>
     public DoublingOptions? Doubling { get; set; }
 
+    /// <summary>Adds backing vocal parts derived from a melody, a track each; <c>null</c> for none.</summary>
+    public HarmonyOptions? Harmony { get; set; }
+
     /// <summary>Swing and humanization applied to every track once it is generated; <c>null</c> leaves the timing exact.</summary>
     public GrooveOptions? Groove { get; set; }
 
