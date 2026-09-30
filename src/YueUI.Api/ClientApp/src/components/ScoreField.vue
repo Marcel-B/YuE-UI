@@ -7,11 +7,12 @@ import { midiToAbc } from '../api'
 import { t } from '../i18n'
 import { pickMidiFile } from '../midi'
 import FieldHelp from './FieldHelp.vue'
+import TextActions from './TextActions.vue'
 
 /**
  * The song's own score, between the song's fields and the advanced parameters: a score decides melody, chords and
- * form, so it was too deep inside the parameters. Collapsed while empty, since most songs have none; its buttons stay
- * in the header so a MIDI file or the example needs no extra tap.
+ * form, so it was too deep inside the parameters. Collapsed while empty, since most songs have none; the example and
+ * the MIDI import stay in the header so they need no extra tap.
  */
 const emit = defineEmits<{
   notice: [message: string]
@@ -82,7 +83,7 @@ function useMidi(): void {
 <template>
   <Panel v-model:collapsed="collapsed" toggleable>
     <template #header>
-      <span class="font-semibold">{{ t('abc') }}</span>
+      {{ t('abc') }}
     </template>
     <template #icons>
       <Button
@@ -94,15 +95,6 @@ function useMidi(): void {
         text
         rounded
         @click="form.abc = exampleScore"
-      />
-      <Button
-        v-else
-        v-tooltip="t('abcClear')"
-        :aria-label="t('abcClear')"
-        icon="pi pi-trash"
-        text
-        rounded
-        @click="form.abc = ''"
       />
       <Button
         v-tooltip="t('abcFromMidi')"
@@ -130,37 +122,40 @@ function useMidi(): void {
       aria-describedby="gen-abc-help"
     />
     <FieldHelp id="gen-abc-help" :hint="t('abcHint')" :more="t('abcMore')" />
-    <div v-if="hasScore" class="flex flex-wrap items-center gap-1">
-      <Button
-        v-tooltip="t('abcTransposeDown')"
-        :aria-label="t('abcTransposeDown')"
-        icon="pi pi-minus"
-        size="small"
-        text
-        rounded
-        @click="transpose(-1)"
-      />
-      <Button
-        v-tooltip="t('abcTransposeUp')"
-        :aria-label="t('abcTransposeUp')"
-        icon="pi pi-plus"
-        size="small"
-        text
-        rounded
-        @click="transpose(1)"
-      />
-      <Select
-        v-if="scoreKey"
-        :model-value="scoreKey"
-        :options="keyOptions"
-        option-label="label"
-        option-value="value"
-        size="small"
-        :aria-label="t('abcKeyLabel')"
-        v-tooltip="t('abcKeyLabel')"
-        @update:model-value="changeKey"
-      />
-      <small v-if="scoreRange" class="muted ml-1">{{ scoreRange }}</small>
+    <div class="flex flex-wrap items-center gap-1">
+      <template v-if="hasScore">
+        <Button
+          v-tooltip="t('abcTransposeDown')"
+          :aria-label="t('abcTransposeDown')"
+          icon="pi pi-minus"
+          size="small"
+          text
+          rounded
+          @click="transpose(-1)"
+        />
+        <Button
+          v-tooltip="t('abcTransposeUp')"
+          :aria-label="t('abcTransposeUp')"
+          icon="pi pi-plus"
+          size="small"
+          text
+          rounded
+          @click="transpose(1)"
+        />
+        <Select
+          v-if="scoreKey"
+          :model-value="scoreKey"
+          :options="keyOptions"
+          option-label="label"
+          option-value="value"
+          size="small"
+          :aria-label="t('abcKeyLabel')"
+          v-tooltip="t('abcKeyLabel')"
+          @update:model-value="changeKey"
+        />
+        <small v-if="scoreRange" class="muted ml-1">{{ scoreRange }}</small>
+      </template>
+      <TextActions v-model="form.abc" class="ml-auto" />
     </div>
     <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
     <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>

@@ -14,6 +14,7 @@ import {
 } from '../api'
 import { formatDateTime, formatDuration, locale, t, tMaybe } from '../i18n'
 import type { SpeechInfo, SpeechModelInfo, SpeechTake, SpeechVoice } from '../types'
+import TextActions from './TextActions.vue'
 
 /**
  * The speech lab: record a voice, have a text spoken by local text-to-speech models with it, and compare what they
@@ -453,7 +454,10 @@ function message(caught: unknown): string {
         <template #title>{{ t('labText') }}</template>
         <template #content>
           <form class="flex flex-col gap-4" @submit.prevent="send">
-            <Textarea v-model="text" rows="6" auto-resize fluid :aria-label="t('labText')" />
+            <div>
+              <Textarea v-model="text" rows="6" auto-resize fluid :aria-label="t('labText')" />
+              <TextActions v-model="text" />
+            </div>
             <fieldset class="m-0 flex flex-col gap-3 border-0 p-0">
               <legend class="muted mb-2 p-0 text-sm">{{ t('labModels') }}</legend>
               <div v-for="model in info.models" :key="model.id" class="flex items-start gap-3">
