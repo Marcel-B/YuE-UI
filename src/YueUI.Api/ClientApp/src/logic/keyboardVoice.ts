@@ -1,3 +1,4 @@
+import { createEffectsChain, type Effects, type EffectsChain } from './effects'
 import { playSynthNote, type SynthPatch } from './synth'
 import type { Instrument } from './types'
 
@@ -17,19 +18,42 @@ export type Release = () => void
 /** Longer than any key is held; after it the note ends by itself. */
 const HOLD = 30
 
-let context: AudioContext | null = null
-let master: GainNode | null = null
+interface KeyboardAudio {
+  context: AudioContext
+  /** The sound's delay and reverb; the voices go into its input. */
+  fx: EffectsChain
+  /** The keyboard's output, for the oscilloscope. */
+  scope: AnalyserNode
+}
 
-function audio(): { context: AudioContext; master: GainNode } {
-  if (!context || !master) {
-    context = new AudioContext()
-    master = context.createGain()
+let audio: KeyboardAudio | null = null
+
+function keyboardAudio(): KeyboardAudio {
+  if (!audio) {
+    const context = new AudioContext()
+    const fx = createEffectsChain(context)
+    const master = context.createGain()
     // The preview's headroom for one voice, a little more since only a few keys sound at once.
     master.gain.value = 0.3
-    master.connect(context.destination)
+    const scope = context.createAnalyser()
+    scope.fftSize = 2048
+    // The scope reads before the headroom, so a single note fills it.
+    fx.output.connect(scope)
+    fx.output.connect(master).connect(context.destination)
+    audio = { context, fx, scope }
   }
-  void context.resume()
-  return { context, master }
+  void audio.context.resume()
+  return audio
+}
+
+/** Takes over changed delay and reverb at once, so a tail that still rings follows the sliders. */
+export function setKeyboardEffects(effects: Effects | undefined): void {
+  audio?.fx.set(effects)
+}
+
+/** What the keyboard sounds like, for the oscilloscope; null until a key was played. */
+export function keyboardAnalyser(): AnalyserNode | null {
+  return audio?.scope ?? null
 }
 
 /** How long the sound takes to die away once let go. */
@@ -38,10 +62,11 @@ function releaseOf(patch: SynthPatch): number {
 }
 
 function holdSound(patch: SynthPatch, pitch: number, level: number): Release {
-  const { context, master } = audio()
+  const { context, fx } = keyboardAudio()
+  fx.set(patch.fx)
   const start = context.currentTime + 0.005
   const gate = context.createGain()
-  gate.connect(master)
+  gate.connect(fx.input)
   const sources: AudioScheduledSourceNode[] = []
   playSynthNote(context, gate, patch, { pitch, level, start, end: start + HOLD }, (source, onEnded) => {
     sources.push(source)

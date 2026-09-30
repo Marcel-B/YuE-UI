@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { t } from '../../logic/i18n'
+import { keyboardAnalyser } from '../../logic/keyboardVoice'
 import { clonePatch, normalizePatch, type Engine, type SynthPatch } from '../../logic/synth'
 import { deleteNamedSound, loadSounds, namedSounds, saveNamedSound, soundsError } from '../../logic/synths'
 import SynthEditor from './SynthEditor.vue'
@@ -64,6 +65,12 @@ async function save(): Promise<void> {
   } finally {
     busy.value = false
   }
+}
+
+/** The page's keyboard plays the draft; its output is what the scope shows. */
+function keyboardScope(): AnalyserNode[] {
+  const analyser = keyboardAnalyser()
+  return analyser ? [analyser] : []
 }
 
 async function remove(): Promise<void> {
@@ -154,7 +161,7 @@ async function remove(): Promise<void> {
         <span v-if="changed && trimmed" class="muted text-xs">{{ t('soundUnsaved') }}</span>
       </div>
       <p v-if="soundsError" class="danger text-sm">{{ t('synthError', { message: soundsError }) }}</p>
-      <SynthEditor v-model="draft" kind="Melody" />
+      <SynthEditor v-model="draft" kind="Melody" :scope="keyboardScope" />
     </div>
   </div>
 </template>

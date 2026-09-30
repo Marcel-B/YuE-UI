@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { t } from '../logic/i18n'
 import { instruments } from '../logic/instrumentLibrary'
-import type { KeyboardTarget } from '../logic/keyboardVoice'
+import { setKeyboardEffects, type KeyboardTarget } from '../logic/keyboardVoice'
 import { midiUsable } from '../logic/midiPlayer'
 import { normalizePatch, type SynthPatch } from '../logic/synth'
 import type { Instrument } from '../logic/types'
@@ -18,6 +18,13 @@ defineProps<{ active: boolean }>()
 
 /** The sound in the editor, played by the keyboard as it is edited. */
 const draft = ref<SynthPatch>(normalizePatch(null, 'Melody'))
+
+// A tail still ringing after the key follows the effect sliders, not only the next note.
+watch(
+  () => draft.value.fx,
+  (fx) => setKeyboardEffects(fx),
+  { deep: true },
+)
 
 /** What the keyboard plays: `sound` for the editor's, or `midi:<id>` for an instrument. */
 const source = ref('sound')
