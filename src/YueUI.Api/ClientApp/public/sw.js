@@ -14,7 +14,7 @@ self.addEventListener('push', (event) => {
     message = { body: event.data ? event.data.text() : '' }
   }
   event.waitUntil(
-    self.registration.showNotification(message.title || 'YuE UI', {
+    self.registration.showNotification(message.title || 'Tonwerk', {
       body: message.body || '',
       tag: message.tag,
       icon: 'icon-192.png',

@@ -231,7 +231,7 @@ export function runZipUrl(runId: string): string {
  */
 export async function songShareFile(songId: string): Promise<File> {
   const response = await send(`/api/songs/${songId}/share`)
-  const name = fileName(response.headers.get('Content-Disposition')) ?? 'YuE.m4a'
+  const name = fileName(response.headers.get('Content-Disposition')) ?? 'Tonwerk.m4a'
   return new File([await response.blob()], name, { type: 'audio/mp4' })
 }
 
@@ -254,7 +254,7 @@ export async function exportSongFile(
     form.append('cover', cover, 'cover.jpg')
   }
   const response = await send(`/api/songs/${songId}/export`, { method: 'POST', body: form })
-  const name = fileName(response.headers.get('Content-Disposition')) ?? `YuE.${format}`
+  const name = fileName(response.headers.get('Content-Disposition')) ?? `Tonwerk.${format}`
   const blob = await response.blob()
   return new File([blob], name, { type: blob.type })
 }

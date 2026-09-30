@@ -1,11 +1,11 @@
 #!/bin/sh
-# Sets up the speech lab: a Python environment of its own with mlx-audio, where YuE UI looks for it (Speech:Python).
+# Sets up the speech lab: a Python environment of its own with mlx-audio, where Tonwerk looks for it (Speech:Python).
 # The models are downloaded by their first take, into Speech:ModelCache next to it.
 #
 #   deploy/install-speech.sh           install or update mlx-audio
 #   deploy/install-speech.sh --test    then have every model speak a sentence, which downloads them all (about 28 GB)
 #
-# Run it on the Mac as the user YuE UI runs as, after deploy/install.sh. Running it again updates mlx-audio.
+# Run it on the Mac as the user Tonwerk runs as, after deploy/install.sh. Running it again updates mlx-audio.
 set -eu
 
 URL="${YUEUI_URL:-http://127.0.0.1:5090}"
@@ -21,7 +21,7 @@ done
 PYTHON="$(curl -fsS "$URL/api/speech" 2>/dev/null | /usr/bin/python3 -c 'import json, sys; print(json.load(sys.stdin)["python"])' 2>/dev/null || true)"
 if [ -z "$PYTHON" ]; then
   PYTHON="$HOME/Library/Application Support/YuE UI/speech/env/bin/python"
-  echo "YuE UI does not answer at $URL; using the default location."
+  echo "Tonwerk does not answer at $URL; using the default location."
 fi
 ENV="$(dirname "$(dirname "$PYTHON")")"
 echo "Environment: $ENV"
@@ -49,7 +49,7 @@ fi
 "$PYTHON" -c 'import mlx_audio, importlib.metadata as m; print("mlx-audio", m.version("mlx-audio"), "is installed.")'
 
 if [ "$TEST" = false ]; then
-  echo "Open the speech lab in YuE UI; each model downloads itself with its first take."
+  echo "Open the speech lab in Tonwerk; each model downloads itself with its first take."
   exit 0
 fi
 

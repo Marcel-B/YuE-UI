@@ -210,7 +210,7 @@ function showOnLockScreen(track: Track): void {
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title,
     artist: track.detail,
-    album: 'YuE UI',
+    album: 'Tonwerk',
     // An absolute address: the lock screen fetches it outside the page.
     artwork: track.cover ? [{ src: new URL(track.cover, location.href).href }] : [],
   })

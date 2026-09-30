@@ -131,7 +131,7 @@ export async function drawCover(target: ExportTarget): Promise<Blob> {
   // As large as fits in four lines.
   for (; size >= 48; size -= 8) {
     context.font = `700 ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`
-    lines = wrap(context, target.title || 'YuE', width)
+    lines = wrap(context, target.title || 'Tonwerk', width)
     if (lines.length <= 4 && lines.every((line) => context.measureText(line).width <= width)) {
       break
     }
@@ -146,7 +146,7 @@ export async function drawCover(target: ExportTarget): Promise<Blob> {
   context.font = `500 36px system-ui, -apple-system, "Segoe UI", sans-serif`
   context.fillStyle = 'rgb(255 255 255 / 0.7)'
   const genre = genreOf(target.style)
-  context.fillText(genre ? `YuE · ${genre}` : 'YuE', margin, coverSize - margin, width)
+  context.fillText(genre ? `Tonwerk · ${genre}` : 'Tonwerk', margin, coverSize - margin, width)
   return jpeg(canvas)
 }
 

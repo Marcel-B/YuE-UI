@@ -74,7 +74,7 @@ public sealed class MusicXmlWriter : IMusicXmlWriter
             }
             xml.WriteStartElement("identification");
             xml.WriteStartElement("encoding");
-            xml.WriteElementString("software", "YuE UI");
+            xml.WriteElementString("software", "Tonwerk");
             xml.WriteEndElement();
             xml.WriteEndElement();
 

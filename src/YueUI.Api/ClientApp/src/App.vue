@@ -452,7 +452,7 @@ async function useAsNewSong(songId: string): Promise<void> {
   <ExportDialog v-if="exportTarget" />
   <Menubar :model="menu" breakpoint="640px" class="mb-4" :pt="{ button: { 'aria-label': t('menu') } }">
     <template #start>
-      <span class="brand whitespace-nowrap">YuE UI</span>
+      <span class="brand whitespace-nowrap">Tonwerk</span>
     </template>
     <template #item="{ item, props, hasSubmenu, root }">
       <a v-bind="props.action" :class="['flex items-center gap-2', { 'text-primary font-semibold': item.active }]">

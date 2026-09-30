@@ -12,7 +12,7 @@ const messages = {
     workerReady: 'Worker bereit',
     workerBusy: 'Rechnet',
     disconnected: 'Verbindung zum Server unterbrochen – verbinde neu …',
-    updateAvailable: 'Eine neue Version von YuE UI ist da.',
+    updateAvailable: 'Eine neue Version von Tonwerk ist da.',
     reload: 'Neu laden',
     studioRunning:
       'YuE Studio ist geöffnet und hat einen eigenen Worker. Beide gleichzeitig rechnen zu lassen kann den Speicher sprengen – am besten die App beenden.',
@@ -431,7 +431,7 @@ const messages = {
     queueActive: '{n} in Arbeit oder wartend – zur Warteschlange',
     labIntro:
       'Hier lässt sich ausprobieren, welches lokale Sprachmodell eine Stimme natürlich klingen lässt, etwa für einen Podcast. Jedes gewählte Modell spricht den Text nacheinander, auf Wunsch mit einer hier aufgenommenen Stimme. YuE2, das Textmodell und Stimmumwandlungen warten so lange.',
-    labNotInstalled: 'Die Sprachmodelle sind noch nicht eingerichtet. Einmal auf dem Mac im YuE-UI-Ordner ausführen:',
+    labNotInstalled: 'Die Sprachmodelle sind noch nicht eingerichtet. Einmal auf dem Mac im Ordner des Repositorys ausführen:',
     labNotInstalledPath: 'Der Server sucht Python unter {path}.',
     labNoFfmpeg: 'ffmpeg fehlt auf dem Server, deshalb lassen sich keine Aufnahmen speichern.',
     labVoice: 'Stimme',
@@ -621,7 +621,7 @@ const messages = {
     workerReady: 'Worker ready',
     workerBusy: 'Working',
     disconnected: 'Lost the connection to the server – reconnecting …',
-    updateAvailable: 'A new version of YuE UI is available.',
+    updateAvailable: 'A new version of Tonwerk is available.',
     reload: 'Reload',
     studioRunning:
       'YuE Studio is open and has a worker of its own. Letting both generate at once can run out of memory – better quit the app.',
@@ -1039,7 +1039,7 @@ const messages = {
     queueActive: '{n} in the works or waiting – open the queue',
     labIntro:
       'Try out which local speech model makes a voice sound natural, for a podcast for instance. Each chosen model speaks the text in turn, with a voice recorded here if you like. YuE2, the lyrics model and voice conversions wait meanwhile.',
-    labNotInstalled: 'The speech models are not set up yet. Run once on the Mac, in the YuE UI folder:',
+    labNotInstalled: 'The speech models are not set up yet. Run once on the Mac, in the repository folder:',
     labNotInstalledPath: 'The server looks for Python at {path}.',
     labNoFfmpeg: 'ffmpeg is missing on the server, so no recording can be stored.',
     labVoice: 'Voice',
