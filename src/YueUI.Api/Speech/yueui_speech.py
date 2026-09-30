@@ -10,6 +10,7 @@ In: one JSON object on stdin
 Out: the take as WAV at "output", and lines starting with "YUEUI " on stdout, each a JSON event:
     {"event": "stage", "stage": "loading" | "speaking"}
     {"event": "done", "loadSeconds": 12.3, "speakSeconds": 4.5, "peakMemoryGb": 5.1}
+    {"event": "note", "text": "..."}  (something repaired on the way, for the server's log)
 Anything else on stdout or stderr is mlx-audio's own output, which the server keeps for the error message.
 The model is loaded for this one take and freed with the process: on 24 GB it must not stay beside YuE2.
 """
@@ -161,6 +162,51 @@ class LabModel:
         return getattr(self._model, name)
 
 
+def guard_codes(model) -> None:
+    """
+    Keeps Higgs Audio v3's decoder from reading past its code table. The model draws 8 codes per frame, delayed by one
+    step per codebook, and two of its values are not sound but "audio begins" and "audio ends" (1024 and 1025). The
+    sampler does not stop them where a codebook still owes a code, which at a piece's end is exactly where a codebook
+    may end a step early. The codec looks the codes up without a bounds check (in MLX, 1025 in a 1024-entry table read
+    6e19 in a test), and the decoder makes that a short noise at the end of a sentence. Higgs Audio v2's port clips its
+    codes before decoding for the same reason. Here a frame at either end holding such a code is left out, and one
+    inside takes the codes of the frame before.
+    """
+    codec = getattr(model, "_codec", None)
+    size = getattr(getattr(codec, "config", None), "codebook_size", None)
+    if type(codec).__name__ != "HiggsAudioTokenizer" or not size:
+        return
+    decode = codec.decode
+
+    def guarded(tokens):
+        import mlx.core as mx
+        import numpy as np
+
+        codes = np.array(tokens)
+        bad = (codes < 0) | (codes >= size)
+        if not bad.any():
+            return decode(tokens)
+        if codes.ndim != 2:  # a batch: no frames to leave out, only codes to keep in the table
+            return decode(mx.array(np.clip(codes, 0, size - 1), dtype=mx.int32))
+        frames = bad.any(axis=-1)
+        start, end = 0, len(frames)
+        while start < end and frames[start]:
+            start += 1
+        while end > start and frames[end - 1]:
+            end -= 1
+        codes, bad = codes[start:end], bad[start:end]
+        for frame in range(1, len(codes)):
+            codes[frame][bad[frame]] = codes[frame - 1][bad[frame]]
+        repaired = int(bad.any(axis=-1).sum())
+        text = f"codes outside the codec's table: {len(frames) - len(codes)} frames left out, {repaired} repaired"
+        emit({"event": "note", "text": text})
+        if not len(codes):
+            return mx.zeros((0,), dtype=mx.float32)
+        return decode(mx.array(codes, dtype=mx.int32))
+
+    codec.decode = guarded
+
+
 def main() -> int:
     request = json.load(sys.stdin)
     output = request["output"]
@@ -184,6 +230,7 @@ def main() -> int:
             flush=True,
         )
         return 1
+    guard_codes(model)
     loaded = time.perf_counter()
 
     emit({"event": "stage", "stage": "speaking"})
