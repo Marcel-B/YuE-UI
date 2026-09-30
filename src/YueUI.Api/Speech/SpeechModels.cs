@@ -35,6 +35,13 @@ public sealed class SpeechModel
     /// </summary>
     public int? ChunkCharacters { get; set; }
 
+    /// <summary>
+    /// For a model spoken in pieces that takes several reference clips: how many of the pieces just spoken go with the
+    /// recording into the next one, so that it continues their voice instead of starting afresh from the recording.
+    /// Null clones only the recording (or, without one, the first piece).
+    /// </summary>
+    public int? ContextPieces { get; set; }
+
     /// <summary>Roughly what it downloads, in GB, so the page can say what the first take costs.</summary>
     public double DownloadGb { get; set; }
 
@@ -102,6 +109,27 @@ public sealed class SpeechModel
             DownloadGb = 9.3,
             License = "Research and non-commercial",
             Note = "Conversational, tags such as <|emotion:amusement|> in the text. Podcasts are allowed when Boson AI is credited.",
+        },
+        new()
+        {
+            // The same model made steadier, to compare by ear: with the recommended values, even cloning a recording, the
+            // voice shifts a little from piece to piece and some pieces chirp. Upstream knows such glitches without a fix;
+            // a user in the model's discussion "Glitches and Silence" had fewer with temperature 0.7 and still fewer with
+            // a lower top_k. The piece just spoken goes along as a second reference (an experiment, see LabModel).
+            Id = "higgs-v3-calm",
+            Label = "Higgs Audio v3 4B (0.7 / top-k 20)",
+            Repo = "bosonai/higgs-audio-v3-tts-4b",
+            Options = new()
+            {
+                ["temperature"] = JsonSerializer.SerializeToElement(0.7),
+                ["top_k"] = JsonSerializer.SerializeToElement(20),
+                ["max_tokens"] = JsonSerializer.SerializeToElement(1024),
+            },
+            ChunkCharacters = 300,
+            ContextPieces = 1,
+            DownloadGb = 9.3,
+            License = "Research and non-commercial",
+            Note = "Higgs Audio v3 sampled more carefully (temperature 0.7, top-k 20 instead of 0.8 and 50), and each piece hears the one before beside the recording: meant to chirp less and keep the voice steadier between pieces, perhaps a little flatter. Speak both to compare.",
         },
         new()
         {

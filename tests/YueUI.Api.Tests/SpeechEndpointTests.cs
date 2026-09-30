@@ -22,7 +22,7 @@ public sealed class SpeechEndpointTests : IDisposable
 
         Assert.True(info!.Installed);
         Assert.EndsWith(Path.Combine("speech", "env", "bin", "python"), info.Python);
-        Assert.Equal(["chatterbox", "qwen3-tts", "higgs-v2", "higgs-v3", "moss-tts"], info.Models.Select(m => m.Id));
+        Assert.Equal(["chatterbox", "qwen3-tts", "higgs-v2", "higgs-v3", "higgs-v3-calm", "moss-tts"], info.Models.Select(m => m.Id));
         Assert.Equal(["chatterbox"], info.Models.Where(m => m.Downloaded).Select(m => m.Id));
         Assert.Empty(info.Voices);
         Assert.Empty(info.Takes);

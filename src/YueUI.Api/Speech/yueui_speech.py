@@ -6,7 +6,7 @@ transformers and mlx versions that YuE2 does not share.
 In: one JSON object on stdin
     {"model": "<hf repo>", "text": "...", "output": "/abs/take.wav",
      "refAudio": "/abs/voice.wav" | null, "refText": "..." | null,
-     "langCode": "de" | null, "options": {...} | null, "chunkCharacters": 300 | null}
+     "langCode": "de" | null, "options": {...} | null, "chunkCharacters": 300 | null, "contextPieces": 1 | null}
 Out: the take as WAV at "output", and lines starting with "YUEUI " on stdout, each a JSON event:
     {"event": "stage", "stage": "loading" | "speaking"}
     {"event": "done", "loadSeconds": 12.3, "speakSeconds": 4.5, "peakMemoryGb": 5.1}
@@ -104,12 +104,19 @@ class LabModel:
     chunkCharacters, each piece is a generation of its own, with a short pause after it. Without a recorded voice,
     the pieces after the first clone the first one, as Higgs Audio's own long-form example does with the audio it
     made, or every piece would get a voice of its own.
+
+    Each piece is still sampled afresh, and even with the same recording the voice shifted a little from one piece to
+    the next. With contextPieces, a model that takes several reference clips (Higgs Audio v3: several <|ref_text|>
+    <|ref_audio|> pairs in one prompt) gets the pieces just spoken beside the recording, so that it clones the voice as
+    the last piece left it. Nobody documents this: Higgs Audio v3 describes its model as grounding each chunk on the
+    reference and the chunks before, but serves one turn per request, and a community long-form node reuses the
+    recording for every chunk. So it is an experiment, to be judged by ear; a piece that chirps is passed on with it.
     """
 
     DEFAULTED = ("temperature", "max_tokens")
     PAUSE_SECONDS = 0.3
 
-    def __init__(self, model, named, chunk_characters=None):
+    def __init__(self, model, named, chunk_characters=None, context_pieces=None):
         self._model = model
 
         @functools.wraps(model.generate)  # generate_audio reads the signature to see whether the model takes ref_text
@@ -121,13 +128,26 @@ class LabModel:
                     kwargs.pop(key, None)
             text = kwargs.pop("text")
             parts = pieces(text, chunk_characters) if chunk_characters else [text]
+            # The voice every piece clones: the recording, or without one the first piece. Then the pieces just
+            # spoken, for a model that takes several references and so continues where the last piece ended.
+            voice, before = [], []
+            if kwargs.get("ref_audio") is not None:
+                voice.append((kwargs.pop("ref_audio"), kwargs.pop("ref_text", None)))
             for index, part in enumerate(parts):
+                clips = voice + before
+                if clips:
+                    audios, texts = zip(*clips)
+                    kwargs["ref_audio"] = audios[0] if len(clips) == 1 else list(audios)
+                    kwargs["ref_text"] = texts[0] if len(clips) == 1 else list(texts)
                 results = list(model.generate(text=part, **kwargs))
                 if not results:
                     continue
-                if index == 0 and len(parts) > 1 and kwargs.get("ref_audio") is None:
-                    kwargs["ref_audio"] = mx.concatenate([result.audio for result in results], axis=0)
-                    kwargs["ref_text"] = part
+                if index < len(parts) - 1 and (not voice or context_pieces):
+                    spoken = (mx.concatenate([result.audio for result in results], axis=0), part)
+                    if voice:
+                        before = (before + [spoken])[-context_pieces:]
+                    else:
+                        voice.append(spoken)
                 if index < len(parts) - 1:
                     last = results[-1]
                     pause = int(self.PAUSE_SECONDS * last.sample_rate)
@@ -174,7 +194,7 @@ def main() -> int:
     # the path, some samples at their own rate) and joins the segments a long text is split into.
     generate_audio(
         text=request["text"],
-        model=LabModel(model, kwargs, request.get("chunkCharacters")),
+        model=LabModel(model, kwargs, request.get("chunkCharacters"), request.get("contextPieces")),
         ref_audio=request.get("refAudio"),
         ref_text=request.get("refText"),
         output_path=directory,

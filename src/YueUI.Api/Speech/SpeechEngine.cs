@@ -134,6 +134,7 @@ public sealed class MlxAudioEngine(IOptions<SpeechOptions> options, ILogger<MlxA
             ["langCode"] = job.Model.LangCode,
             ["options"] = job.Model.Options is { } extra ? JsonSerializer.SerializeToNode(extra) : null,
             ["chunkCharacters"] = job.Model.ChunkCharacters,
+            ["contextPieces"] = job.Model.ContextPieces,
         };
 
         using var process = Process.Start(start) ?? throw new SpeechException($"Could not start {settings.ResolvedPython}.");
