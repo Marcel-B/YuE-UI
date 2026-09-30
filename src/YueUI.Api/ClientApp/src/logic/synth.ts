@@ -1,4 +1,22 @@
+import {
+  clamp,
+  envelope,
+  envelopeOf,
+  ENVELOPE_RANGES,
+  oneOf,
+  record,
+  WAVES,
+  type Envelope,
+  type Wave,
+} from './envelope'
+import { normalizeFmPatch, playFmNote, type FmPatch } from './fm'
 import type { TrackKind } from './types'
+
+export { WAVES, type Envelope, type Wave }
+
+/** A track's sound: the analog synthesizer below or the FM one in fm.ts, told apart by `engine`. */
+export type SynthPatch = AnalogPatch | FmPatch
+export type Engine = SynthPatch['engine']
 
 /**
  * The browser synthesizer the preview plays pitched tracks on when they are not routed to MIDI hardware: two
@@ -9,20 +27,10 @@ import type { TrackKind } from './types'
  * (an older patch, a hand-edited row) playable, filling what is missing and clamping what is out of range.
  */
 
-export const WAVES = ['sine', 'triangle', 'sawtooth', 'square'] as const
-export type Wave = (typeof WAVES)[number]
 export const FILTER_TYPES = ['lowpass', 'highpass', 'bandpass'] as const
 export type FilterType = (typeof FILTER_TYPES)[number]
 export const LFO_TARGETS = ['pitch', 'filter', 'amp'] as const
 export type LfoTarget = (typeof LFO_TARGETS)[number]
-
-/** Times in seconds, sustain as a share of the peak. */
-export interface Envelope {
-  attack: number
-  decay: number
-  sustain: number
-  release: number
-}
 
 export interface Oscillator {
   /** `square` is the pulse wave; at a width of 50 % and no PWM it is the plain square. */
@@ -44,7 +52,9 @@ export interface Oscillator {
   pwmFilterEnv: number
 }
 
-export interface SynthPatch {
+export interface AnalogPatch {
+  /** Missing in sounds saved before there was a second engine. */
+  engine: 'analog'
   osc1: Oscillator
   osc2: Oscillator
   noise: number
@@ -84,10 +94,7 @@ export const RANGES = {
   resonance: [0, 20],
   envAmount: [-4, 6],
   keyTrack: [0, 1],
-  attack: [0, 4],
-  decay: [0.01, 4],
-  sustain: [0, 1],
-  release: [0.01, 6],
+  ...ENVELOPE_RANGES,
   rate: [0.1, 20],
   depth: [0, 1],
   volume: [0, 1],
@@ -96,7 +103,8 @@ export const RANGES = {
 /** A pulse at 50 % that nothing moves: the square wave, and what every other wave carries unused. */
 const PULSE = { width: 0.5, pwm: 0, pwmLfo: true, pwmAmpEnv: 0, pwmFilterEnv: 0 } as const
 
-const LEAD: SynthPatch = {
+const LEAD: AnalogPatch = {
+  engine: 'analog',
   osc1: { wave: 'sawtooth', octave: 0, detune: 0, level: 0.7, ...PULSE },
   osc2: { wave: 'square', octave: 0, detune: 7, level: 0.35, ...PULSE },
   noise: 0,
@@ -108,10 +116,11 @@ const LEAD: SynthPatch = {
 }
 
 /** A starting sound per kind of track, so the preview does not play every part on the same buzz. */
-const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, SynthPatch> = {
+const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, AnalogPatch> = {
   Melody: LEAD,
   Doubling: { ...LEAD, volume: 0.5 },
   Chords: {
+    engine: 'analog',
     osc1: { wave: 'sawtooth', octave: 0, detune: -8, level: 0.5, ...PULSE },
     osc2: { wave: 'sawtooth', octave: 0, detune: 8, level: 0.5, ...PULSE },
     noise: 0,
@@ -122,6 +131,7 @@ const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, SynthPatch> = {
     volume: 0.45,
   },
   Bass: {
+    engine: 'analog',
     osc1: { wave: 'sawtooth', octave: 0, detune: 0, level: 0.7, ...PULSE },
     osc2: { wave: 'square', octave: -1, detune: 0, level: 0.5, ...PULSE },
     noise: 0,
@@ -132,6 +142,7 @@ const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, SynthPatch> = {
     volume: 0.9,
   },
   GuideTones: {
+    engine: 'analog',
     osc1: { wave: 'sine', octave: 0, detune: 0, level: 0.8, ...PULSE },
     osc2: { wave: 'triangle', octave: 1, detune: 0, level: 0.2, ...PULSE },
     noise: 0,
@@ -148,25 +159,13 @@ export function hasSynth(kind: TrackKind | undefined): kind is Exclude<TrackKind
   return kind !== undefined && kind !== 'Drums'
 }
 
-export function defaultPatch(kind: TrackKind | undefined): SynthPatch {
+export function defaultPatch(kind: TrackKind | undefined): AnalogPatch {
   return structuredClone(hasSynth(kind) ? DEFAULTS[kind] : LEAD)
 }
 
 /** A plain copy; structuredClone refuses Vue's reactive proxies, which is what an edited patch is. */
-export function clonePatch(patch: SynthPatch): SynthPatch {
-  return JSON.parse(JSON.stringify(patch)) as SynthPatch
-}
-
-function clamp(value: unknown, [min, max]: readonly [number, number], fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
-}
-
-function oneOf<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
-  return options.includes(value as T) ? (value as T) : fallback
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+export function clonePatch<T extends SynthPatch>(patch: T): T {
+  return JSON.parse(JSON.stringify(patch)) as T
 }
 
 function oscillatorOf(raw: unknown, fallback: Oscillator): Oscillator {
@@ -185,23 +184,18 @@ function oscillatorOf(raw: unknown, fallback: Oscillator): Oscillator {
   }
 }
 
-function envelopeOf(raw: unknown, fallback: Envelope): Envelope {
-  const value = record(raw)
-  return {
-    attack: clamp(value.attack, RANGES.attack, fallback.attack),
-    decay: clamp(value.decay, RANGES.decay, fallback.decay),
-    sustain: clamp(value.sustain, RANGES.sustain, fallback.sustain),
-    release: clamp(value.release, RANGES.release, fallback.release),
-  }
-}
-
 /** A playable patch out of whatever was stored, with the kind's default for anything missing or broken. */
 export function normalizePatch(raw: unknown, kind?: TrackKind): SynthPatch {
+  return record(raw).engine === 'fm' ? normalizeFmPatch(raw, kind) : normalizeAnalogPatch(raw, kind)
+}
+
+export function normalizeAnalogPatch(raw: unknown, kind?: TrackKind): AnalogPatch {
   const fallback = defaultPatch(kind)
   const value = record(raw)
   const filter = record(value.filter)
   const lfo = record(value.lfo)
   return {
+    engine: 'analog',
     osc1: oscillatorOf(value.osc1, fallback.osc1),
     osc2: oscillatorOf(value.osc2, fallback.osc2),
     noise: clamp(value.noise, RANGES.level, fallback.noise),
@@ -224,32 +218,6 @@ export function normalizePatch(raw: unknown, kind?: TrackKind): SynthPatch {
   }
 }
 
-/**
- * Schedules an envelope on `param` from `start` to the note's end and its release. The note's length is known in
- * advance, so the level at the moment the key is let go is computed rather than read back: Web Audio cannot report
- * a parameter's scheduled value, and `cancelAndHoldAtTime`, which would, is missing in Firefox. Linear attack, then
- * an exponential fall to the sustain level; `decay` is the time to get about 98 % of the way there.
- *
- * @returns When the release has died away.
- */
-function envelope(param: AudioParam, env: Envelope, start: number, end: number, base: number, peak: number): number {
-  const attack = Math.max(0.002, env.attack)
-  const tau = Math.max(0.002, env.decay) / 4
-  const at = (t: number) => (t < attack ? t / attack : env.sustain + (1 - env.sustain) * Math.exp(-(t - attack) / tau))
-  const held = end - start
-  param.setValueAtTime(base, start)
-  if (held <= attack) {
-    param.linearRampToValueAtTime(base + peak * at(held), end)
-  } else {
-    param.linearRampToValueAtTime(base + peak, start + attack)
-    param.setTargetAtTime(base + peak * env.sustain, start + attack, tau)
-    param.setValueAtTime(base + peak * at(held), end)
-  }
-  const release = Math.max(0.005, env.release)
-  param.setTargetAtTime(base, end, release / 4)
-  return end + release
-}
-
 export interface SynthNote {
   pitch: number
   /** 0 to 1. */
@@ -266,6 +234,20 @@ export function playSynthNote(
   context: BaseAudioContext,
   destination: AudioNode,
   patch: SynthPatch,
+  note: SynthNote,
+  started: (source: AudioScheduledSourceNode, onEnded: () => void) => void,
+): void {
+  if (patch.engine === 'fm') {
+    playFmNote(context, destination, patch, note, started)
+  } else {
+    playAnalogNote(context, destination, patch, note, started)
+  }
+}
+
+function playAnalogNote(
+  context: BaseAudioContext,
+  destination: AudioNode,
+  patch: AnalogPatch,
   note: SynthNote,
   started: (source: AudioScheduledSourceNode, onEnded: () => void) => void,
 ): void {
