@@ -826,7 +826,13 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
       </Panel>
 
       <p class="muted hint">{{ note ?? (hasInstruments ? t('previewInstrumentHint') : t('previewHint')) }}</p>
-      <SynthDialog ref="synthDialog" :playing="playing" @audition="audition" @toggle="toggle" />
+      <SynthDialog
+        ref="synthDialog"
+        :playing="playing"
+        :scope="(track) => pool.trackAnalysers(track)"
+        @audition="audition"
+        @toggle="toggle"
+      />
     </template>
   </Card>
 </template>

@@ -1,4 +1,5 @@
 import { createSpectrumAnalyser } from '../spectrum'
+import { createEffectsChain, type EffectsChain } from './effects'
 import { defaultPatch, noiseBuffer, playSynthNote, type SynthPatch } from './synth'
 import type { ScoreDocument, VoiceTrack } from './types'
 
@@ -104,6 +105,8 @@ export interface Output {
   levels?(): Levels
   /** The mix as the spectrum analyzer hears it; only the browser's own output has one. */
   analyser?(): AnalyserNode
+  /** One track after its fader, for the oscilloscope; null before its first note. */
+  trackAnalyser?(track: string): AnalyserNode | null
 }
 
 /** The mixer's settings as the browser output reads them, looked up whenever they change. */
@@ -160,36 +163,44 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
   lift.gain.value = 1 / HEADROOM
   master.connect(lift).connect(spectrum)
 
-  /** One channel strip per track, made on its first note: fader, pan and a meter after both, as on a desk. */
+  /**
+   * One channel strip per track, made on its first note: the sound's delay and reverb as inserts, then fader, pan and
+   * a meter after both, as on a desk.
+   */
   interface Strip {
+    fx: EffectsChain
     fader: GainNode
     panner: StereoPannerNode
     meter: AnalyserNode
   }
   const strips = new Map<string, Strip>()
-  const samples = new Float32Array(512)
+  const samples = new Float32Array(2048)
 
-  function strip(track: string): AudioNode {
+  function strip(track: string): Strip {
     let found = strips.get(track)
     if (!found) {
+      const fx = createEffectsChain(context)
       const fader = context.createGain()
       fader.gain.value = mix.volume(track)
       const panner = context.createStereoPanner()
       panner.pan.value = mix.pan(track)
       const meter = context.createAnalyser()
-      meter.fftSize = 512
-      fader.connect(panner).connect(meter)
+      // Long enough for the oscilloscope to show a full cycle of a bass note; the level meter reads only the start.
+      meter.fftSize = 2048
+      fx.output.connect(fader).connect(panner).connect(meter)
       panner.connect(master)
-      found = { fader, panner, meter }
+      found = { fx, fader, panner, meter }
       strips.set(track, found)
     }
-    return found.fader
+    return found
   }
 
   function peak(analyser: AnalyserNode): number {
-    analyser.getFloatTimeDomainData(samples)
+    // The track meters hold more samples than the master's; each reads its own length.
+    const recent = samples.subarray(0, analyser.fftSize)
+    analyser.getFloatTimeDomainData(recent)
     let max = 0
-    for (const sample of samples) {
+    for (const sample of recent) {
       max = Math.max(max, Math.abs(sample))
     }
     return max
@@ -213,7 +224,7 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
     const gain = context.createGain()
     gain.gain.setValueAtTime(level * 0.9, start)
     gain.gain.exponentialRampToValueAtTime(0.0001, start + shape.decay)
-    gain.connect(strip(note.track))
+    gain.connect(strip(note.track).fx.input)
 
     if (shape.noise > 0) {
       const source = context.createBufferSource()
@@ -255,9 +266,11 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
       }
 
       const patch = patchFor(note.track) ?? defaultPatch(undefined)
+      const channel = strip(note.track)
+      channel.fx.set(patch.fx)
       playSynthNote(
         context,
-        strip(note.track),
+        channel.fx.input,
         patch,
         { pitch: note.pitch, level, start, end: start + note.duration },
         (source, onEnded) => {
@@ -300,6 +313,7 @@ export function createAudioOutput(patchFor: PatchLookup = () => null, mix: MixLo
       }
     },
     analyser: () => spectrum,
+    trackAnalyser: (track) => strips.get(track)?.meter ?? null,
   }
 }
 
@@ -439,6 +453,11 @@ export class OutputPool {
   /** The analysers of every output that sounds in the browser, for the spectrum analyzer. */
   analysers(): AnalyserNode[] {
     return [...this.open.values()].flatMap((output) => (output.analyser ? [output.analyser()] : []))
+  }
+
+  /** The track in every output that sounds in the browser, for the oscilloscope. */
+  trackAnalysers(track: string): AnalyserNode[] {
+    return [...this.open.values()].flatMap((output) => output.trackAnalyser?.(track) ?? [])
   }
 
   silence(): void {

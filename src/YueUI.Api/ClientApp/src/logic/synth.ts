@@ -9,6 +9,7 @@ import {
   type Envelope,
   type Wave,
 } from './envelope'
+import { normalizeEffects, type Effects } from './effects'
 import { normalizeFmPatch, playFmNote, type FmPatch } from './fm'
 import type { TrackKind } from './types'
 
@@ -80,6 +81,8 @@ export interface AnalogPatch {
     depth: number
   }
   volume: number
+  /** Delay and reverb, see effects.ts; `normalizePatch` always fills it, sounds from before it have none. */
+  fx?: Effects
 }
 
 /** Ranges shared by the editor's sliders and `normalizePatch`. */
@@ -215,6 +218,7 @@ export function normalizeAnalogPatch(raw: unknown, kind?: TrackKind): AnalogPatc
       depth: clamp(lfo.depth, RANGES.depth, fallback.lfo.depth),
     },
     volume: clamp(value.volume, RANGES.volume, fallback.volume),
+    fx: normalizeEffects(value.fx),
   }
 }
 

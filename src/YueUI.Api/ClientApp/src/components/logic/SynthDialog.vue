@@ -20,7 +20,11 @@ import SynthEditor from './SynthEditor.vue'
  * The browser synthesizer of one track (`SynthEditor`). Every change is the track's sound at once (heard from the next note, also while the song plays) and saved
  * on the server; a sound can also be kept under a name and given to other tracks.
  */
-defineProps<{ playing: boolean }>()
+defineProps<{
+  playing: boolean
+  /** Where a track sounds, for the oscilloscope. */
+  scope?: (track: string) => AnalyserNode[]
+}>()
 
 const emit = defineEmits<{
   /** Plays a short phrase on the track's sound, around `pitch`. */
@@ -165,7 +169,7 @@ async function reset(): Promise<void> {
 
     <p v-if="soundsError" class="danger text-sm">{{ t('synthError', { message: soundsError }) }}</p>
 
-    <SynthEditor v-model="patch" :kind="kind" />
+    <SynthEditor v-model="patch" :kind="kind" :scope="scope && (() => scope!(track))" />
 
     <template #footer>
       <div class="flex w-full flex-wrap items-center justify-between gap-2">

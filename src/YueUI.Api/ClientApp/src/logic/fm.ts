@@ -9,6 +9,7 @@ import {
   type Envelope,
   type Wave,
 } from './envelope'
+import { normalizeEffects, type Effects } from './effects'
 import type { SynthNote } from './synth'
 import type { TrackKind } from './types'
 
@@ -50,6 +51,8 @@ export interface FmPatch {
     depth: number
   }
   volume: number
+  /** Delay and reverb, see effects.ts. */
+  fx?: Effects
 }
 
 export interface Algorithm {
@@ -238,6 +241,7 @@ export function normalizeFmPatch(raw: unknown, kind?: TrackKind): FmPatch {
       depth: clamp(lfo.depth, FM_RANGES.depth, fallback.lfo.depth),
     },
     volume: clamp(value.volume, FM_RANGES.volume, fallback.volume),
+    fx: normalizeEffects(value.fx),
   }
 }
 
