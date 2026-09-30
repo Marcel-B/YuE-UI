@@ -36,6 +36,12 @@ export interface Oscillator {
   width: number
   /** How far the LFO moves the pulse width, 0 to 1, at the LFO's rate and wave whatever its own target. */
   pwm: number
+  /** Whether the LFO moves the pulse width at all; off leaves `pwm` as it was for later. */
+  pwmLfo: boolean
+  /** How far the loudness envelope moves the pulse width, -1 to 1; negative narrows it as the envelope rises. */
+  pwmAmpEnv: number
+  /** The same for the filter envelope. */
+  pwmFilterEnv: number
 }
 
 export interface SynthPatch {
@@ -73,6 +79,7 @@ export const RANGES = {
   level: [0, 1],
   width: [0.05, 0.95],
   pwm: [0, 1],
+  pwmEnv: [-1, 1],
   cutoff: [20, 18000],
   resonance: [0, 20],
   envAmount: [-4, 6],
@@ -86,9 +93,12 @@ export const RANGES = {
   volume: [0, 1],
 } as const satisfies Record<string, readonly [number, number]>
 
+/** A pulse at 50 % that nothing moves: the square wave, and what every other wave carries unused. */
+const PULSE = { width: 0.5, pwm: 0, pwmLfo: true, pwmAmpEnv: 0, pwmFilterEnv: 0 } as const
+
 const LEAD: SynthPatch = {
-  osc1: { wave: 'sawtooth', octave: 0, detune: 0, level: 0.7, width: 0.5, pwm: 0 },
-  osc2: { wave: 'square', octave: 0, detune: 7, level: 0.35, width: 0.5, pwm: 0 },
+  osc1: { wave: 'sawtooth', octave: 0, detune: 0, level: 0.7, ...PULSE },
+  osc2: { wave: 'square', octave: 0, detune: 7, level: 0.35, ...PULSE },
   noise: 0,
   filter: { type: 'lowpass', cutoff: 1800, resonance: 2, envAmount: 1.5, keyTrack: 0.5 },
   filterEnv: { attack: 0.01, decay: 0.4, sustain: 0.3, release: 0.2 },
@@ -102,8 +112,8 @@ const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, SynthPatch> = {
   Melody: LEAD,
   Doubling: { ...LEAD, volume: 0.5 },
   Chords: {
-    osc1: { wave: 'sawtooth', octave: 0, detune: -8, level: 0.5, width: 0.5, pwm: 0 },
-    osc2: { wave: 'sawtooth', octave: 0, detune: 8, level: 0.5, width: 0.5, pwm: 0 },
+    osc1: { wave: 'sawtooth', octave: 0, detune: -8, level: 0.5, ...PULSE },
+    osc2: { wave: 'sawtooth', octave: 0, detune: 8, level: 0.5, ...PULSE },
     noise: 0,
     filter: { type: 'lowpass', cutoff: 1400, resonance: 1, envAmount: 1, keyTrack: 0.3 },
     filterEnv: { attack: 0.2, decay: 1, sustain: 0.5, release: 0.6 },
@@ -112,8 +122,8 @@ const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, SynthPatch> = {
     volume: 0.45,
   },
   Bass: {
-    osc1: { wave: 'sawtooth', octave: 0, detune: 0, level: 0.7, width: 0.5, pwm: 0 },
-    osc2: { wave: 'square', octave: -1, detune: 0, level: 0.5, width: 0.5, pwm: 0 },
+    osc1: { wave: 'sawtooth', octave: 0, detune: 0, level: 0.7, ...PULSE },
+    osc2: { wave: 'square', octave: -1, detune: 0, level: 0.5, ...PULSE },
     noise: 0,
     filter: { type: 'lowpass', cutoff: 380, resonance: 5, envAmount: 2, keyTrack: 0.3 },
     filterEnv: { attack: 0.005, decay: 0.25, sustain: 0.15, release: 0.1 },
@@ -122,8 +132,8 @@ const DEFAULTS: Record<Exclude<TrackKind, 'Drums'>, SynthPatch> = {
     volume: 0.9,
   },
   GuideTones: {
-    osc1: { wave: 'sine', octave: 0, detune: 0, level: 0.8, width: 0.5, pwm: 0 },
-    osc2: { wave: 'triangle', octave: 1, detune: 0, level: 0.2, width: 0.5, pwm: 0 },
+    osc1: { wave: 'sine', octave: 0, detune: 0, level: 0.8, ...PULSE },
+    osc2: { wave: 'triangle', octave: 1, detune: 0, level: 0.2, ...PULSE },
     noise: 0,
     filter: { type: 'lowpass', cutoff: 4000, resonance: 0, envAmount: 0, keyTrack: 0 },
     filterEnv: { attack: 0.01, decay: 0.5, sustain: 1, release: 0.3 },
@@ -168,6 +178,10 @@ function oscillatorOf(raw: unknown, fallback: Oscillator): Oscillator {
     level: clamp(value.level, RANGES.level, fallback.level),
     width: clamp(value.width, RANGES.width, fallback.width),
     pwm: clamp(value.pwm, RANGES.pwm, fallback.pwm),
+    // Sounds saved before the switch existed had the LFO on whenever PWM was set.
+    pwmLfo: typeof value.pwmLfo === 'boolean' ? value.pwmLfo : fallback.pwmLfo,
+    pwmAmpEnv: clamp(value.pwmAmpEnv, RANGES.pwmEnv, fallback.pwmAmpEnv),
+    pwmFilterEnv: clamp(value.pwmFilterEnv, RANGES.pwmEnv, fallback.pwmFilterEnv),
   }
 }
 
@@ -275,8 +289,11 @@ export function playSynthNote(
   const sources: AudioScheduledSourceNode[] = []
   const nodes: AudioNode[] = [filter, amp]
 
-  /** Delay times that set pulse widths, with the swing the LFO may give each (seconds). */
-  const pulseWidths: { delay: DelayNode; swing: number }[] = []
+  /**
+   * Delay times that set pulse widths, with the swing (seconds) each modulation source may give them: the LFO and the
+   * two envelopes. Together they never reach 0 or 100 %, where the wave would fall silent.
+   */
+  const pulseWidths: { delay: DelayNode; lfo: number; ampEnv: number; filterEnv: number }[] = []
 
   for (const osc of [patch.osc1, patch.osc2]) {
     if (osc.level <= 0) {
@@ -288,7 +305,9 @@ export function playSynthNote(
     const gain = context.createGain()
     gain.connect(filter)
     nodes.push(gain)
-    if (osc.wave === 'square' && (osc.width !== 0.5 || osc.pwm > 0)) {
+    const lfoSwing = osc.pwmLfo ? osc.pwm : 0
+    const moved = lfoSwing > 0 || osc.pwmAmpEnv !== 0 || osc.pwmFilterEnv !== 0
+    if (osc.wave === 'square' && (osc.width !== 0.5 || moved)) {
       // Web Audio has no pulse wave. A sawtooth minus itself delayed by width × period is one: the difference is
       // high for that share of each cycle and low for the rest, and moving the delay moves the width (PWM).
       oscillator.type = 'sawtooth'
@@ -302,9 +321,16 @@ export function playSynthNote(
       // turned over to make `width` the share that is high, as a pulse width is meant.
       gain.gain.value = -osc.level / 2
       nodes.push(delay, invert)
-      if (osc.pwm > 0) {
-        // Never all the way to 0 or 100 %, where the wave would fall silent.
-        pulseWidths.push({ delay, swing: osc.pwm * Math.min(osc.width - 0.02, 0.98 - osc.width) * period })
+      if (moved) {
+        const room = Math.min(osc.width - 0.02, 0.98 - osc.width) * period
+        // Several sources at full depth would push past the room; they share it then.
+        const share = room / Math.max(1, lfoSwing + Math.abs(osc.pwmAmpEnv) + Math.abs(osc.pwmFilterEnv))
+        pulseWidths.push({
+          delay,
+          lfo: lfoSwing * share,
+          ampEnv: osc.pwmAmpEnv * share,
+          filterEnv: osc.pwmFilterEnv * share,
+        })
       }
     } else {
       oscillator.type = osc.wave
@@ -331,11 +357,40 @@ export function playSynthNote(
     return
   }
 
-  if (patch.lfo.depth > 0 || pulseWidths.length > 0) {
+  /**
+   * An envelope as a signal from 0 to 1, for the pulse widths that follow it: the same curve the envelope draws on the
+   * loudness or the cutoff, made once per voice and only when an oscillator uses it.
+   */
+  function envelopeSignal(env: Envelope): ConstantSourceNode {
+    const signal = context.createConstantSource()
+    envelope(signal.offset, env, start, end, 0, 1)
+    sources.push(signal)
+    return signal
+  }
+  const ampEnvUsed = pulseWidths.some((entry) => entry.ampEnv !== 0)
+  const filterEnvUsed = pulseWidths.some((entry) => entry.filterEnv !== 0)
+  const ampSignal = ampEnvUsed ? envelopeSignal(patch.ampEnv) : null
+  const filterSignal = filterEnvUsed ? envelopeSignal(patch.filterEnv) : null
+  for (const entry of pulseWidths) {
+    for (const [signal, swing] of [
+      [ampSignal, entry.ampEnv],
+      [filterSignal, entry.filterEnv],
+    ] as const) {
+      if (signal && swing !== 0) {
+        const amount = context.createGain()
+        amount.gain.value = swing
+        signal.connect(amount).connect(entry.delay.delayTime)
+        nodes.push(amount)
+      }
+    }
+  }
+
+  const lfoWidths = pulseWidths.filter((entry) => entry.lfo > 0)
+  if (patch.lfo.depth > 0 || lfoWidths.length > 0) {
     const lfo = context.createOscillator()
     lfo.type = patch.lfo.wave
     lfo.frequency.value = patch.lfo.rate
-    for (const { delay, swing } of pulseWidths) {
+    for (const { delay, lfo: swing } of lfoWidths) {
       const pwm = context.createGain()
       pwm.gain.value = swing
       lfo.connect(pwm).connect(delay.delayTime)

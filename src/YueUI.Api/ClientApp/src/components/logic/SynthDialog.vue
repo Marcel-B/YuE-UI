@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Checkbox from 'primevue/checkbox'
 import Dialog from 'primevue/dialog'
 import SelectButton from 'primevue/selectbutton'
 import { computed, ref, watch } from 'vue'
@@ -149,6 +150,7 @@ const filterTypes = computed(() => FILTER_TYPES.map((value) => ({ label: t(filte
 const targets = computed(() => LFO_TARGETS.map((value) => ({ label: t(targetLabels[value]), value })))
 
 const percent = (value: number) => `${Math.round(value * 100)} %`
+const signedPercent = (value: number) => `${value > 0.005 ? '+' : ''}${Math.round(value * 100)} %`
 const seconds = (value: number) => (value < 1 ? `${Math.round(value * 1000)} ms` : `${formatNumber(value, 2)} s`)
 const hertz = (value: number) => (value < 1000 ? `${Math.round(value)} Hz` : `${formatNumber(value / 1000, 1)} kHz`)
 const signed = (value: number, unit: string, digits = 0) =>
@@ -257,8 +259,35 @@ const envelopes = computed<{ title: MessageKey; value: Envelope }[]>(() => [
             :step="0.01"
             :format="percent"
           />
-          <SynthKnob v-model="patch[osc.key].pwm" :label="t('synthPwm')" :min="0" :max="1" :format="percent" />
-          <p v-if="patch[osc.key].pwm > 0" class="muted mt-1 mb-0 text-xs">{{ t('synthPwmHint') }}</p>
+          <div class="flex items-center gap-2 pt-1">
+            <Checkbox v-model="patch[osc.key].pwmLfo" binary :input-id="`${osc.key}-pwm-lfo`" />
+            <label :for="`${osc.key}-pwm-lfo`" class="text-sm">{{ t('synthPwmLfo') }}</label>
+          </div>
+          <SynthKnob
+            v-model="patch[osc.key].pwm"
+            :label="t('synthPwm')"
+            :min="0"
+            :max="1"
+            :disabled="!patch[osc.key].pwmLfo"
+            :format="percent"
+          />
+          <SynthKnob
+            v-model="patch[osc.key].pwmAmpEnv"
+            :label="t('synthPwmAmpEnv')"
+            :min="RANGES.pwmEnv[0]"
+            :max="RANGES.pwmEnv[1]"
+            :step="0.01"
+            :format="signedPercent"
+          />
+          <SynthKnob
+            v-model="patch[osc.key].pwmFilterEnv"
+            :label="t('synthPwmFilterEnv')"
+            :min="RANGES.pwmEnv[0]"
+            :max="RANGES.pwmEnv[1]"
+            :step="0.01"
+            :format="signedPercent"
+          />
+          <p class="muted mt-1 mb-0 text-xs">{{ t('synthPwmHint') }}</p>
         </template>
       </section>
 

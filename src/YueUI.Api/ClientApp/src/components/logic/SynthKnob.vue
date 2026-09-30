@@ -15,9 +15,10 @@ const props = withDefaults(
     /** Rounds the value; 1 for octaves. */
     step?: number
     curve?: number
+    disabled?: boolean
     format: (value: number) => string
   }>(),
-  { step: 0, curve: 1 },
+  { step: 0, curve: 1, disabled: false },
 )
 
 const model = defineModel<number>({ required: true })
@@ -38,9 +39,16 @@ function update(value: number | number[]): void {
 </script>
 
 <template>
-  <div class="knob">
+  <div class="knob" :class="{ 'opacity-50': disabled }">
     <label :id="id" class="text-sm">{{ label }}</label>
-    <Slider :model-value="position" :min="0" :max="STEPS" :aria-labelledby="id" @update:model-value="update" />
+    <Slider
+      :model-value="position"
+      :min="0"
+      :max="STEPS"
+      :aria-labelledby="id"
+      :disabled="disabled"
+      @update:model-value="update"
+    />
     <span class="text-right text-sm tabular-nums text-muted-color">{{ format(model) }}</span>
   </div>
 </template>
