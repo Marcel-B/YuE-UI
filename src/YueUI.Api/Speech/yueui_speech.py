@@ -6,7 +6,7 @@ transformers and mlx versions that YuE2 does not share.
 In: one JSON object on stdin
     {"model": "<hf repo>", "text": "...", "output": "/abs/take.wav",
      "refAudio": "/abs/voice.wav" | null, "refText": "..." | null,
-     "langCode": "de" | null, "options": {...} | null}
+     "langCode": "de" | null, "options": {...} | null, "chunkCharacters": 300 | null}
 Out: the take as WAV at "output", and lines starting with "YUEUI " on stdout, each a JSON event:
     {"event": "stage", "stage": "loading" | "speaking"}
     {"event": "done", "loadSeconds": 12.3, "speakSeconds": 4.5, "peakMemoryGb": 5.1}
@@ -14,8 +14,10 @@ Anything else on stdout or stderr is mlx-audio's own output, which the server ke
 The model is loaded for this one take and freed with the process: on 24 GB it must not stay beside YuE2.
 """
 
+import functools
 import json
 import os
+import re
 import sys
 import time
 
@@ -36,6 +38,107 @@ def peak_memory_gb() -> float | None:
             return round(mx.metal.get_peak_memory() / 1e9, 2)
         except Exception:
             return None
+
+
+# Where a sentence may end: its punctuation, closing quotes or brackets and footnote marks ("[5]"), then space.
+SENTENCE_END = re.compile(r"[.!?…](?:\[\d+\]|[\"'»«“”)\]])*\s+")
+# Where a sentence too long for one piece may be cut instead.
+CLAUSE_END = re.compile(r"(?<=[,;:])\s+")
+
+
+def sentences(line: str) -> list[str]:
+    """
+    The line cut after each sentence. Not at a full stop after a number or a short word: in German that is a date
+    ("am 13. Mai") or an abbreviation ("z. B.", "Nr. 5"), and a cut there would make the model pause mid-sentence.
+    Missing a real sentence end only makes a piece longer.
+    """
+    result, start = [], 0
+    for match in SENTENCE_END.finditer(line):
+        word = line[start : match.start()].rsplit(" ", 1)[-1]
+        if match.group()[0] == "." and (len(word) < 4 or word[-1].isdigit()):
+            continue
+        result.append(line[start : match.end()].rstrip())
+        start = match.end()
+    return result + [line[start:]]
+
+
+def pieces(text: str, limit: int) -> list[str]:
+    """
+    The text cut at sentence ends into pieces of at most `limit` characters (a longer sentence at commas; a longer
+    clause stays whole), with the lines joined.
+
+    A line that ends without punctuation, such as a heading, gets a full stop: read as the start of the next sentence,
+    the models left it out.
+    """
+    spans = []
+    for line in text.splitlines():
+        line = " ".join(line.split())
+        if not line:
+            continue
+        if line[-1].isalnum():
+            line += "."
+        for sentence in sentences(line):
+            spans.extend(CLAUSE_END.split(sentence) if len(sentence) > limit else [sentence])
+    result = []
+    for sentence in spans:
+        if result and len(result[-1]) + 1 + len(sentence) <= limit:
+            result[-1] += " " + sentence
+        else:
+            result.append(sentence)
+    return result
+
+
+class LabModel:
+    """
+    The model as generate_audio sees it: with its own sampling defaults, and a long text spoken in pieces where the
+    request asks for that. A wrapper rather than a replaced method, so a model that calls its own generate still gets
+    what it asks for.
+
+    generate_audio hands every model temperature=0.7 and max_tokens=1200 unless told otherwise, over the model's own
+    defaults. MOSS-TTS samples its audio at 1.7 (its authors call it sensitive to that); at 0.7 it spoke the first
+    line and then drifted into chirping noise, and 1200 tokens cut it off after 96 s. So these two reach the model
+    only when the request names them, and otherwise each model uses what its authors chose.
+
+    Chatterbox and Higgs Audio speak about 40 s per generation at most and split nothing themselves (Higgs Audio v3
+    recommends 1024 tokens, 41 s); given a whole paragraph, v3 spoke its first long sentence and then buzzed on. With
+    chunkCharacters, each piece is a generation of its own, with a short pause after it. Without a recorded voice,
+    the pieces after the first clone the first one, as Higgs Audio's own long-form example does with the audio it
+    made, or every piece would get a voice of its own.
+    """
+
+    DEFAULTED = ("temperature", "max_tokens")
+    PAUSE_SECONDS = 0.3
+
+    def __init__(self, model, named, chunk_characters=None):
+        self._model = model
+
+        @functools.wraps(model.generate)  # generate_audio reads the signature to see whether the model takes ref_text
+        def generate(**kwargs):
+            import mlx.core as mx  # loaded with the model by now
+
+            for key in self.DEFAULTED:
+                if key not in named:
+                    kwargs.pop(key, None)
+            text = kwargs.pop("text")
+            parts = pieces(text, chunk_characters) if chunk_characters else [text]
+            for index, part in enumerate(parts):
+                results = list(model.generate(text=part, **kwargs))
+                if not results:
+                    continue
+                if index == 0 and len(parts) > 1 and kwargs.get("ref_audio") is None:
+                    kwargs["ref_audio"] = mx.concatenate([result.audio for result in results], axis=0)
+                    kwargs["ref_text"] = part
+                if index < len(parts) - 1:
+                    last = results[-1]
+                    pause = int(self.PAUSE_SECONDS * last.sample_rate)
+                    silence = mx.zeros((pause, *last.audio.shape[1:]), dtype=last.audio.dtype)
+                    last.audio = mx.concatenate([last.audio, silence], axis=0)
+                yield from results
+
+        self.generate = generate
+
+    def __getattr__(self, name):
+        return getattr(self._model, name)
 
 
 def main() -> int:
@@ -71,7 +174,7 @@ def main() -> int:
     # the path, some samples at their own rate) and joins the segments a long text is split into.
     generate_audio(
         text=request["text"],
-        model=model,
+        model=LabModel(model, kwargs, request.get("chunkCharacters")),
         ref_audio=request.get("refAudio"),
         ref_text=request.get("refText"),
         output_path=directory,
