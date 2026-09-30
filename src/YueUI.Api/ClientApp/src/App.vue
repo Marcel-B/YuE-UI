@@ -48,6 +48,8 @@ const ShareDialog = defineAsyncComponent(() => import('./components/ShareDialog.
 const ExportDialog = defineAsyncComponent(() => import('./components/ExportDialog.vue'))
 // The Logic page brings the options form, the piano roll and the MIDI preview; loaded only once it is opened.
 const LogicPage = defineAsyncComponent(() => import('./components/LogicPage.vue'))
+// Backing vocals share the Logic page's preview; loaded only once opened as well.
+const HarmonyPage = defineAsyncComponent(() => import('./components/HarmonyPage.vue'))
 // The instruments page shares the Logic page's synthesizers; likewise loaded only once it is opened.
 const InstrumentsPage = defineAsyncComponent(() => import('./components/InstrumentsPage.vue'))
 // The speech lab, likewise loaded and mounted only once it is opened.
@@ -211,7 +213,7 @@ onBeforeUnmount(unsubscribe)
 // ---- Pages -------------------------------------------------------------------------------------------
 
 /**
- * The pages used day to day stand in the bar; the tools around a song (transcribing, voices and stems, Logic, the
+ * The pages used day to day stand in the bar; the tools around a song (transcribing, voices and stems, Logic, backing vocals, the
  * speech lab) share one submenu, so the bar fits one line on a laptop. The queue concerns every page and has its
  * hourglass at the bar's end instead of an entry.
  */
@@ -225,6 +227,7 @@ const tools: Page[] = [
   { view: 'transcribe', label: 'menuTranscribe', icon: 'pi pi-microphone' },
   { view: 'voices', label: 'menuVoices', icon: 'pi pi-users' },
   { view: 'logic', label: 'menuLogic', icon: 'pi pi-box' },
+  { view: 'harmony', label: 'menuHarmony', icon: 'pi pi-align-center' },
   { view: 'instruments', label: 'menuInstruments', icon: 'pi pi-sliders-h' },
   { view: 'lab', label: 'menuLab', icon: 'pi pi-comments' },
 ]
@@ -275,7 +278,11 @@ getVoiceInfo()
 const logicOpened = ref(view.value === 'logic')
 const labOpened = ref(view.value === 'lab')
 const instrumentsOpened = ref(view.value === 'instruments')
+const harmonyOpened = ref(view.value === 'harmony')
 watch(view, (value) => {
+  if (value === 'harmony') {
+    harmonyOpened.value = true
+  }
   if (value === 'instruments') {
     instrumentsOpened.value = true
   }
@@ -697,6 +704,10 @@ async function useAsNewSong(songId: string): Promise<void> {
 
   <main v-if="logicOpened" v-show="view === 'logic'">
     <LogicPage :runs="runs" />
+  </main>
+
+  <main v-if="harmonyOpened" v-show="view === 'harmony'">
+    <HarmonyPage :runs="runs" />
   </main>
 
   <main v-if="instrumentsOpened" v-show="view === 'instruments'">

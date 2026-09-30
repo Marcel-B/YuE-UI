@@ -1,7 +1,8 @@
 import { ref } from 'vue'
 
 /** The pages the menu bar switches between. */
-export type View = 'create' | 'queue' | 'transcribe' | 'songs' | 'playlist' | 'voices' | 'logic' | 'instruments' | 'lab'
+export type View =
+  'create' | 'queue' | 'transcribe' | 'songs' | 'playlist' | 'voices' | 'logic' | 'harmony' | 'instruments' | 'lab'
 
 const views: readonly View[] = [
   'create',
@@ -11,6 +12,7 @@ const views: readonly View[] = [
   'playlist',
   'voices',
   'logic',
+  'harmony',
   'instruments',
   'lab',
 ]
