@@ -105,6 +105,25 @@ public sealed class SpeechModel
         },
         new()
         {
+            // The same model sampled more carefully, to compare by ear: with the recommended values the voice shifts a
+            // little from piece to piece and some pieces chirp. Upstream knows such glitches without a fix; a user in the
+            // model's discussion "Glitches and Silence" had fewer with temperature 0.7 and still fewer with a lower top_k.
+            Id = "higgs-v3-calm",
+            Label = "Higgs Audio v3 4B (0.7 / top-k 20)",
+            Repo = "bosonai/higgs-audio-v3-tts-4b",
+            Options = new()
+            {
+                ["temperature"] = JsonSerializer.SerializeToElement(0.7),
+                ["top_k"] = JsonSerializer.SerializeToElement(20),
+                ["max_tokens"] = JsonSerializer.SerializeToElement(1024),
+            },
+            ChunkCharacters = 300,
+            DownloadGb = 9.3,
+            License = "Research and non-commercial",
+            Note = "Higgs Audio v3 sampled more carefully (temperature 0.7, top-k 20 instead of 0.8 and 50): meant to chirp less and keep the voice steadier between pieces, perhaps a little flatter. Speak both to compare.",
+        },
+        new()
+        {
             Id = "moss-tts",
             Label = "MOSS-TTS Local v1.5",
             // The 8-bit MLX build of the 4.5B local-transformer model; the 8B MOSS-TTS-v1.5 is 17 GB in bf16, too much

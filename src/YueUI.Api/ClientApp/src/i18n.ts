@@ -483,6 +483,8 @@ const messages = {
     'labNote_higgs-v2': 'Ausdrucksstark, erkennt die Sprache am Text; braucht den Wortlaut der Aufnahme.',
     'labNote_higgs-v3':
       'Auf Gespräche trainiert, Tags wie <|emotion:amusement|> im Text. Für Podcasts erlaubt, wenn Boson AI genannt wird.',
+    'labNote_higgs-v3-calm':
+      'Higgs Audio v3, vorsichtiger gesampelt (Temperatur 0.7, top-k 20 statt 0.8 und 50): soll weniger sirren und die Stimme zwischen den Stücken ruhiger halten, klingt vielleicht etwas gleichförmiger. Zum Vergleichen beide sprechen lassen.',
     'labNote_moss-tts': '48 kHz, Pausen als [pause 1.5s] im Text.',
     voices: 'Stimmen',
     voicesIntro:
@@ -1092,6 +1094,8 @@ const messages = {
     'labNote_higgs-v2': 'Expressive, reads the language off the text; needs the words of the recording.',
     'labNote_higgs-v3':
       'Trained on conversations, tags such as <|emotion:amusement|> in the text. Allowed for podcasts when Boson AI is credited.',
+    'labNote_higgs-v3-calm':
+      'Higgs Audio v3 sampled more carefully (temperature 0.7, top-k 20 instead of 0.8 and 50): meant to chirp less and keep the voice steadier between pieces, perhaps a little flatter. Speak both to compare.',
     'labNote_moss-tts': '48 kHz, pauses as [pause 1.5s] in the text.',
     voices: 'Voices',
     voicesIntro:
