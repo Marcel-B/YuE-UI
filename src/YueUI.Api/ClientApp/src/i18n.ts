@@ -97,6 +97,11 @@ const messages = {
     revisePlaceholder: 'Was ändern? z. B. Refrain eingängiger',
     lyricsRevised: 'Text überarbeitet.',
     undoRevision: 'Rückgängig',
+    textCopy: 'In die Zwischenablage kopieren',
+    textCopied: 'Kopiert',
+    textCopyFailed: 'Kopieren ging nicht',
+    textClear: 'Feld leeren',
+    textRestore: 'Wiederherstellen',
     instrumental: 'Instrumental',
     instrumentalHint: 'Ohne Gesang: vom Text zählen nur noch die Abschnittsmarken.',
     instrumentalMore:
@@ -156,7 +161,6 @@ const messages = {
     abcMore:
       'Zum Beispiel die ABC-Datei eines Songs aus der Bibliothek mit geänderten Akkorden oder einem anderen Tempo (Q:), oder eine mit SheetSage2 transkribierte Melodie für ein Cover. Braucht die Planung „Melodie und Akkorde“ (Akkorde werden übernommen) oder „Nur Melodie“ mit einer Partitur ohne Akkordsymbole (die Begleitung ist frei). Die Silben des Textes sollten zu den Noten der Stimme „Vocal“ passen. Bei „Instrumental“ bleibt die Gesangsstimme einer eigenen Partitur erhalten – dort also die Vocal-Takte durch Pausen ersetzen.\n\n„Beispiel einsetzen“ lädt die Partitur zu „City Lights“ (siehe Beispiel beim Songtext).\n\n− und + verschieben die ganze Partitur um einen Halbton: Melodie, Begleitung und Akkorde; die Auswahl daneben transponiert direkt in eine Tonart, auf dem kürzeren Weg (höchstens sechs Halbtöne tiefer oder fünf höher). Eine Tonart im anderen Tongeschlecht schreibt die Noten um: von Dur nach Moll werden Terz, Sexte und Septime einen Halbton tiefer (natürliches Moll), die Akkorde folgen (C wird Cm, G7 wird Gm7), von Moll nach Dur umgekehrt. Das ist eine einfache Näherung, klingt aber nach Moll; YuE2 liest die Tonart auch aus dem K:-Feld. YuE2 singt die Stimme „Vocal“ in dieser Lage, ist der Gesang zu hoch, also ein paar Halbtöne tiefer. Wie tief eine Stimme klingen kann, hängt auch vom Stil ab (z. B. „male vocal“, „deep voice“).',
     abcExample: 'Beispiel einsetzen',
-    abcClear: 'Partitur entfernen',
     abcFromMidi: 'Partitur aus MIDI-Datei (z. B. aus Logic)',
     abcTransposeDown: 'Einen Halbton tiefer',
     abcTransposeUp: 'Einen Halbton höher',
@@ -703,6 +707,11 @@ const messages = {
     revisePlaceholder: 'What to change? e.g. a catchier chorus',
     lyricsRevised: 'Lyrics revised.',
     undoRevision: 'Undo',
+    textCopy: 'Copy to clipboard',
+    textCopied: 'Copied',
+    textCopyFailed: 'Could not copy',
+    textClear: 'Clear field',
+    textRestore: 'Restore',
     instrumental: 'Instrumental',
     instrumentalHint: 'No vocals: only the section tags of the lyrics still count.',
     instrumentalMore:
@@ -762,7 +771,6 @@ const messages = {
     abcMore:
       'For example the ABC file of a song from the library with changed chords or a different tempo (Q:), or a melody transcribed with SheetSage2 for a cover. Needs the planning “Melody and chords” (the chords are kept) or “Melody only” with a score without chord symbols (the accompaniment is free). The syllables of the lyrics should match the notes of the “Vocal” voice. With “Instrumental” the vocal voice of your own score is kept – replace its bars with rests there.\n\n“Insert example” loads the score of “City Lights” (see the example under lyrics).\n\n− and + move the whole score by a semitone: melody, accompaniment and chords; the picker beside them transposes straight into a key, the shorter way (at most six semitones down or five up). A key in the other mode rewrites the notes: from major to minor the third, sixth and seventh go down a semitone (natural minor) and the chords follow (C becomes Cm, G7 becomes Gm7), from minor to major the other way round. It is a simple approximation, but it sounds minor; YuE2 also reads the key from the K: field. YuE2 sings the “Vocal” voice at that pitch, so if the vocals are too high, go a few semitones lower. How low a voice can sound also depends on the style (e.g. “male vocal”, “deep voice”).',
     abcExample: 'Insert example',
-    abcClear: 'Remove score',
     abcFromMidi: 'Score from a MIDI file (e.g. from Logic)',
     abcTransposeDown: 'One semitone lower',
     abcTransposeUp: 'One semitone higher',

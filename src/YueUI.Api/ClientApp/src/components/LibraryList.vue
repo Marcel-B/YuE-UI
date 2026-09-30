@@ -39,6 +39,7 @@ import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
 import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
 import { focusedSong, focusRequest, openOnLogicPage, openStems, view } from '../view'
 import PlaylistToggle from './PlaylistToggle.vue'
+import TextActions from './TextActions.vue'
 
 const props = defineProps<{
   runs: RunInfo[]
@@ -765,6 +766,7 @@ const severityByQuality: Record<string, string> = {
               <div class="extras flex-1">
                 <details v-if="run.lyrics" class="lyrics">
                   <summary>{{ t('showLyrics') }}</summary>
+                  <TextActions :model-value="run.lyrics" :clearable="false" />
                   <pre>{{ run.lyrics }}</pre>
                 </details>
               </div>
