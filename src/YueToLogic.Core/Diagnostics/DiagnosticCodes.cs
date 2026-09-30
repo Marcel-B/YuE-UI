@@ -30,6 +30,15 @@ public static class DiagnosticCodes
     // Arrangement
     public const string UnknownVoice = "YTL030";
 
+    /// <summary>Which key the backing vocals were derived in, and where it came from.</summary>
+    public const string HarmonyKey = "YTL031";
+
+    /// <summary>The score had no chord symbols, so the backing vocals follow chords guessed from the melody.</summary>
+    public const string HarmonyChords = "YTL032";
+
+    /// <summary>No note lies in the sections the backing vocals were asked for.</summary>
+    public const string HarmonySections = "YTL033";
+
     // YTL060 and YTL061 belonged to the tempo fit, which was removed because it rarely matched the recording;
     // they stay unused so that old output is not misread.
 

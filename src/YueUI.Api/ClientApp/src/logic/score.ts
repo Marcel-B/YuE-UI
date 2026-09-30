@@ -108,7 +108,9 @@ export function playableVoices(score: ScoreDocument, includeChords: boolean): Vo
       velocity: 72,
     })),
   )
-  const melodies = voices.filter((voice) => voice.kind === 'Melody' || voice.kind === 'Doubling').length
+  const melodies = voices.filter(
+    (voice) => voice.kind === 'Melody' || voice.kind === 'Doubling' || voice.kind === 'Harmony',
+  ).length
   const chordTrack: VoiceTrack = { id: 'Chords', displayName: 'Chords', notes, kind: 'Chords' }
   return [...voices.slice(0, melodies), chordTrack, ...voices.slice(melodies)]
 }

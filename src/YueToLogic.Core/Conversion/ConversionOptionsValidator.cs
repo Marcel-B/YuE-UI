@@ -1,6 +1,7 @@
 using System.Globalization;
 using YueToLogic.Core.Arrangement;
 using YueToLogic.Core.Diagnostics;
+using YueToLogic.Core.Harmony;
 
 namespace YueToLogic.Core.Conversion;
 
@@ -127,6 +128,28 @@ public static class ConversionOptionsValidator
             if (doubling.Velocity is { } velocity)
             {
                 CheckVelocity(errors, "arrangement.doubling.velocity", velocity);
+            }
+        }
+
+        if (arrangement.Harmony is { } harmony)
+        {
+            CheckVelocity(errors, "arrangement.harmony.velocity", harmony.Velocity);
+            foreach (var part in harmony.Parts ?? [])
+            {
+                if (!Enum.IsDefined(part))
+                {
+                    errors.Error(DiagnosticCodes.InvalidOption, Invariant($"arrangement.harmony.parts: '{part}' is not supported."));
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(harmony.VoiceId))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, "arrangement.harmony.voiceId must name a voice of the score.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(harmony.Key) && !ScaleKey.TryParse(harmony.Key, out _))
+            {
+                errors.Error(DiagnosticCodes.InvalidOption, $"arrangement.harmony.key '{harmony.Key}' is not a key such as D, F#m or Bb.");
             }
         }
 

@@ -109,13 +109,14 @@ public static class LogicEndpoints
         [FromForm] string? options,
         SongLibrary library,
         IScoreConverter converter,
+        IMidiToAbcConverter midiConverter,
         CancellationToken cancellationToken)
     {
         if (ParseOptions(options) is not { } parsed)
         {
             return BadRequest("Invalid options", "Form field 'options' is not valid ConversionOptions JSON.");
         }
-        var source = OpenScore(song, file, library);
+        var source = await OpenScoreAsync(song, file, library, midiConverter, cancellationToken);
         if (source.Problem is not null)
         {
             return source.Problem;
@@ -125,6 +126,7 @@ public static class LogicEndpoints
         {
             result = await converter.ConvertAsync(score, parsed, cancellationToken);
         }
+        result = result with { Diagnostics = [.. source.Read, .. result.Diagnostics] };
         return Results.Json(
             result,
             YueToLogicJsonContext.Default.ConversionResult,
@@ -143,13 +145,14 @@ public static class LogicEndpoints
         SongLibrary library,
         IScoreConverter converter,
         IMusicXmlWriter writer,
+        IMidiToAbcConverter midiConverter,
         CancellationToken cancellationToken)
     {
         if (ParseOptions(options) is not { } parsed)
         {
             return BadRequest("Invalid options", "Form field 'options' is not valid ConversionOptions JSON.");
         }
-        var source = OpenScore(song, file, library);
+        var source = await OpenScoreAsync(song, file, library, midiConverter, cancellationToken);
         if (source.Problem is not null)
         {
             return source.Problem;
@@ -185,6 +188,7 @@ public static class LogicEndpoints
         SongLibrary library,
         IScoreConverter converter,
         ILogicProjectWriter writer,
+        IMidiToAbcConverter midiConverter,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -201,7 +205,7 @@ public static class LogicEndpoints
         {
             return BadRequest("Audio file too large", $"The audio may have at most {MaxAudioBytes / (1024 * 1024)} MB.");
         }
-        var source = OpenScore(song, file, library);
+        var source = await OpenScoreAsync(song, file, library, midiConverter, cancellationToken);
         if (source.Problem is not null)
         {
             return source.Problem;
@@ -218,10 +222,11 @@ public static class LogicEndpoints
             : audio is { Length: > 0 } ? audio.OpenReadStream() : null;
         var built = await BuildAsync(
             converter, writer, score, audioStream, parsed, packageName, splitSections ?? false, logicInstruments, cancellationToken);
+        IReadOnlyList<Diagnostic> diagnostics = [.. source.Read, .. built.Diagnostics];
         return built.Zip is { } zip
-            ? Package(zip, built.Diagnostics, packageName, context)
+            ? Package(zip, diagnostics, packageName, context)
             : Results.Json(
-                new ConversionResult(false, null, null, built.Diagnostics),
+                new ConversionResult(false, null, null, diagnostics),
                 YueToLogicJsonContext.Default.ConversionResult,
                 statusCode: StatusCodes.Status422UnprocessableEntity);
     }
@@ -299,8 +304,17 @@ public static class LogicEndpoints
         return Results.File(zip, "application/zip", $"{name}.logicx.zip");
     }
 
-    /// <summary>The score of a library song (<c>run/songN</c>) or an uploaded one; exactly one of them must be given.</summary>
-    private static (Stream? Score, string? Directory, string? Run, string? Song, IResult? Problem) OpenScore(string? song, IFormFile? file, SongLibrary library)
+    /// <summary>
+    /// The score of a library song (<c>run/songN</c>) or an uploaded one; exactly one of them must be given. An uploaded
+    /// MIDI file (a melody to add backing vocals to, say) is read into a score first; what that reading said comes back
+    /// in <c>Read</c>, to be shown with the conversion's own diagnostics.
+    /// </summary>
+    private static async Task<(Stream? Score, string? Directory, string? Run, string? Song, IResult? Problem, IReadOnlyList<Diagnostic> Read)> OpenScoreAsync(
+        string? song,
+        IFormFile? file,
+        SongLibrary library,
+        IMidiToAbcConverter midiConverter,
+        CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(song))
         {
@@ -309,20 +323,43 @@ public static class LogicEndpoints
                 || library.SongDirectory(parts[0], parts[1]) is not { } directory
                 || !File.Exists(Path.Combine(directory, "score.abc")))
             {
-                return (null, null, null, null, Results.NotFound());
+                return (null, null, null, null, Results.NotFound(), []);
             }
-            return (File.OpenRead(Path.Combine(directory, "score.abc")), directory, parts[0], parts[1], null);
+            return (File.OpenRead(Path.Combine(directory, "score.abc")), directory, parts[0], parts[1], null, []);
         }
         if (file is null || file.Length == 0)
         {
-            return (null, null, null, null, BadRequest("Missing score", "Name a song as form field 'song' or send a score.abc as form field 'file'."));
+            return (null, null, null, null, BadRequest("Missing score", "Name a song as form field 'song' or send a score.abc or MIDI file as form field 'file'."), []);
         }
         if (file.Length > MaxScoreBytes)
         {
-            return (null, null, null, null, BadRequest("Score file too large", $"A score.abc is at most {MaxScoreBytes / 1024} KB."));
+            return (null, null, null, null, BadRequest("Score file too large", $"A score.abc or MIDI file is at most {MaxScoreBytes / 1024} KB here."), []);
         }
-        return (file.OpenReadStream(), null, null, null, null);
+
+        var upload = new MemoryStream();
+        await using (var stream = file.OpenReadStream())
+        {
+            await stream.CopyToAsync(upload, cancellationToken);
+        }
+        if (!IsMidi(upload.GetBuffer().AsSpan(0, (int)upload.Length)))
+        {
+            upload.Position = 0;
+            return (upload, null, null, null, null, []);
+        }
+
+        var read = midiConverter.Convert(upload.ToArray());
+        if (!read.Success || read.Abc is not { Length: > 0 } abc)
+        {
+            return (null, null, null, null, Results.Json(
+                new ConversionResult(false, null, null, read.Diagnostics),
+                YueToLogicJsonContext.Default.ConversionResult,
+                statusCode: StatusCodes.Status422UnprocessableEntity), []);
+        }
+        return (new MemoryStream(System.Text.Encoding.UTF8.GetBytes(abc)), null, null, null, null, read.Diagnostics);
     }
+
+    /// <summary>A Standard MIDI File starts with its header chunk, whatever the file is called.</summary>
+    private static bool IsMidi(ReadOnlySpan<byte> content) => content.StartsWith("MThd"u8);
 
     private static ConversionOptions? ParseOptions(string? json)
     {

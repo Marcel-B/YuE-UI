@@ -1,5 +1,13 @@
 import type { Routing } from './midiPlayer'
-import type { BassPattern, ChordInversion, ChordPattern, ConversionOptions, DrumPattern, SwingUnit } from './types'
+import type {
+  BassPattern,
+  ChordInversion,
+  ChordPattern,
+  ConversionOptions,
+  DrumPattern,
+  HarmonyPart,
+  SwingUnit,
+} from './types'
 
 /** What `--humanize 100` means in the CLI, so both hosts scatter the notes by the same amount. */
 const maxHumanizeTimingMs = 25
@@ -26,6 +34,12 @@ export interface FormState {
   guideOctave: number
   doubleVocal: boolean
   doubleOctave: number
+  /** Backing vocal parts derived from the vocal melody; none for no backing vocals. */
+  harmonyParts: HarmonyPart[]
+  /** Key the parts stay in as K: writes it ('D', 'F#m'); null finds it from the score and the melody. */
+  harmonyKey: string | null
+  /** Backing vocals only where a section is called chorus (or Refrain). */
+  harmonyChorusOnly: boolean
   /** Swing in percent: 0 straight, 100 a full triplet feel. */
   swing: number
   swingUnit: SwingUnit
@@ -63,6 +77,9 @@ export const defaultFormState = (): FormState => ({
   guideOctave: 0,
   doubleVocal: false,
   doubleOctave: -1,
+  harmonyParts: [],
+  harmonyKey: null,
+  harmonyChorusOnly: false,
   swing: 0,
   swingUnit: 'Eighths',
   straightDrums: false,
@@ -113,6 +130,16 @@ export function toConversionOptions(form: FormState): ConversionOptions {
             },
       guideTones: form.guideTones ? { octaveShift: form.guideOctave } : null,
       doubling: form.doubleVocal ? { voiceId: 'Vocal', semitones: 12 * form.doubleOctave } : null,
+      harmony:
+        form.harmonyParts.length === 0
+          ? null
+          : {
+              parts: form.harmonyParts,
+              voiceId: 'Vocal',
+              key: form.harmonyKey || null,
+              // YuE2 names its sections in English; a MIDI file edited in a German Logic may say Refrain.
+              sections: form.harmonyChorusOnly ? ['chorus', 'refrain'] : [],
+            },
       groove:
         form.swing > 0 || form.humanize > 0
           ? {
