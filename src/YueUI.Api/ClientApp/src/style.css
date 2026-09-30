@@ -64,9 +64,10 @@
     isolation: isolate;
     max-width: 72rem;
     margin: 0 auto;
-    /* The notch and home indicator of a phone in landscape or as a home-screen app. */
-    padding: max(1.25rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
-      max(3rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    /* The notch and home indicator of a phone in landscape or as a home-screen app. No padding on top: the header
+       (App.vue) sits flush at the top and carries the notch's inset itself. */
+    padding: 0 max(1rem, env(safe-area-inset-right)) max(3rem, env(safe-area-inset-bottom))
+      max(1rem, env(safe-area-inset-left));
   }
 
   h2 {
