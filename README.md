@@ -167,10 +167,10 @@ Angeboten werden Chatterbox Multilingual v3 (MIT), Qwen3-TTS 1.7B (Apache 2.0), 
 
 Ein Modell wird für jedes Ergebnis geladen und danach wieder freigegeben. Es wartet wie eine Fassung, bis YuE2, das Textmodell und Stimmumwandlungen den Speicher freigeben, und so lange warten diese. Die Seite **Warteschlange** listet laufende und wartende Sprachtests unter **Sprachlabor** (mit Abbrechen) und zeigt dann eine vierte Kachel **Sprache**. Beim ersten Mal lädt sich ein Modell herunter (3 bis 9 GB), das dauert.
 
-**Einrichtung.** Das Labor braucht eine eigene Python-Umgebung mit mlx-audio, getrennt von der von YuE Studio. Einmal auf dem Mac im Repository ausführen, nachdem `deploy/install.sh` gelaufen ist:
+**Einrichtung.** Das Labor braucht eine eigene Python-Umgebung mit mlx-audio, getrennt von der von YuE Studio. Dazu kommt PyTorch (etwa 1 GB), das nur Higgs Audio v3 braucht: Es liest seinen Audio-Codec über PyTorch. Fehlt ein Paket, sagt der Sprachtest das und nennt das Skript, das es nachinstalliert. Einmal auf dem Mac im Repository ausführen, nachdem `deploy/install.sh` gelaufen ist:
 
 ```sh
-deploy/install-speech.sh          # Umgebung anlegen bzw. mlx-audio aktualisieren
+deploy/install-speech.sh          # Umgebung anlegen bzw. mlx-audio aktualisieren und Fehlendes nachinstallieren
 deploy/install-speech.sh --test   # danach jedes Modell einen Testsatz sprechen lassen; lädt alle herunter (etwa 28 GB)
 ```
 
