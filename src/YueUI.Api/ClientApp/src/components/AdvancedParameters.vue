@@ -4,34 +4,24 @@ import Panel from 'primevue/panel'
 import {
   advancedChanged,
   defaultSampling,
-  exampleScore,
   lengthChoices,
   maxSongSeconds,
-  planningFor,
   resetAdvanced,
   type FormState,
   type SamplingPhase,
 } from '../form'
-import { abcKey, keyChoices, keyParts, transposeAbc, transposeToKey, vocalRange } from '../abcTranspose'
-import { midiToAbc } from '../api'
 import { formatDuration, t } from '../i18n'
-import { pickMidiFile } from '../midi'
 import FieldHelp from './FieldHelp.vue'
 import NumberField from './NumberField.vue'
 import SamplingFields from './SamplingFields.vue'
-import TextActions from './TextActions.vue'
 
 /**
  * The parameters beside the song's own fields, in a column of their own on wide screens. They edit the same form as
- * GenerateForm and show the field errors of its last submission.
+ * GenerateForm and show the field errors of its last submission. The score has a block of its own (ScoreField).
  */
 defineProps<{
   /** Whether the worker takes the extension's fields; null while unknown (no worker has started yet). */
   extensions: boolean | null
-}>()
-const emit = defineEmits<{
-  notice: [message: string]
-  error: [message: string]
 }>()
 const form = defineModel<FormState>({ required: true })
 const fieldErrors = defineModel<Record<string, string[]>>('errors', { required: true })
@@ -39,7 +29,7 @@ const fieldErrors = defineModel<Record<string, string[]>>('errors', { required: 
 const changed = computed(() => advancedChanged(form.value))
 
 /** The request fields shown here; the sampling ones come as `abcSampling.temperature` and so on. */
-const ownFields = new Set(['cot', 'seed', 'draftSteps', 'fullSteps', 'engines', 'maxTokens', 'abc'])
+const ownFields = new Set(['cot', 'seed', 'draftSteps', 'fullSteps', 'engines', 'maxTokens'])
 const collapsed = ref(true)
 // A refusal about one of these fields would go unseen while the panel is shut.
 watch(fieldErrors, (errors) => {
@@ -47,10 +37,6 @@ watch(fieldErrors, (errors) => {
     collapsed.value = false
   }
 })
-// The API refuses this too; saying so before sending saves a round trip from the phone.
-const scoreWithoutPlanning = computed(
-  () => form.value.abc.trim() !== '' && form.value.cot === 'off' && !form.value.instrumental,
-)
 // The worker writes a score unless planning is off (an instrumental turns it back on) or one is supplied.
 const plansScore = computed(() => (form.value.cot !== 'off' || form.value.instrumental) && form.value.abc.trim() === '')
 // One field for the steps of the chosen quality; each keeps its own value.
@@ -64,47 +50,6 @@ const steps = computed({
     }
   },
 })
-
-const scoreKey = computed(() => abcKey(form.value.abc))
-const keyOptions = computed(() =>
-  keyChoices().map((key) => {
-    const { root, minor } = keyParts(key)
-    return { value: key, label: t(minor ? 'keyMinor' : 'keyMajor', { root }) }
-  }),
-)
-const scoreRange = computed(() => {
-  const range = vocalRange(form.value.abc)
-  return range ? t('abcVocalRange', range) : null
-})
-
-/** YuE2 sings the score's "Vocal" voice at its written pitch, so this is how a song gets lower or higher. */
-function transpose(semitones: number): void {
-  form.value = { ...form.value, abc: transposeAbc(form.value.abc, semitones).abc }
-}
-
-function changeKey(key: string): void {
-  form.value = { ...form.value, abc: transposeToKey(form.value.abc, key).abc }
-}
-
-const importingMidi = ref(false)
-
-/** A MIDI file, e.g. a song built in Logic, as the score; planning follows it like a song's own score. */
-function useMidi(): void {
-  pickMidiFile(async (file) => {
-    importingMidi.value = true
-    try {
-      const midi = await midiToAbc(file)
-      form.value = { ...form.value, abc: midi.abc, cot: planningFor(midi.abc) }
-      if (midi.warnings.length > 0) {
-        emit('notice', t('midiWarnings', { messages: midi.warnings.join(' ') }))
-      }
-    } catch (caught) {
-      emit('error', caught instanceof Error ? caught.message : String(caught))
-    } finally {
-      importingMidi.value = false
-    }
-  })
-}
 
 /** Parameters only: a score someone pasted or transcribed has its own button. */
 function resetParameters(): void {
@@ -148,7 +93,6 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
     </template>
     <template #icons>
       <Tag v-if="changed" severity="warn">{{ t('advancedChanged') }}</Tag>
-      <Tag v-if="form.abc.trim() !== ''" severity="warn">{{ t('advancedWithScore') }}</Tag>
     </template>
     <div>
       <small class="muted">{{ t('advancedIntro') }}</small>
@@ -256,87 +200,6 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
         </FloatLabel>
         <FieldHelp id="gen-length-help" :hint="t('maxLengthHint')" :more="t('maxLengthMore')" />
         <small v-if="fieldErrors.maxTokens" class="danger">{{ fieldErrors.maxTokens.join(' ') }}</small>
-      </div>
-
-      <div class="col-span-2">
-        <div class="flex gap-2">
-          <div class="flex-1">
-            <FloatLabel variant="on" class="mt-6">
-              <Textarea
-                fluid
-                id="gen-abc"
-                v-model="form.abc"
-                class="mono"
-                :rows="8"
-                spellcheck="false"
-                autocapitalize="off"
-                autocomplete="off"
-                :placeholder="t('abcPlaceholder')"
-                aria-describedby="gen-abc-help"
-              />
-              <label for="gen-abc">{{ t('abc') }}</label>
-            </FloatLabel>
-            <FieldHelp id="gen-abc-help" :hint="t('abcHint')" :more="t('abcMore')" />
-            <div class="flex items-center gap-1">
-              <template v-if="form.abc.trim() !== ''">
-                <Button
-                  v-tooltip="t('abcTransposeDown')"
-                  :aria-label="t('abcTransposeDown')"
-                  icon="pi pi-minus"
-                  size="small"
-                  text
-                  rounded
-                  @click="transpose(-1)"
-                />
-                <Button
-                  v-tooltip="t('abcTransposeUp')"
-                  :aria-label="t('abcTransposeUp')"
-                  icon="pi pi-plus"
-                  size="small"
-                  text
-                  rounded
-                  @click="transpose(1)"
-                />
-                <Select
-                  v-if="scoreKey"
-                  :model-value="scoreKey"
-                  :options="keyOptions"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
-                  :aria-label="t('abcKeyLabel')"
-                  v-tooltip="t('abcKeyLabel')"
-                  @update:model-value="changeKey"
-                />
-                <small v-if="scoreRange" class="muted ml-1">{{ scoreRange }}</small>
-              </template>
-              <TextActions v-model="form.abc" class="ml-auto" />
-            </div>
-            <small v-if="scoreWithoutPlanning" class="danger">{{ t('abcNeedsPlanning') }}</small>
-            <small v-else-if="fieldErrors.abc" class="danger">{{ fieldErrors.abc.join(' ') }}</small>
-          </div>
-          <div class="mt-4 flex flex-col">
-            <Button
-              v-if="form.abc.trim() === ''"
-              v-tooltip="t('abcExample')"
-              icon="pi pi-upload"
-              severity="info"
-              text
-              rounded
-              @click="form.abc = exampleScore"
-            />
-            <Button
-              v-tooltip="t('abcFromMidi')"
-              :aria-label="t('abcFromMidi')"
-              icon="pi pi-file-arrow-up"
-              text
-              rounded
-              :loading="importingMidi"
-              :disabled="importingMidi"
-              @click="useMidi"
-            />
-          </div>
-        </div>
       </div>
 
       <Panel class="col-span-2" toggleable>

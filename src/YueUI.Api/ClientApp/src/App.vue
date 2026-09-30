@@ -23,6 +23,7 @@ import { exportTarget } from './export'
 import { checkForUpdate, reload, updateAvailable } from './update'
 import { visuals } from './spectrum'
 import QueueOverview from './components/QueueOverview.vue'
+import ScoreField from './components/ScoreField.vue'
 import { navigate, view, type View } from './view'
 import type {
   LogEntry,
@@ -506,8 +507,9 @@ async function useAsNewSong(songId: string): Promise<void> {
 
   <!--
     v-show rather than v-if: a page keeps what was typed or uploaded on it while another one is open.
-    On wide screens the song's fields are the left column; the right one holds the advanced parameters, collapsed since
-    a normal song needs none of them, and a line with the models below. On a phone everything is one column in that order.
+    On wide screens the song's fields are the left column; the right one holds the score, then the advanced parameters,
+    collapsed since a normal song needs none of them, and a line with the models below. On a phone everything is one
+    column in that order, so the score sits right under the song's fields.
   -->
   <main v-show="view === 'create'" class="grid gap-4 grid-cols-1 md:grid-cols-2 items-start">
     <Card>
@@ -535,13 +537,8 @@ async function useAsNewSong(songId: string): Promise<void> {
     </Card>
 
     <div class="flex min-w-0 flex-col gap-4">
-      <AdvancedParameters
-        v-model="form"
-        v-model:errors="fieldErrors"
-        :extensions="worker.extensions"
-        @notice="show($event)"
-        @error="show($event, true)"
-      />
+      <ScoreField v-model="form" v-model:errors="fieldErrors" @notice="show($event)" @error="show($event, true)" />
+      <AdvancedParameters v-model="form" v-model:errors="fieldErrors" :extensions="worker.extensions" />
 
       <!-- The whole queue has a page of its own; here only which model holds the memory, after a song was sent. -->
       <a
