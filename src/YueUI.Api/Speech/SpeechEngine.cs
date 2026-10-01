@@ -164,6 +164,9 @@ public sealed class MlxAudioEngine(IOptions<SpeechOptions> options, ILogger<MlxA
                     case "done":
                         result = new SpeechResult((double?)data["loadSeconds"], (double?)data["speakSeconds"], (double?)data["peakMemoryGb"]);
                         break;
+                    case "note":
+                        logger.LogInformation("Speaking with {Model}: {Note}", job.Model.Repo, (string?)data["text"]);
+                        break;
                 }
             }, timeout.Token);
             await errors;
