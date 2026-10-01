@@ -87,6 +87,7 @@ const partLabels: Record<HarmonyPart, Parameters<typeof t>[0]> = {
   Tenor: 'harmonyTenor',
   Bass: 'harmonyBass',
   Drone: 'harmonyDrone',
+  DroneHeld: 'harmonyDroneHeld',
 }
 const majorKeys = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 const minorKeys = ['Cm', 'C#m', 'Dm', 'Ebm', 'Em', 'Fm', 'F#m', 'Gm', 'G#m', 'Am', 'Bbm', 'Bm']

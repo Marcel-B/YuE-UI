@@ -190,21 +190,34 @@ public class BackingVocalTests
     }
 
     [Fact]
-    public void The_drone_holds_the_tonic_under_each_phrase()
+    public void The_drone_sings_the_tonic_in_the_melody_rhythm()
     {
-        // Two phrases in G major, parted by a rest of a half bar; the lowest sung note is the A.
-        var score = ParseScore(Native("""
-            V: Vocal
-            "G"G4A4B4d4|B4A4z8|"D"A4B4c4d4|B16|
-            """, key: "G"));
+        var score = DronePhrases();
 
         var result = Arrange(score, new HarmonyOptions { Parts = [HarmonyPart.Drone] });
 
+        var vocal = score.Voice("Vocal").Notes;
         var drone = result.Score.Voice("Harmony Drone").Notes;
+        Assert.Equal(vocal.Select(n => (n.StartTicks, n.DurationTicks)), drone.Select(n => (n.StartTicks, n.DurationTicks)));
+        // The G at least a minor third below each phrase's lowest note: under the G of the first phrase that is 55.
+        Assert.All(drone, n => Assert.Equal(55, n.NoteNumber));
+    }
+
+    [Fact]
+    public void The_held_drone_holds_the_tonic_under_each_phrase()
+    {
+        var result = Arrange(DronePhrases(), new HarmonyOptions { Parts = [HarmonyPart.DroneHeld] });
+
+        var drone = result.Score.Voice("Harmony Drone held").Notes;
         Assert.Equal([(0L, 6L * Ppq), (2 * Bar, 2 * Bar)], drone.Select(n => (n.StartTicks, n.DurationTicks)));
-        // The G at least a minor third below each phrase's lowest note: under the first phrase's G that is 55.
         Assert.Equal([55, 55], drone.Select(n => n.NoteNumber));
     }
+
+    /// <summary>Two phrases in G major, parted by a rest of a half bar.</summary>
+    private static ScoreDocument DronePhrases() => ParseScore(Native("""
+        V: Vocal
+        "G"G4A4B4d4|B4A4z8|"D"A4B4c4d4|B16|
+        """, key: "G"));
 
     [Theory]
     [InlineData("H#")]
