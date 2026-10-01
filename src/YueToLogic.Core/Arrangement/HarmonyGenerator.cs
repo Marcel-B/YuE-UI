@@ -112,21 +112,28 @@ internal static class HarmonyGenerator
 
         if (result.TryGetValue(HarmonyPart.Drone, out var drone))
         {
-            drone.AddRange(Drone(score, selected, keys, velocity));
+            drone.AddRange(Drone(score, selected, keys, velocity, held: false));
+        }
+
+        if (result.TryGetValue(HarmonyPart.DroneHeld, out var held))
+        {
+            held.AddRange(Drone(score, selected, keys, velocity, held: true));
         }
 
         return [.. parts.Select(part => new VoiceTrack(TrackId(part), TrackId(part), result[part], TrackKind.Harmony))];
     }
 
     /// <summary>
-    /// The tonic held from the start of each phrase to its end: a phrase ends at a rest of more than a beat, where a
-    /// singer breathes, or where the key changes. It sits at least a minor third below the phrase's lowest note.
+    /// The tonic under each phrase, one pitch per phrase at least a minor third below its lowest note: sung in the
+    /// melody's rhythm like the other parts, or <paramref name="held"/> from the start of the phrase to its end. A phrase
+    /// ends at a rest of more than a beat, where a singer breathes, or where the key changes.
     /// </summary>
     private static IEnumerable<NoteEvent> Drone(
         ScoreDocument score,
         IReadOnlyList<NoteEvent> melody,
         List<(long Start, ScaleKey Key)> keys,
-        int velocity)
+        int velocity,
+        bool held)
     {
         var phrase = new List<NoteEvent>();
         foreach (var note in melody.Cast<NoteEvent?>().Append(null))
@@ -140,9 +147,16 @@ internal static class HarmonyGenerator
                 var pitch = ceiling - ScaleKey.Mod12(ceiling - tonic);
                 var start = phrase[0].StartTicks;
                 var end = phrase.Max(n => n.StartTicks + n.DurationTicks);
-                if (pitch >= 0)
+                if (pitch >= 0 && held)
                 {
                     yield return new NoteEvent(start, end - start, pitch, velocity);
+                }
+                else if (pitch >= 0)
+                {
+                    foreach (var sung in phrase)
+                    {
+                        yield return new NoteEvent(sung.StartTicks, sung.DurationTicks, pitch, velocity);
+                    }
                 }
 
                 phrase.Clear();
@@ -160,6 +174,7 @@ internal static class HarmonyGenerator
         HarmonyPart.ThirdAbove => $"{TrackPrefix} 3rd up",
         HarmonyPart.ThirdBelow => $"{TrackPrefix} 3rd down",
         HarmonyPart.SixthBelow => $"{TrackPrefix} 6th down",
+        HarmonyPart.DroneHeld => $"{TrackPrefix} Drone held",
         _ => $"{TrackPrefix} {part}",
     };
 

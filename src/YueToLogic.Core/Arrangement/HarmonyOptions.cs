@@ -53,8 +53,11 @@ public enum HarmonyPart
     Bass,
 
     /// <summary>
-    /// A drone (Bordun): the key's tonic held under each phrase of the melody, the "ooh" a backing choir holds while
-    /// the lead sings over it.
+    /// A drone (Bordun): the key's tonic under each phrase of the melody, one pitch per phrase, sung in the melody's
+    /// rhythm like the other parts.
     /// </summary>
     Drone,
+
+    /// <summary>The same tonic held from the start of each phrase to its end, the "ooh" a choir holds under the lead.</summary>
+    DroneHeld,
 }
