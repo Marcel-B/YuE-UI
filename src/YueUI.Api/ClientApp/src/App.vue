@@ -664,6 +664,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :live-versions="versions"
           @template="useTemplate"
           @use-score="useSongScore"
+          @new-song="useAsNewSong"
           @deleted="onDeleted"
           @notice="show($event)"
           @error="show($event, true)"
