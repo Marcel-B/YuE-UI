@@ -60,6 +60,8 @@ const emit = defineEmits<{
   /** The song's score for the next song, together with its run's style and lyrics. */
   /** `warnings` only when the score came from a MIDI file, which then replaces the song's own. */
   useScore: [run: RunInfo, song: SongInfo, abc: string, warnings?: string[]]
+  /** Everything the song was made with into the form, its seed and score included, to make it again or vary it. */
+  newSong: [songId: string]
   /** Something was deleted; carries the run's title for the notice. */
   deleted: [title: string]
   notice: [message: string]
@@ -350,6 +352,12 @@ function songActions(run: RunInfo, song: SongInfo): SongAction[] {
       command: () => void removeCover(song),
     })
   }
+  actions.push({
+    key: 'newSong',
+    label: t('useAsNewSong'),
+    icon: 'pi pi-clone',
+    command: () => emit('newSong', song.id),
+  })
   if (song.hasScore) {
     actions.push({
       key: 'score',
