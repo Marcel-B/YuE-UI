@@ -1,7 +1,20 @@
 <script setup lang="ts">
 import { onBeforeUnmount, useTemplateRef, watch } from 'vue'
 import { t } from '../i18n'
-import { attach, close, current, hasNext, hasPrevious, listen, next, playerSource, playing, previous } from '../player'
+import {
+  attach,
+  close,
+  current,
+  guardSilence,
+  hasNext,
+  hasPrevious,
+  listen,
+  next,
+  playerSource,
+  playing,
+  previous,
+  toggle,
+} from '../player'
 import { rate, ratingOf } from '../ratings'
 import { showSong, songHref } from '../view'
 import PlaylistToggle from './PlaylistToggle.vue'
@@ -32,6 +45,7 @@ async function rateCurrent(rating: number | null | undefined): Promise<void> {
 function onPlay(): void {
   playing.value = true
   listen(false)
+  guardSilence()
 }
 
 function ended(): void {
@@ -76,6 +90,15 @@ function ended(): void {
         :disabled="!hasPrevious && !playing"
         :aria-label="t('previousTrack')"
         @click="previous"
+      />
+      <!-- A play button of our own: its click is the gesture iOS wants for waking the analyzer's audio context,
+           which the element's controls do not hand on. -->
+      <Button
+        :icon="playing ? 'pi pi-pause' : 'pi pi-play'"
+        text
+        rounded
+        :aria-label="playing ? t('pause') : t('play')"
+        @click="toggle"
       />
       <Button icon="pi pi-step-forward" text rounded :disabled="!hasNext" :aria-label="t('nextTrack')" @click="next" />
       <SongMenu
