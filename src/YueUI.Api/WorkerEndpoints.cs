@@ -3,7 +3,9 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using YueUI.Api.Library;
 using Microsoft.Extensions.Options;
+using YueUI.Api.Lyrics;
 using YueUI.Api.Queue;
+using YueUI.Api.Speech;
 using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
@@ -21,6 +23,7 @@ public static class WorkerEndpoints
     public static RouteGroupBuilder MapWorkerEndpoints(this RouteGroupBuilder api)
     {
         api.MapGet("/status", (WorkerHost host) => host.Snapshot());
+        api.MapGet("/busy", Busy);
         api.MapGet("/events", (WorkerHost host, CancellationToken cancellationToken) =>
             TypedResults.ServerSentEvents(Stream(host, cancellationToken)));
 
@@ -41,6 +44,36 @@ public static class WorkerEndpoints
             return Results.NoContent();
         });
         return api;
+    }
+
+    /// <summary>
+    /// What a restart would cut off, for <c>deploy/update.sh</c>, which waits until nothing is. Waiting jobs are not
+    /// counted: the queue, the voice converter and the speech lab keep theirs and take them up again after a restart.
+    /// </summary>
+    private static BusyInfo Busy(WorkerHost host, LyricsWriter lyrics, VoiceConverter voices, SpeechActivity speech)
+    {
+        List<string> reasons = [];
+        if (host.IsBusy)
+        {
+            reasons.Add("songs");
+        }
+        if (host.IsTranscribing)
+        {
+            reasons.Add("transcription");
+        }
+        if (lyrics.IsWriting)
+        {
+            reasons.Add("lyrics");
+        }
+        if (voices.IsConverting)
+        {
+            reasons.Add("voices");
+        }
+        if (speech.IsSpeaking)
+        {
+            reasons.Add("speech");
+        }
+        return new BusyInfo(reasons.Count > 0, reasons);
     }
 
     /// <summary>

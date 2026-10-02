@@ -10,6 +10,8 @@
 #   deploy/setup-mac.sh --all              all three
 #   deploy/setup-mac.sh --engine-from-source
 #                                          replace an engine the YuE Studio app installed by a git checkout
+#   deploy/setup-mac.sh --update           again with the options of the last run, without asking (deploy/update.sh)
+#   deploy/setup-mac.sh --no-auto-update   without turning on deploy/update.sh
 #
 # YuE2 comes from YuE Studio's repository (github.com/tonywestonuk/YuE-Studio), not from upstream YuE2: upstream
 # runs on CUDA only, YuE Studio's fork adds the Apple Silicon engines (Neural Engine, MLX) and the worker
@@ -19,7 +21,9 @@
 #
 # Every step is skipped when it is already done, so running it again is safe; with a new ENGINE_REF it moves the
 # engine to that version. Run it as the user Tonwerk will run as, logged in (Metal and the Neural Engine need the
-# user's session), from a terminal: Homebrew and the .NET installer ask for the password.
+# user's session), from a terminal: Homebrew and the .NET installer ask for the password. At the end it turns on
+# deploy/update.sh, which deploys new commits on main and runs this again with --update, so the versions pinned here
+# (ENGINE_REF, SEED_VC_REF, SEPARATOR_PACKAGE) reach the Mac with the commit that raises them.
 set -eu
 cd "$(dirname "$0")/.."
 REPO="$(pwd)"
@@ -35,11 +39,26 @@ SHEETSAGE_RECIPE=1   # SheetSageInstaller.recipe: the app reinstalls when its re
 ENGINES="$HOME/Library/Application Support/YuE UI/engines"
 SEED_VC_REPO="https://github.com/Plachtaa/seed-vc.git"
 SEED_VC_REF="${SEED_VC_REF:-51383efd921027683c89e5348211d93ff12ac2a8}"
+SEED_VC_RECIPE="$SEED_VC_REF 1"   # raise the number when the packages below change
+# Pinned, so an update arrives through a commit (and its tests) rather than whenever the Mac happens to install.
+SEPARATOR_PACKAGE="mlx-audio-separator[convert]==0.1.19"
+DATA="$HOME/Library/Application Support/YuE UI"
+# The options of the last run, which --update repeats.
+OPTIONS_FILE="$DATA/setup-options"
 
 TRANSCRIPTION=false
 VOICES=false
 SPEECH=false
 FROM_SOURCE=false
+UPDATE=false
+AUTO_UPDATE=true
+if [ "${1:-}" = --update ]; then
+  UPDATE=true
+  shift
+  # shellcheck disable=SC2046 # one word per option
+  [ -f "$OPTIONS_FILE" ] && set -- $(cat "$OPTIONS_FILE") "$@"
+fi
+OPTIONS="$*"
 for argument in "$@"; do
   case "$argument" in
     --transcription) TRANSCRIPTION=true ;;
@@ -47,7 +66,9 @@ for argument in "$@"; do
     --speech) SPEECH=true ;;
     --all) TRANSCRIPTION=true; VOICES=true; SPEECH=true ;;
     --engine-from-source) FROM_SOURCE=true ;;
-    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --no-auto-update) AUTO_UPDATE=false ;;
+    --update) echo "--update comes first." >&2; exit 2 ;;
+    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown argument: $argument" >&2; exit 2 ;;
   esac
 done
@@ -197,27 +218,29 @@ if [ "$VOICES" = true ]; then
   # huggingface-hub below 1.0, which neither YuE2 nor mlx-audio-separator should be held to.
   SEPARATOR="$ENGINES/separator"
   OVERRIDES=""
-  if [ -x "$SEPARATOR/env/bin/mlx-audio-separator" ]; then
+  if [ -x "$SEPARATOR/env/bin/mlx-audio-separator" ] && [ "$(cat "$SEPARATOR/recipe" 2>/dev/null)" = "$SEPARATOR_PACKAGE" ]; then
     echo "Already installed."
-  elif [ -x "$HOME/repos/StemMyWav/.venv/bin/mlx-audio-separator" ]; then
+  elif [ ! -d "$SEPARATOR/env" ] && [ -x "$HOME/repos/StemMyWav/.venv/bin/mlx-audio-separator" ]; then
     # StemMyWav's Mac API ran it before; its environment and downloaded models serve as they are.
     echo "Using StemMyWav's installation."
     OVERRIDES="${OVERRIDES}Separator=$HOME/repos/StemMyWav/.venv/bin/mlx-audio-separator
 SeparatorModels=$HOME/repos/StemMyWav/.models
 "
   else
+    # A pin raised since the last run installs over the environment; the downloaded models stay.
     uv python install 3.12
-    uv venv "$SEPARATOR/env" --python 3.12 --clear
-    uv pip install --python "$SEPARATOR/env/bin/python" --quiet "mlx-audio-separator[convert]"
+    [ -x "$SEPARATOR/env/bin/python" ] || uv venv "$SEPARATOR/env" --python 3.12
+    uv pip install --python "$SEPARATOR/env/bin/python" --quiet "$SEPARATOR_PACKAGE"
     mkdir -p "$SEPARATOR/models"
-    echo "Installed; each model downloads on its first separation."
+    echo "$SEPARATOR_PACKAGE" > "$SEPARATOR/recipe"
+    echo "Installed $SEPARATOR_PACKAGE; each model downloads on its first separation."
   fi
 
   step "Seed-VC"
   SEED_VC="$ENGINES/seed-vc"
-  if [ -x "$SEED_VC/env/bin/python" ] && [ -f "$SEED_VC/src/inference.py" ]; then
+  if [ -x "$SEED_VC/env/bin/python" ] && [ "$(cat "$SEED_VC/recipe" 2>/dev/null)" = "$SEED_VC_RECIPE" ]; then
     echo "Already installed."
-  elif [ -x "$HOME/mlx-vc/.venv/bin/python" ] && [ -f "$HOME/seed-vc-ref/inference.py" ]; then
+  elif [ ! -d "$SEED_VC/env" ] && [ -x "$HOME/mlx-vc/.venv/bin/python" ] && [ -f "$HOME/seed-vc-ref/inference.py" ]; then
     # ChangeMyVoice's installation (its init.md), with the checkpoints it already downloaded.
     echo "Using ChangeMyVoice's installation."
     OVERRIDES="${OVERRIDES}SeedVcPython=$HOME/mlx-vc/.venv/bin/python
@@ -232,6 +255,7 @@ SeedVcModels=$HOME/seed-vc-ref/checkpoints/hf_cache
     # from PyPI (requirements-mac.txt's first four lines want nightlies and CUDA indexes), matplotlib for BigVGAN,
     # huggingface-hub 0.28.1 for transformers 4.46.3.
     uv python install 3.10
+    # From scratch also when only the recipe changed: the pins fight each other, an install over them would not.
     uv venv "$SEED_VC/env" --python 3.10 --clear
     SEED_PYTHON="$SEED_VC/env/bin/python"
     uv pip install --python "$SEED_PYTHON" --quiet torch torchaudio
@@ -240,6 +264,7 @@ SeedVcModels=$HOME/seed-vc-ref/checkpoints/hf_cache
     uv pip install --python "$SEED_PYTHON" --quiet "huggingface-hub==0.28.1"
     mkdir -p "$SEED_VC/models"
     "$SEED_PYTHON" -c 'import torch, munch, librosa, transformers; print("torch", torch.__version__, "MPS", torch.backends.mps.is_available())'
+    echo "$SEED_VC_RECIPE" > "$SEED_VC/recipe"
     echo "Installed; the checkpoints download on the first conversion."
   fi
 
@@ -266,7 +291,15 @@ step "Tonwerk"
 
 if [ "$SPEECH" = true ]; then
   step "Speech lab"
-  "$REPO/deploy/install-speech.sh"
+  # install-speech.sh upgrades mlx-audio to the newest; an update runs it only when the script itself changed.
+  SPEECH_RECIPE="$(cksum < "$REPO/deploy/install-speech.sh")"
+  if [ "$UPDATE" = true ] && [ "$(cat "$DATA/speech/recipe" 2>/dev/null)" = "$SPEECH_RECIPE" ]; then
+    echo "Unchanged."
+  else
+    "$REPO/deploy/install-speech.sh"
+    mkdir -p "$DATA/speech"
+    echo "$SPEECH_RECIPE" > "$DATA/speech/recipe"
+  fi
 fi
 
 step "Checking the worker"
@@ -281,10 +314,20 @@ case "$READY" in
   *) echo "Warning: the worker did not report ready; run it by hand to see why (see CLAUDE.md, the worker)." ;;
 esac
 
+mkdir -p "$DATA"
+echo "$OPTIONS" > "$OPTIONS_FILE"
+if [ "$UPDATE" = true ]; then
+  exit 0
+fi
+if [ "$AUTO_UPDATE" = true ]; then
+  step "Updates"
+  "$REPO/deploy/update.sh" on
+fi
+
 cat <<EOF
 
 Tonwerk runs on http://127.0.0.1:5090/ui/. Not set up by this script:
   - access from the phone: install Tailscale, then  tailscale serve --bg --https=8443 5090
   - lyrics drafts: LM Studio (brew install --cask lm-studio) with a model, see the README
-  - voices and stems, unless --voices was given: run this again with --voices
 EOF
+[ "$VOICES" = true ] || echo "  - voices and stems: run this again with --voices"

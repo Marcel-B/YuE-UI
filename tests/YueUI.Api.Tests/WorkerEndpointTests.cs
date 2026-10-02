@@ -445,6 +445,18 @@ public sealed class WorkerEndpointTests : IDisposable
         _app.Dispose();
     }
 
+    [Fact]
+    public async Task Busy_says_what_a_restart_would_cut_off()
+    {
+        Assert.Equal(new JsonObject { ["busy"] = false, ["reasons"] = new JsonArray() }.ToJsonString(),
+            await _client.GetStringAsync("/api/busy"));
+
+        await Generate();
+
+        Assert.Equal(new JsonObject { ["busy"] = true, ["reasons"] = new JsonArray("songs") }.ToJsonString(),
+            await _client.GetStringAsync("/api/busy"));
+    }
+
     private async Task<JsonObject> Generate()
     {
         var response = await _client.PostAsJsonAsync("/api/generate", new { style = "Dark synthwave", lyrics = "[verse]\nNeon", title = "Neon Night" });
