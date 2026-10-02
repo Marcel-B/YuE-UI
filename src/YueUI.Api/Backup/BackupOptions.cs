@@ -56,6 +56,13 @@ public sealed class BackupOptions
     /// <summary>A failed nightly backup is tried again after this long, not every minute.</summary>
     public TimeSpan RetryAfter { get; set; } = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// How long to wait before trying a file again that the Nextcloud refused for the moment (locked, busy); the wait
+    /// grows with each of the three tries. A lock left by a cut-off upload lasts until Nextcloud's lock TTL (an hour by
+    /// default), longer than is worth waiting, so such a file is left for the next backup.
+    /// </summary>
+    public TimeSpan TransientRetryDelay { get; set; } = TimeSpan.FromSeconds(10);
+
     /// <summary>Files written more recently than this may still be in the works and wait for the next backup.</summary>
     public TimeSpan Settle { get; set; } = TimeSpan.FromMinutes(2);
 
