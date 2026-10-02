@@ -36,6 +36,20 @@ Die Schritte entsprechen denen des Installers der App und landen in denselben Or
 
 Das Skript kann beliebig oft laufen: Was schon da ist, überspringt es. Mit einem anderen `ENGINE_REF` (zum Beispiel `ENGINE_REF=v0.5.0 deploy/setup-mac.sh`) wechselt es die Version von YuE2. Danach sagt die letzte Zeile, ob die Erweiterung von Tonwerk noch passt. Mit `--voices` richtet es auch die Stem-Trennung (mlx-audio-separator) und Seed-VC für andere Stimmen ein, je in einer eigenen Umgebung unter `~/Library/Application Support/YuE UI/engines`; findet es dort nichts, aber die Installationen von StemMyWav (`~/repos/StemMyWav/.venv`) und ChangeMyVoice (`~/mlx-vc`, `~/seed-vc-ref`), trägt es diese in `appsettings.Production.json` ein, statt alles neu zu laden. Nicht eingerichtet werden Tailscale und LM Studio für die Songtexte.
 
+### Updates
+
+Zum Schluss schaltet `setup-mac.sh` die Updates ein (abschalten mit `--no-auto-update`). Ein LaunchAgent ruft alle 5 Minuten `deploy/update.sh` auf. Gibt es auf `main` neue Commits, wartet das Skript, bis Tonwerk nichts mehr rechnet (`GET /api/busy`; wartende Aufträge überstehen den Neustart). Dann sichert es Datenbank, Push-Schlüssel und `appsettings.Production.json` nach `~/Backups/YueUI` und holt die Commits. Danach lässt es `setup-mac.sh --update` mit den Optionen des letzten Laufs laufen. So kommen mit Tonwerk auch die Versionen, die das Skript festlegt: ein neues `ENGINE_REF` für YuE2, `SEED_VC_REF` und `SEPARATOR_PACKAGE` für die Stimmen; das Sprachlabor nur, wenn sich `install-speech.sh` geändert hat. Ein fehlgeschlagener Commit wird erst mit dem nächsten wieder versucht.
+
+Was nicht über das Repository kommt, wird nicht automatisch geholt. Erscheint eine neue Version von YuE Studio, steht sie einmal im Log. `ENGINE_REF` wird erst angehoben, wenn die Erweiterung des Workers gegen die neue Version geprüft ist.
+
+```sh
+deploy/update.sh status     # an oder aus, zuletzt deployter Commit, Ende des Logs (~/Library/Logs/tonwerk-update.log)
+deploy/update.sh on 10      # alle 10 Minuten; off schaltet ab
+deploy/update.sh            # eine Runde von Hand
+```
+
+Der LaunchAgent heißt wie der von `yue watch` (Repository scripts), damit nie beide laufen.
+
 ## Entwicklung
 
 ```sh
@@ -244,6 +258,7 @@ Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/`
 | Methode | Pfad | |
 |---|---|---|
 | `GET` | `/api/status` | Worker-Zustand, Songs in Arbeit, Protokoll |
+| `GET` | `/api/busy` | `{ busy, reasons }`: ob ein Neustart laufende Arbeit abbräche (`songs`, `transcription`, `lyrics`, `voices`, `speech`); für `deploy/update.sh` |
 | `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `transcription`, `lyrics`, `version`, `speech`, `queue`, `ping`) |
 | `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–15000, abc?, fullSteps?: 1–64, abcSampling?, semanticSampling?, voice? }`; `voice` ist `{ voiceId, semiToneShift?, strength?, diffusionSteps?, keepReverb? }` wie bei den Fassungen und singt jeden fertigen Song danach mit dieser Stimme (`400` für eine unbekannte Stimme, `501` ohne Einrichtung); `abc` braucht `cot` "full" oder "melody", Sampling ist `{ temperature?, topP?, topK?, repetitionPenalty?, penaltyWindow? }`, über 9000 Tokens, `fullSteps` und Sampling nur mit der Worker-Erweiterung; antwortet `202`, ohne Inhalt, wenn der Lauf an den Worker ging, sonst mit dem wartenden Auftrag `{ id, kind, title, createdAt, songId, batch, quality, revision, voiceLabel }` |
 | `POST` | `/api/songs/{run}/{song}/render` | Song aus seinen Tokens neu synthetisieren, z. B. einen Entwurf in voller Qualität; `202` wie bei `generate` |

@@ -100,6 +100,10 @@ public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunni
 /// version.
 /// </param>
 /// <param name="Stems">Songs being split into stems, and the last set that finished.</param>
+/// <summary>Whether a restart would cut work off (<c>GET /api/busy</c>).</summary>
+/// <param name="Reasons">songs, transcription, lyrics, voices (a version or stems) or speech.</param>
+public sealed record BusyInfo(bool Busy, IReadOnlyList<string> Reasons);
+
 public sealed record StatusSnapshot(
     WorkerInfo Worker,
     IReadOnlyList<SongState> Songs,
