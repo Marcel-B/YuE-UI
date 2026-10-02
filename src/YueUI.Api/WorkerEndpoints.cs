@@ -50,7 +50,7 @@ public static class WorkerEndpoints
     /// What a restart would cut off, for <c>deploy/update.sh</c>, which waits until nothing is. Waiting jobs are not
     /// counted: the queue, the voice converter and the speech lab keep theirs and take them up again after a restart.
     /// </summary>
-    private static BusyInfo Busy(WorkerHost host, LyricsWriter lyrics, VoiceConverter voices, SpeechActivity speech)
+    internal static BusyInfo Busy(WorkerHost host, LyricsWriter lyrics, VoiceConverter voices, SpeechActivity speech)
     {
         List<string> reasons = [];
         if (host.IsBusy)

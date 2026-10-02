@@ -100,10 +100,6 @@ public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunni
 /// version.
 /// </param>
 /// <param name="Stems">Songs being split into stems, and the last set that finished.</param>
-/// <summary>Whether a restart would cut work off (<c>GET /api/busy</c>).</summary>
-/// <param name="Reasons">songs, transcription, lyrics, voices (a version or stems) or speech.</param>
-public sealed record BusyInfo(bool Busy, IReadOnlyList<string> Reasons);
-
 public sealed record StatusSnapshot(
     WorkerInfo Worker,
     IReadOnlyList<SongState> Songs,
@@ -115,6 +111,10 @@ public sealed record StatusSnapshot(
     double? BundleWindowSeconds = null,
     IReadOnlyList<Voices.StemSetState>? Stems = null,
     IReadOnlyList<Speech.SpeechTake>? Speech = null);
+
+/// <summary>Whether a restart would cut work off (<c>GET /api/busy</c>).</summary>
+/// <param name="Reasons">songs, transcription, lyrics, voices (a version or stems) or speech.</param>
+public sealed record BusyInfo(bool Busy, IReadOnlyList<string> Reasons);
 
 /// <summary>
 /// The last lyrics draft (Lyrics/LyricsWriter.cs). It arrives as an event rather than as the answer to the request:

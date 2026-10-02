@@ -26,3 +26,21 @@ export async function copyText(text: string): Promise<boolean> {
     area.remove()
   }
 }
+
+/**
+ * Puts a text on the clipboard that is still being fetched. Safari allows writing only during the tap, which an awaited
+ * request outlasts; a `ClipboardItem` given the pending text is written within it and filled when the text arrives.
+ * Elsewhere, or where that fails, the text is copied once it is there.
+ */
+export async function copyPending(text: Promise<string>): Promise<boolean> {
+  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+    try {
+      const blob = text.then((value) => new Blob([value], { type: 'text/plain' }))
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })])
+      return true
+    } catch {
+      // A browser that wants the text itself, not a promise of it: try again with the text below.
+    }
+  }
+  return copyText(await text)
+}

@@ -52,6 +52,8 @@ const HarmonyPage = defineAsyncComponent(() => import('./components/HarmonyPage.
 const InstrumentsPage = defineAsyncComponent(() => import('./components/InstrumentsPage.vue'))
 // The speech lab, likewise loaded and mounted only once it is opened.
 const SpeechLab = defineAsyncComponent(() => import('./components/SpeechLab.vue'))
+// The log, likewise.
+const LogPage = defineAsyncComponent(() => import('./components/LogPage.vue'))
 
 const logCapacity = 300
 const form = ref(loadFormState())
@@ -212,7 +214,7 @@ onBeforeUnmount(unsubscribe)
 
 /**
  * The pages used day to day stand in the bar; the tools around a song (transcribing, voices and stems, Logic, backing vocals, the
- * speech lab) share one submenu, so the bar fits one line on a laptop. The queue concerns every page and has its
+ * speech lab, the log) share one submenu, so the bar fits one line on a laptop. The queue concerns every page and has its
  * hourglass at the bar's end instead of an entry.
  */
 type Page = { view: View; label: MessageKey; icon: string }
@@ -228,6 +230,7 @@ const tools: Page[] = [
   { view: 'harmony', label: 'menuHarmony', icon: 'pi pi-align-center' },
   { view: 'instruments', label: 'menuInstruments', icon: 'pi pi-sliders-h' },
   { view: 'lab', label: 'menuLab', icon: 'pi pi-comments' },
+  { view: 'logs', label: 'menuLogs', icon: 'pi pi-file' },
 ]
 
 /**
@@ -275,6 +278,7 @@ getVoiceInfo()
  */
 const logicOpened = ref(view.value === 'logic')
 const labOpened = ref(view.value === 'lab')
+const logsOpened = ref(view.value === 'logs')
 const instrumentsOpened = ref(view.value === 'instruments')
 const harmonyOpened = ref(view.value === 'harmony')
 watch(view, (value) => {
@@ -289,6 +293,9 @@ watch(view, (value) => {
   }
   if (value === 'lab') {
     labOpened.value = true
+  }
+  if (value === 'logs') {
+    logsOpened.value = true
   }
 })
 
@@ -726,6 +733,9 @@ async function useAsNewSong(songId: string): Promise<void> {
 
   <main v-if="labOpened" v-show="view === 'lab'">
     <SpeechLab :active="view === 'lab'" :connected="connected" :live="speechTakes" @error="show($event, true)" />
+  </main>
+  <main v-if="logsOpened" v-show="view === 'logs'">
+    <LogPage :active="view === 'logs'" />
   </main>
 
   <!-- Outside the pages, so switching between them does not stop the song. The spacer keeps it off the page's end. -->

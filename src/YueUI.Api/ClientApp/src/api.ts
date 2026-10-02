@@ -2,6 +2,9 @@ import type {
   BackupStatus,
   GenerateRequest,
   LogEntry,
+  LogLevel,
+  LogPage,
+  LogSource,
   LyricsLanguage,
   LyricsModels,
   LyricsState,
@@ -505,6 +508,36 @@ function json(method: string, body: unknown): RequestInit {
 }
 
 /** A request whose failure is worth an ApiError: a problem document's detail, or the status. */
+export interface LogFilter {
+  source: LogSource | null
+  level: LogLevel | null
+  text: string
+  /** The time of the last line shown, for the next older page. */
+  before?: string
+}
+
+export async function getLogs(filter: LogFilter, limit = 200): Promise<LogPage> {
+  const query = new URLSearchParams({ limit: String(limit) })
+  if (filter.source) {
+    query.set('source', filter.source)
+  }
+  if (filter.level) {
+    query.set('level', filter.level)
+  }
+  if (filter.text.trim()) {
+    query.set('q', filter.text.trim())
+  }
+  if (filter.before) {
+    query.set('before', filter.before)
+  }
+  return (await send(`/api/logs?${query}`)).json() as Promise<LogPage>
+}
+
+/** The plain-text report for a chat: build, engines, and the last day's warnings and errors with their context. */
+export async function getLogReport(): Promise<string> {
+  return (await send('/api/logs/report')).text()
+}
+
 async function send(path: string, init: RequestInit = {}): Promise<Response> {
   let response: Response
   try {

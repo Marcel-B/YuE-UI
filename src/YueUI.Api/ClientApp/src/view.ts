@@ -2,7 +2,17 @@ import { ref } from 'vue'
 
 /** The pages the menu bar switches between. */
 export type View =
-  'create' | 'queue' | 'transcribe' | 'songs' | 'playlist' | 'voices' | 'logic' | 'harmony' | 'instruments' | 'lab'
+  | 'create'
+  | 'queue'
+  | 'transcribe'
+  | 'songs'
+  | 'playlist'
+  | 'voices'
+  | 'logic'
+  | 'harmony'
+  | 'instruments'
+  | 'lab'
+  | 'logs'
 
 const views: readonly View[] = [
   'create',
@@ -15,6 +25,7 @@ const views: readonly View[] = [
   'harmony',
   'instruments',
   'lab',
+  'logs',
 ]
 
 /**
