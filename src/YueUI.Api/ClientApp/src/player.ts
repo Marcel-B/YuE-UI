@@ -133,6 +133,40 @@ export function listen(create = true): void {
   }
 }
 
+/**
+ * iOS refuses resume() outside a user gesture. The element's own controls and the lock screen start playback through
+ * a `play` event that fires after the tap, outside it, so a context iOS suspended while the screen was locked stays
+ * suspended and the element plays on into a stopped graph: its clock runs, nothing sounds and the analyzer holds its
+ * last frame. Every tap on the page is a gesture, though, and the one on the controls reaches the document before the
+ * element starts, so the context wakes on whichever comes first.
+ */
+function wake(): void {
+  if (context && context.state !== 'running') {
+    void context.resume().catch(() => undefined)
+  }
+}
+if (typeof document !== 'undefined') {
+  for (const type of ['touchend', 'pointerup', 'click', 'keydown']) {
+    document.addEventListener(type, wake, { capture: true, passive: true })
+  }
+}
+
+/**
+ * Checks a start that came without a gesture of ours (the lock screen, the element's controls): when the context
+ * could not be woken, the song is paused rather than left playing silently with its clock running, so the next tap
+ * on play (a gesture) starts it with sound.
+ */
+export function guardSilence(): void {
+  if (!context) {
+    return
+  }
+  setTimeout(() => {
+    if (context && context.state !== 'running' && audio && !audio.paused) {
+      audio.pause()
+    }
+  }, 1500)
+}
+
 /** PlayerBar hands over its audio element; play() then starts it right in the click, which iOS insists on. */
 export function attach(element: HTMLAudioElement | null): void {
   audio = element
