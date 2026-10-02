@@ -190,9 +190,7 @@ watch(
         v-tooltip.bottom="t('keyboardUp')"
         @click="shift(12)"
       />
-      <div class="min-w-64 flex-1">
-        <SynthKnob v-model="velocity" :label="t('keyboardVelocity')" :min="0.05" :max="1" :format="percent" />
-      </div>
+      <SynthKnob v-model="velocity" :label="t('keyboardVelocity')" :min="0.05" :max="1" :format="percent" />
     </div>
     <div
       class="keyboard"

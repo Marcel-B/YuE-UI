@@ -13,9 +13,15 @@ import {
   type Oscillator,
 } from '../../logic/synth'
 import { hertz, octaves, percent, seconds, signed, signedPercent } from '../../logic/synthFormats'
+import EnvelopeCurve from './EnvelopeCurve.vue'
 import SynthKnob from './SynthKnob.vue'
+import SynthModule from './SynthModule.vue'
+import WaveIcon from './WaveIcon.vue'
 
-/** The analog synthesizer's controls: two oscillators and noise, a filter with its envelope, loudness envelope, LFO. */
+/**
+ * The analog synthesizer's controls: two oscillators and noise, a filter with its envelope, loudness envelope, LFO.
+ * Its modules are laid into `SynthEditor`'s grid beside the effects, so the template has no wrapper of its own.
+ */
 const patch = defineModel<AnalogPatch>({ required: true })
 
 const waveLabels: Record<(typeof WAVES)[number], MessageKey> = {
@@ -46,16 +52,16 @@ const oscillators = computed<{ key: 'osc1' | 'osc2'; title: MessageKey; value: O
   { key: 'osc1', title: 'synthOsc1', value: patch.value.osc1 },
   { key: 'osc2', title: 'synthOsc2', value: patch.value.osc2 },
 ])
+// The filter's envelope next to the filter, the loudness last, as the signal runs.
 const envelopes = computed<{ title: MessageKey; value: Envelope }[]>(() => [
-  { title: 'synthAmpEnv', value: patch.value.ampEnv },
   { title: 'synthFilterEnv', value: patch.value.filterEnv },
+  { title: 'synthAmpEnv', value: patch.value.ampEnv },
 ])
 </script>
 
 <template>
-  <div class="sections">
-    <section v-for="osc in oscillators" :key="osc.key">
-      <h3>{{ t(osc.title) }}</h3>
+  <SynthModule v-for="osc in oscillators" :key="osc.key" :title="t(osc.title)">
+    <template #header>
       <SelectButton
         v-model="patch[osc.key].wave"
         :options="oscillatorWaves"
@@ -63,68 +69,72 @@ const envelopes = computed<{ title: MessageKey; value: Envelope }[]>(() => [
         option-value="value"
         :allow-empty="false"
         size="small"
-        class="mb-2"
+      >
+        <template #option="{ option }"><WaveIcon :wave="option.value" :label="option.label" /></template>
+      </SelectButton>
+    </template>
+    <SynthKnob
+      v-model="patch[osc.key].octave"
+      :label="t('synthOctave')"
+      :min="RANGES.octave[0]"
+      :max="RANGES.octave[1]"
+      :step="1"
+      :format="(v) => signed(v, '')"
+    />
+    <SynthKnob
+      v-model="patch[osc.key].detune"
+      :label="t('synthDetune')"
+      :min="RANGES.detune[0]"
+      :max="RANGES.detune[1]"
+      :step="1"
+      :format="(v) => signed(v, ' ct')"
+    />
+    <SynthKnob v-model="patch[osc.key].level" :label="t('synthLevel')" :min="0" :max="1" :format="percent" />
+    <template v-if="patch[osc.key].wave === 'square'">
+      <SynthKnob
+        v-model="patch[osc.key].width"
+        :label="t('synthWidth')"
+        :min="RANGES.width[0]"
+        :max="RANGES.width[1]"
+        :step="0.01"
+        :format="percent"
+      />
+      <label class="switch" :title="t('synthPwmLfo')">
+        <span>{{ t('synthPwmLfoOn') }}</span>
+        <Checkbox v-model="patch[osc.key].pwmLfo" binary :aria-label="t('synthPwmLfo')" />
+      </label>
+      <SynthKnob
+        v-model="patch[osc.key].pwm"
+        :label="t('synthPwm')"
+        :min="0"
+        :max="1"
+        :disabled="!patch[osc.key].pwmLfo"
+        :format="percent"
       />
       <SynthKnob
-        v-model="patch[osc.key].octave"
-        :label="t('synthOctave')"
-        :min="RANGES.octave[0]"
-        :max="RANGES.octave[1]"
-        :step="1"
-        :format="(v) => signed(v, '')"
+        v-model="patch[osc.key].pwmAmpEnv"
+        :label="t('synthPwmAmpEnv')"
+        :min="RANGES.pwmEnv[0]"
+        :max="RANGES.pwmEnv[1]"
+        :step="0.01"
+        :format="signedPercent"
       />
       <SynthKnob
-        v-model="patch[osc.key].detune"
-        :label="t('synthDetune')"
-        :min="RANGES.detune[0]"
-        :max="RANGES.detune[1]"
-        :step="1"
-        :format="(v) => signed(v, ' ct')"
+        v-model="patch[osc.key].pwmFilterEnv"
+        :label="t('synthPwmFilterEnv')"
+        :min="RANGES.pwmEnv[0]"
+        :max="RANGES.pwmEnv[1]"
+        :step="0.01"
+        :format="signedPercent"
       />
-      <SynthKnob v-model="patch[osc.key].level" :label="t('synthLevel')" :min="0" :max="1" :format="percent" />
-      <template v-if="patch[osc.key].wave === 'square'">
-        <SynthKnob
-          v-model="patch[osc.key].width"
-          :label="t('synthWidth')"
-          :min="RANGES.width[0]"
-          :max="RANGES.width[1]"
-          :step="0.01"
-          :format="percent"
-        />
-        <div class="flex items-center gap-2 pt-1">
-          <Checkbox v-model="patch[osc.key].pwmLfo" binary :input-id="`${osc.key}-pwm-lfo`" />
-          <label :for="`${osc.key}-pwm-lfo`" class="text-sm">{{ t('synthPwmLfo') }}</label>
-        </div>
-        <SynthKnob
-          v-model="patch[osc.key].pwm"
-          :label="t('synthPwm')"
-          :min="0"
-          :max="1"
-          :disabled="!patch[osc.key].pwmLfo"
-          :format="percent"
-        />
-        <SynthKnob
-          v-model="patch[osc.key].pwmAmpEnv"
-          :label="t('synthPwmAmpEnv')"
-          :min="RANGES.pwmEnv[0]"
-          :max="RANGES.pwmEnv[1]"
-          :step="0.01"
-          :format="signedPercent"
-        />
-        <SynthKnob
-          v-model="patch[osc.key].pwmFilterEnv"
-          :label="t('synthPwmFilterEnv')"
-          :min="RANGES.pwmEnv[0]"
-          :max="RANGES.pwmEnv[1]"
-          :step="0.01"
-          :format="signedPercent"
-        />
-        <p class="muted mt-1 mb-0 text-xs">{{ t('synthPwmHint') }}</p>
-      </template>
-    </section>
+    </template>
+    <template v-if="patch[osc.key].wave === 'square'" #after>
+      <p class="muted mt-2 mb-0 text-xs">{{ t('synthPwmHint') }}</p>
+    </template>
+  </SynthModule>
 
-    <section>
-      <h3>{{ t('synthFilter') }}</h3>
+  <SynthModule :title="t('synthFilter')">
+    <template #header>
       <SelectButton
         v-model="patch.filter.type"
         :options="filterTypes"
@@ -132,66 +142,78 @@ const envelopes = computed<{ title: MessageKey; value: Envelope }[]>(() => [
         option-value="value"
         :allow-empty="false"
         size="small"
-        class="mb-2"
       />
-      <SynthKnob
-        v-model="patch.filter.cutoff"
-        :label="t('synthCutoff')"
-        :min="RANGES.cutoff[0]"
-        :max="RANGES.cutoff[1]"
-        :curve="3"
-        :format="hertz"
-      />
-      <SynthKnob
-        v-model="patch.filter.resonance"
-        :label="t('synthResonance')"
-        :min="RANGES.resonance[0]"
-        :max="RANGES.resonance[1]"
-        :step="0.1"
-        :format="(v) => formatNumber(v, 1)"
-      />
-      <SynthKnob
-        v-model="patch.filter.envAmount"
-        :label="t('synthEnvAmount')"
-        :min="RANGES.envAmount[0]"
-        :max="RANGES.envAmount[1]"
-        :step="0.1"
-        :format="octaves"
-      />
-      <SynthKnob v-model="patch.filter.keyTrack" :label="t('synthKeyTrack')" :min="0" :max="1" :format="percent" />
-    </section>
+    </template>
+    <SynthKnob
+      v-model="patch.filter.cutoff"
+      :label="t('synthCutoff')"
+      :min="RANGES.cutoff[0]"
+      :max="RANGES.cutoff[1]"
+      :curve="3"
+      :format="hertz"
+    />
+    <SynthKnob
+      v-model="patch.filter.resonance"
+      :label="t('synthResonance')"
+      :min="RANGES.resonance[0]"
+      :max="RANGES.resonance[1]"
+      :step="0.1"
+      :format="(v) => formatNumber(v, 1)"
+    />
+    <SynthKnob
+      v-model="patch.filter.envAmount"
+      :label="t('synthEnvAmount')"
+      :min="RANGES.envAmount[0]"
+      :max="RANGES.envAmount[1]"
+      :step="0.1"
+      :format="octaves"
+    />
+    <SynthKnob v-model="patch.filter.keyTrack" :label="t('synthKeyTrack')" :min="0" :max="1" :format="percent" />
+  </SynthModule>
 
-    <section v-for="env in envelopes" :key="env.title">
-      <h3>{{ t(env.title) }}</h3>
-      <SynthKnob
-        v-model="env.value.attack"
-        :label="t('synthAttack')"
-        :min="RANGES.attack[0]"
-        :max="RANGES.attack[1]"
-        :curve="3"
-        :format="seconds"
-      />
-      <SynthKnob
-        v-model="env.value.decay"
-        :label="t('synthDecay')"
-        :min="RANGES.decay[0]"
-        :max="RANGES.decay[1]"
-        :curve="3"
-        :format="seconds"
-      />
-      <SynthKnob v-model="env.value.sustain" :label="t('synthSustain')" :min="0" :max="1" :format="percent" />
-      <SynthKnob
-        v-model="env.value.release"
-        :label="t('synthRelease')"
-        :min="RANGES.release[0]"
-        :max="RANGES.release[1]"
-        :curve="3"
-        :format="seconds"
-      />
-    </section>
+  <SynthModule v-for="env in envelopes" :key="env.title" :title="t(env.title)">
+    <template #before><EnvelopeCurve :envelope="env.value" /></template>
+    <SynthKnob
+      v-model="env.value.attack"
+      :label="t('synthAttack')"
+      :min="RANGES.attack[0]"
+      :max="RANGES.attack[1]"
+      :curve="3"
+      :format="seconds"
+    />
+    <SynthKnob
+      v-model="env.value.decay"
+      :label="t('synthDecay')"
+      :min="RANGES.decay[0]"
+      :max="RANGES.decay[1]"
+      :curve="3"
+      :format="seconds"
+    />
+    <SynthKnob v-model="env.value.sustain" :label="t('synthSustain')" :min="0" :max="1" :format="percent" />
+    <SynthKnob
+      v-model="env.value.release"
+      :label="t('synthRelease')"
+      :min="RANGES.release[0]"
+      :max="RANGES.release[1]"
+      :curve="3"
+      :format="seconds"
+    />
+  </SynthModule>
 
-    <section>
-      <h3>{{ t('synthLfo') }}</h3>
+  <SynthModule :title="t('synthLfo')">
+    <template #header>
+      <SelectButton
+        v-model="patch.lfo.wave"
+        :options="waves"
+        option-label="label"
+        option-value="value"
+        :allow-empty="false"
+        size="small"
+      >
+        <template #option="{ option }"><WaveIcon :wave="option.value" :label="option.label" /></template>
+      </SelectButton>
+    </template>
+    <template #before>
       <SelectButton
         v-model="patch.lfo.target"
         :options="targets"
@@ -201,43 +223,35 @@ const envelopes = computed<{ title: MessageKey; value: Envelope }[]>(() => [
         size="small"
         class="mb-2"
       />
-      <SelectButton
-        v-model="patch.lfo.wave"
-        :options="waves"
-        option-label="label"
-        option-value="value"
-        :allow-empty="false"
-        size="small"
-        class="mb-2"
-      />
-      <SynthKnob
-        v-model="patch.lfo.rate"
-        :label="t('synthRate')"
-        :min="RANGES.rate[0]"
-        :max="RANGES.rate[1]"
-        :curve="2"
-        :format="(v) => `${formatNumber(v, 1)} Hz`"
-      />
-      <SynthKnob v-model="patch.lfo.depth" :label="t('synthDepth')" :min="0" :max="1" :format="percent" />
-    </section>
+    </template>
+    <SynthKnob
+      v-model="patch.lfo.rate"
+      :label="t('synthRate')"
+      :min="RANGES.rate[0]"
+      :max="RANGES.rate[1]"
+      :curve="2"
+      :format="(v) => `${formatNumber(v, 1)} Hz`"
+    />
+    <SynthKnob v-model="patch.lfo.depth" :label="t('synthDepth')" :min="0" :max="1" :format="percent" />
+  </SynthModule>
 
-    <section>
-      <h3>{{ t('synthMix') }}</h3>
-      <SynthKnob v-model="patch.noise" :label="t('synthNoise')" :min="0" :max="1" :format="percent" />
-      <SynthKnob v-model="patch.volume" :label="t('synthVolume')" :min="0" :max="1" :format="percent" />
-    </section>
-  </div>
+  <SynthModule :title="t('synthMix')">
+    <SynthKnob v-model="patch.noise" :label="t('synthNoise')" :min="0" :max="1" :format="percent" />
+    <SynthKnob v-model="patch.volume" :label="t('synthVolume')" :min="0" :max="1" :format="percent" />
+  </SynthModule>
 </template>
 
 <style scoped>
-.sections {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
-  gap: 1rem 1.5rem;
-}
-
-h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
+/* The switch for the PWM's LFO, laid out like a knob: name above, the box where the dial would be. */
+.switch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 4.25rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  cursor: pointer;
 }
 </style>

@@ -79,18 +79,19 @@ function switchEngine(engine: Engine): void {
 
   <SynthScope v-if="scope" :sources="scope" class="mb-3" />
 
-  <FmPanel v-if="patch.engine === 'fm'" v-model="patch" />
-  <AnalogPanel v-else v-model="patch" />
-
-  <h3 class="effects-title">{{ t('fxTitle') }}</h3>
-  <EffectsPanel :model-value="effects" />
+  <!-- One grid for the engine's modules and the effects, so they pack like a synthesizer's panel. -->
+  <div class="modules">
+    <FmPanel v-if="patch.engine === 'fm'" v-model="patch" />
+    <AnalogPanel v-else v-model="patch" />
+    <EffectsPanel :model-value="effects" />
+  </div>
 </template>
 
 <style scoped>
-.effects-title {
-  margin: 1.25rem 0 0.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
-  font-size: 1rem;
+.modules {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: 0.5rem;
+  align-items: start;
 }
 </style>
