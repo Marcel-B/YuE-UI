@@ -215,16 +215,6 @@ export async function songRequest(songId: string): Promise<SongRequest> {
   return (await send(`/api/songs/${songId}/request`)).json() as Promise<SongRequest>
 }
 
-/** The song's audio.flac and score.abc in one archive. */
-export function songZipUrl(songId: string): string {
-  return `${apiBase}/api/songs/${songId}/zip`
-}
-
-/** Audio and score of every song of the run. */
-export function runZipUrl(runId: string): string {
-  return `${apiBase}/api/runs/${runId}/zip`
-}
-
 /**
  * The song as a small AAC (`.m4a`, about a tenth of the FLAC) for the share sheet, named after its title. The
  * server encodes it first, which takes a few seconds.

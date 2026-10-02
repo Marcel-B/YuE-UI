@@ -17,8 +17,8 @@ public sealed record RatingRequest(int? Rating);
 public sealed record StorageInfo(long FreeBytes, long TotalBytes);
 
 /// <summary>
-/// The finished songs on disk: the list, each song's audio and score, both zipped per song or per run, deleting
-/// songs and runs, and how much space is left.
+/// The finished songs on disk: the list, each song's audio and score, deleting songs and runs, and how much space
+/// is left.
 /// </summary>
 public static partial class LibraryEndpoints
 {
@@ -41,14 +41,6 @@ public static partial class LibraryEndpoints
         // What the song was made with, for "as a new song" in the web form.
         api.MapGet("/songs/{run}/{song}/request", (string run, string song, SongLibrary library) =>
             library.ReadRequest(run, song) is { } request ? Results.Ok(request) : Results.NotFound());
-        api.MapGet("/songs/{run}/{song}/zip", (string run, string song, SongLibrary library, TaggedFiles tagged) =>
-            library.SongDirectory(run, song) is { } directory
-                ? TaggedZip($"{FileName(library.TitleOf(run, directory), run)}-{song}.zip", library, tagged, run, [directory])
-                : Results.NotFound());
-        api.MapGet("/runs/{run}/zip", (string run, SongLibrary library, TaggedFiles tagged) =>
-            library.SongDirectories(run) is { Count: > 0 } directories
-                ? TaggedZip($"{FileName(library.TitleOf(run, directories[0]), run)}.zip", library, tagged, run, directories)
-                : Results.NotFound());
         // A version in the works reads the song's audio; it is cancelled with its song by deleting the version first.
         api.MapDelete("/songs/{run}/{song}", (string run, string song, SongLibrary library, WorkerHost host, Voices.VoiceConverter voices) =>
             Delete(host, host.IsWorkingOn(run, song) || voices.IsWorkingOn(run, song), () => library.DeleteSong(run, song)));
@@ -169,40 +161,6 @@ public static partial class LibraryEndpoints
             StreamCopies.TagsFor(library, run, song, directory).Build(),
             "audio/flac",
             $"{FileName(library.TitleOf(run, directory), run)}-{song}.flac");
-    }
-
-    /// <summary>
-    /// What a song is worth keeping: its audio, tagged like a download (into temporary copies, deleted once the
-    /// archive is written), and its score, named like the single downloads.
-    /// </summary>
-    private static IResult TaggedZip(string fileName, SongLibrary library, TaggedFiles tagged, string run, IReadOnlyList<string> directories)
-    {
-        var copies = new List<string>();
-        try
-        {
-            var entries = new List<(string Path, string Name)>();
-            foreach (var directory in directories)
-            {
-                var song = Path.GetFileName(directory);
-                var name = $"{FileName(library.TitleOf(run, directory), run)}-{song}";
-                var flac = Path.Combine(directory, "audio.flac");
-                if (File.Exists(flac))
-                {
-                    var copy = tagged.Copy(flac, StreamCopies.TagsFor(library, run, song, directory).Build());
-                    copies.Add(copy);
-                    entries.Add((copy, $"{name}.flac"));
-                }
-                entries.Add((Path.Combine(directory, "score.abc"), $"{name}.abc"));
-            }
-            return Zip(fileName, entries);
-        }
-        finally
-        {
-            foreach (var copy in copies)
-            {
-                File.Delete(copy);
-            }
-        }
     }
 
     /// <summary>
