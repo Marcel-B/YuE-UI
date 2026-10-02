@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using YueUI.Api;
+using YueUI.Api.Backup;
 using YueUI.Api.Data;
 using YueUI.Api.Export;
 using YueUI.Api.Library;
@@ -91,6 +92,13 @@ builder.Services.AddSingleton<SqliteJobStore>();
 builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddHostedService(services => services.GetRequiredService<JobQueue>());
 
+// Nightly backup of the database and the songs into a Nextcloud over WebDAV; off until Backup is configured.
+builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection(BackupOptions.Section));
+builder.Services.AddSingleton<WebDavClient>();
+builder.Services.AddHttpClient(WebDavClient.HttpClientName);
+builder.Services.AddSingleton<CloudBackup>();
+builder.Services.AddHostedService(services => services.GetRequiredService<CloudBackup>());
+
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddProblemDetails();
@@ -125,6 +133,7 @@ api.MapVoiceEndpoints();
 api.MapStemEndpoints();
 api.MapQueueEndpoints();
 api.MapSpeechEndpoints();
+api.MapBackupEndpoints();
 
 app.MapClientApp();
 

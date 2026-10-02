@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using YueUI.Api.Backup;
 using YueUI.Api.Data;
 using YueUI.Api.Export;
 using YueUI.Api.Lyrics;
@@ -65,6 +66,14 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public FakeMixer Mixer { get; } = new();
 
     public FakeSpeech Speech { get; } = new();
+
+    public FakeNextcloud Nextcloud { get; } = new();
+
+    /// <summary>The backup folder in the fake Nextcloud; null (the default) leaves the backup off.</summary>
+    public string? NextcloudUrl { get; set; }
+
+    /// <summary>When the nightly backup starts; null for manual backups only.</summary>
+    public string? BackupAt { get; set; }
 
     /// <summary>Where the fake ChangeMyVoice is expected; set to null before the first request to switch voices off.</summary>
     public string? VoiceBaseUrl { get; set; } = "http://voice.test";
@@ -172,6 +181,17 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddSingleton<IAudioEncoder>(Encoder);
             services.AddSingleton<IAudioTagger>(Tagger);
             services.Configure<DataOptions>(options => options.Path = Path.Combine(Root, "yueui.db"));
+            services.Configure<BackupOptions>(options =>
+            {
+                options.WebDavUrl = NextcloudUrl;
+                options.Username = "marcel";
+                options.AppPassword = "app-password";
+                options.AppPasswordFile = null;
+                options.At = BackupAt;
+                // The test's files are seconds old.
+                options.Settle = TimeSpan.Zero;
+            });
+            services.AddHttpClient(WebDavClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeNextcloud.Handler(Nextcloud));
             if (_fakeWorker)
             {
                 services.AddSingleton<IWorkerLauncher>(Launcher);
@@ -795,5 +815,78 @@ public sealed class FakeSpeech : ISpeechEngine
         var gate = new TaskCompletionSource();
         gate.SetResult();
         return gate;
+    }
+}
+
+/// <summary>A Nextcloud's WebDAV: keeps uploaded files by path, answers MKCOL with 201 once and 405 after.</summary>
+public sealed class FakeNextcloud
+{
+    private readonly Lock _gate = new();
+
+    public Dictionary<string, byte[]> Files { get; } = [];
+
+    public HashSet<string> Folders { get; } = [];
+
+    public List<string> Puts { get; } = [];
+
+    public string? Authorization { get; private set; }
+
+    /// <summary>Answers every request with this instead, e.g. 401 for a wrong password.</summary>
+    public HttpStatusCode? Status { get; set; }
+
+    /// <summary>Holds every request until a test lets it go, to look at the server meanwhile.</summary>
+    public TaskCompletionSource? Gate { get; set; }
+
+    public byte[] File(string path)
+    {
+        lock (_gate)
+        {
+            return Files[path];
+        }
+    }
+
+    public string[] PutPaths()
+    {
+        lock (_gate)
+        {
+            return [.. Puts];
+        }
+    }
+
+    public sealed class Handler(FakeNextcloud cloud) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (cloud.Gate is { } gate)
+            {
+                await gate.Task.WaitAsync(cancellationToken);
+            }
+            var body = request.Content is null ? null : await request.Content.ReadAsByteArrayAsync(cancellationToken);
+            var path = Uri.UnescapeDataString(request.RequestUri!.AbsolutePath).TrimEnd('/');
+            lock (cloud._gate)
+            {
+                cloud.Authorization = request.Headers.Authorization?.ToString();
+                if (cloud.Status is { } status)
+                {
+                    return new HttpResponseMessage(status);
+                }
+                if (request.Method.Method == "MKCOL")
+                {
+                    return new HttpResponseMessage(cloud.Folders.Add(path) ? HttpStatusCode.Created : HttpStatusCode.MethodNotAllowed);
+                }
+                if (request.Method == HttpMethod.Put)
+                {
+                    var folder = path[..path.LastIndexOf('/')];
+                    if (!cloud.Folders.Contains(folder))
+                    {
+                        return new HttpResponseMessage(HttpStatusCode.Conflict);
+                    }
+                    cloud.Files[path] = body!;
+                    cloud.Puts.Add(path);
+                    return new HttpResponseMessage(HttpStatusCode.Created);
+                }
+                return new HttpResponseMessage(HttpStatusCode.MethodNotAllowed);
+            }
+        }
     }
 }
