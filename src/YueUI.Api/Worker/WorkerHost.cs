@@ -27,6 +27,7 @@ public sealed class WorkerHost(
     IStudioDetector studio,
     IOptions<QueueOptions> queueOptions,
     TimeProvider time,
+    Logs.LogStore logs,
     ILogger<WorkerHost> logger) : IHostedService, IAsyncDisposable
 {
     private const int LogCapacity = 300;
@@ -768,6 +769,8 @@ public sealed class WorkerHost(
             }
         }
         Publish("log", entry);
+        // Only the last few hundred lines stay in memory for the queue page; the log page keeps them for days.
+        logs.Add(Logs.LogSources.Worker, level == "error" ? Logs.LogLevels.Error : Logs.LogLevels.Info, text);
     }
 
     private void PublishWorker()

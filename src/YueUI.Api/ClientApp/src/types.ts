@@ -55,6 +55,38 @@ export interface LogEntry {
   message: string
 }
 
+/** A source of the collected log (`GET /api/logs`); the server's `LogSources.All`. */
+export const logSources = [
+  'server',
+  'worker',
+  'queue',
+  'lyrics',
+  'voices',
+  'speech',
+  'export',
+  'logic',
+  'backup',
+  'push',
+  'update',
+] as const
+export type LogSource = (typeof logSources)[number]
+export type LogLevel = 'debug' | 'info' | 'warning' | 'error'
+
+/** A line of the collected log. */
+export interface LogLine {
+  time: string
+  source: LogSource
+  level: LogLevel
+  message: string
+  exception?: string | null
+}
+
+/** Lines newest first; `more` when older ones match too. */
+export interface LogPage {
+  entries: LogLine[]
+  more: boolean
+}
+
 export interface StatusSnapshot {
   worker: WorkerInfo
   songs: SongState[]

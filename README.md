@@ -239,6 +239,14 @@ Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die
 
 **Zurückholen.** Tonwerk stoppen (`launchctl bootout gui/$(id -u)/de.bvelop.yueui` oder `deploy/uninstall.sh`), `yueui.db` und `push.json` aus dem ZIP nach `~/Library/Application Support/YuE UI/` legen, die Ordner `versions`, `stems`, `covers` und `speech` ebenfalls dorthin, den Inhalt von `songs/` und `transcriptions/` nach `~/Music/YuE Studio/`, dann wieder starten (`deploy/install.sh`).
 
+## Protokoll
+
+**Werkzeuge → Protokoll** zeigt, was Tonwerk gemeldet hat, ohne SSH auf dem Mac: Server, YuE2-Worker (auch seine Python-Ausgabe), Warteschlange, Songtexte, Stimmen und Stems (mit der Ausgabe von Separator und Seed-VC, wenn sie scheitern), Sprachlabor, Export, Logic, Backup, Benachrichtigungen und die Updates aus `deploy/update.sh`. Die Seite filtert nach Quelle, Stufe (anfangs nur Warnungen und Fehler) und Text; mehrzeilige Meldungen und Stacktraces klappen unter **Details** auf.
+
+**Für Claude kopieren** legt einen Bericht in die Zwischenablage: Version mit Commit, zuletzt deployter Commit, Zustand des Workers, welche Engines installiert sind, was gerade läuft, und die Warnungen und Fehler der letzten 24 Stunden mit den Zeilen davor. Er enthält keine Einstellungen, Schlüssel oder Adressen. In einen Chat eingefügt, reicht das meistens, um einem Fehler nachzugehen.
+
+Die Zeilen liegen als JSON, eine Datei pro Tag (`tonwerk-JJJJ-MM-TT.jsonl`), unter `~/Library/Application Support/YuE UI/logs` und werden nach 14 Tagen gelöscht. Wird eine Tagesdatei größer als 50 MB, kommen nur noch Warnungen und Fehler hinein. Das Update-Log bleibt, wo `update.sh` es schreibt, und wird mitgelesen. `yueui.log` (die Konsole des LaunchAgents) gibt es weiterhin.
+
 ## Konfiguration
 
 `appsettings.json` bzw. Umgebungsvariablen:
@@ -276,6 +284,9 @@ Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die
 | `Speech:Timeout` (`Speech__Timeout`) | `01:00:00` | so lange darf ein Ergebnis samt erstem Download dauern |
 | `Push:DataPath` (`Push__DataPath`) | `~/Library/Application Support/YuE UI/push.json` | VAPID-Schlüssel und Abonnements für Benachrichtigungen |
 | `Data:Path` (`Data__Path`) | `~/Library/Application Support/YuE UI/yueui.db` | SQLite-Datenbank von Tonwerk (Playlists, geänderte Titel, Bewertungen) |
+| `Logs:Directory` (`Logs__Directory`) | `~/Library/Application Support/YuE UI/logs` | Tagesdateien des Protokolls |
+| `Logs:RetentionDays` (`Logs__RetentionDays`) | `14` | So viele Tage bleiben sie liegen |
+| `Logs:UpdateLog` (`Logs__UpdateLog`) | `~/Library/Logs/tonwerk-update.log` | Das Log von `deploy/update.sh`, das die Seite mitliest |
 | `Push:Subject` (`Push__Subject`) | `https://github.com/Marcel-B/YuE-UI` | Kontaktadresse (`mailto:` oder `https:`) für die Push-Dienste; Apple lehnt Adressen wie `mailto:ich@localhost` ab |
 | `Backup:EnvFile` (`Backup__EnvFile`) | `~/.config/tonwerk/nextcloud.env` | `.env`-Datei mit `NEXTCLOUD_WEBDAV_URL`, `NEXTCLOUD_USERNAME` und `NEXTCLOUD_APP_PASSWORD` für die Datensicherung; fehlt eins davon, ist sie aus |
 | `Backup:At` (`Backup__At`) | `03:00` | Uhrzeit der nächtlichen Sicherung; leer heißt nur von Hand |
@@ -288,6 +299,8 @@ Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die
 |---|---|---|
 | `GET` | `/api/status` | Worker-Zustand, Songs in Arbeit, Protokoll |
 | `GET` | `/api/busy` | `{ busy, reasons }`: ob ein Neustart laufende Arbeit abbräche (`songs`, `transcription`, `lyrics`, `voices`, `speech`); für `deploy/update.sh` |
+| `GET` | `/api/logs` | Gesammeltes Protokoll, neueste Zeilen zuerst: `source` (kommagetrennt: `server`, `worker`, `queue`, `lyrics`, `voices`, `speech`, `export`, `logic`, `backup`, `push`, `update`), `level` (Mindeststufe `debug`/`info`/`warning`/`error`), `q` (Text), `before` (Zeit der letzten Zeile, für die nächste Seite), `limit` (Standard 200) → `{ entries, more }` |
+| `GET` | `/api/logs/report` | Bericht als Text für einen Chat: Version, Engines, Zustand, Warnungen und Fehler der letzten `hours` Stunden (Standard 24) mit Kontext |
 | `GET` | `/api/events` | dasselbe live als Server-Sent Events (`snapshot`, `song`, `worker`, `log`, `library`, `transcription`, `lyrics`, `version`, `speech`, `queue`, `ping`) |
 | `POST` | `/api/generate` | neuer Lauf: `{ style, lyrics, title?, batch?, quality?: "draft"\|"full", cot?, seed?, instrumental?, engines?, draftSteps?, maxTokens?: 200–15000, abc?, fullSteps?: 1–64, abcSampling?, semanticSampling?, voice? }`; `voice` ist `{ voiceId, semiToneShift?, strength?, diffusionSteps?, keepReverb? }` wie bei den Fassungen und singt jeden fertigen Song danach mit dieser Stimme (`400` für eine unbekannte Stimme, `501` ohne Einrichtung); `abc` braucht `cot` "full" oder "melody", Sampling ist `{ temperature?, topP?, topK?, repetitionPenalty?, penaltyWindow? }`, über 9000 Tokens, `fullSteps` und Sampling nur mit der Worker-Erweiterung; antwortet `202`, ohne Inhalt, wenn der Lauf an den Worker ging, sonst mit dem wartenden Auftrag `{ id, kind, title, createdAt, songId, batch, quality, revision, voiceLabel }` |
 | `POST` | `/api/songs/{run}/{song}/render` | Song aus seinen Tokens neu synthetisieren, z. B. einen Entwurf in voller Qualität; `202` wie bei `generate` |

@@ -186,6 +186,11 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddSingleton<IAudioEncoder>(Encoder);
             services.AddSingleton<IAudioTagger>(Tagger);
             services.Configure<DataOptions>(options => options.Path = Path.Combine(Root, "yueui.db"));
+            services.Configure<Logs.LogOptions>(options =>
+            {
+                options.Directory = Path.Combine(Root, "logs");
+                options.UpdateLog = Path.Combine(Root, "tonwerk-update.log");
+            });
             services.Configure<BackupOptions>(options =>
             {
                 options.WebDavUrl = NextcloudUrl;
@@ -296,6 +301,9 @@ public sealed class FakeWorker : IWorkerConnection
     }
 
     public void Emit(object message) => _output.Writer.TryWrite(new WorkerLine(JsonSerializer.Serialize(message), false));
+
+    /// <summary>A line the worker writes to stderr, such as a Python traceback.</summary>
+    public void Stderr(string text) => _output.Writer.TryWrite(new WorkerLine(text, true));
 
     public void Exit() => _output.Writer.TryComplete();
 

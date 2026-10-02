@@ -4,6 +4,7 @@ using YueUI.Api.Backup;
 using YueUI.Api.Data;
 using YueUI.Api.Export;
 using YueUI.Api.Library;
+using YueUI.Api.Logs;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
@@ -104,6 +105,12 @@ builder.Services.AddHttpClient(WebDavClient.HttpClientName);
 builder.Services.AddSingleton<CloudBackup>();
 builder.Services.AddHostedService(services => services.GetRequiredService<CloudBackup>());
 
+// Every log message, the worker's output and the updater's log in daily files, read on the log page.
+builder.Services.Configure<LogOptions>(builder.Configuration.GetSection(LogOptions.Section));
+builder.Services.AddSingleton<LogStore>();
+builder.Services.AddSingleton<ILoggerProvider, LogStoreProvider>();
+builder.Services.AddSingleton<LogReport>();
+
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddProblemDetails();
@@ -139,6 +146,7 @@ api.MapStemEndpoints();
 api.MapQueueEndpoints();
 api.MapSpeechEndpoints();
 api.MapBackupEndpoints();
+api.MapLogEndpoints();
 
 app.MapClientApp();
 
