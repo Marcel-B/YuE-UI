@@ -20,10 +20,8 @@ import {
   putCover,
   renameRun,
   render,
-  runZipUrl,
   scoreUrl,
   songScore,
-  songZipUrl,
   versionAudioUrl,
 } from '../api'
 import { formatBytes, formatDateTime, formatDuration, t, versionProgress } from '../i18n'
@@ -380,9 +378,6 @@ function songActions(run: RunInfo, song: SongInfo): SongAction[] {
       icon: 'pi pi-file-export',
       command: () => openOnLogicPage(song.id),
     })
-  }
-  if (song.hasAudio || song.hasScore) {
-    actions.push({ key: 'zip', label: t('zipTitle'), icon: 'pi pi-box', url: songZipUrl(song.id) })
   }
   if (props.voices && song.hasAudio) {
     actions.push({
@@ -776,14 +771,6 @@ const severityByQuality: Record<string, string> = {
                   <pre>{{ run.lyrics }}</pre>
                 </details>
               </div>
-              <Button
-                as="a"
-                text
-                v-if="run.songs.length > 1"
-                v-tooltip="t('zipRun')"
-                icon="pi pi-box"
-                :href="runZipUrl(run.id)"
-              />
             </div>
 
             <ul class="songs">

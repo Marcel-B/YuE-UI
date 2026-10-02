@@ -2,7 +2,7 @@ namespace YueUI.Api.Export;
 
 /// <summary>
 /// Puts a song's tags (title, lyrics, style and seed, its own cover) into every file that leaves the app: the shared
-/// AAC, the FLAC downloads of songs and versions and the FLACs in a ZIP, as the export and the player's copy already
+/// AAC and the FLAC downloads of songs and versions, as the export and the player's copy already
 /// had them. The cover is chosen once per song in the library and goes along everywhere from then on.
 /// </summary>
 /// <remarks>

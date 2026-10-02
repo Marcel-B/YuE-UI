@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 
@@ -58,26 +57,6 @@ public sealed class TaggedDownloadTests : IDisposable
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(await File.ReadAllBytesAsync(_app.AudioPath(Run, "song1")), await response.Content.ReadAsByteArrayAsync());
-    }
-
-    [Fact]
-    public async Task A_run_zip_tags_every_flac_and_leaves_no_copies_behind()
-    {
-        _app.AddSong(Run, "song1");
-        _app.AddSong(Run, "song2");
-        await SetCover("song2");
-
-        var response = await _client.GetAsync($"/api/runs/{Run}/zip");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(2, _app.Tagger.Calls);
-        // The last one tagged is song2, with its cover.
-        Assert.Equal(Jpeg, _app.Tagger.Tags!.Cover!.Data);
-        Assert.False(File.Exists(_app.Tagger.Path));
-        using var zip = new ZipArchive(await response.Content.ReadAsStreamAsync());
-        Assert.Equal(
-            ["Neon Night-song1.flac", "Neon Night-song1.abc", "Neon Night-song2.flac", "Neon Night-song2.abc"],
-            zip.Entries.Select(e => e.FullName));
     }
 
     private async Task SetCover(string song)
