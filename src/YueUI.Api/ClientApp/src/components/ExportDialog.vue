@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Dialog from 'primevue/dialog'
-import { exportSongFile, putCover, saveBlob } from '../api'
+import { exportSongFile, saveBlob } from '../api'
 import {
   drawCover,
   exportFormats,
   exportTarget,
   genreOf,
   loadExportSettings,
-  photoCover,
   saveExportSettings,
   type ExportFormat,
+  type ExportTarget,
 } from '../export'
 import { t } from '../i18n'
 
@@ -24,72 +24,32 @@ const artist = ref(settings.artist)
 const genre = ref('')
 const state = ref<Step>({ step: 'options' })
 
-/** The cover sent along; null with the song's own, which the server takes itself. */
-const cover = ref<Blob | null>(null)
-const blobUrl = ref<string | null>(null)
-/** Which cover goes in: the song's own, a photo just chosen (kept as the song's own too) or the drawn one. */
-const coverKind = ref<'song' | 'photo' | 'drawn'>('drawn')
-/** Saving the chosen photo as the song's cover failed; the export still takes it. */
-const coverError = ref<string | null>(null)
-const coverInput = ref<HTMLInputElement | null>(null)
-const coverUrl = computed(() => (coverKind.value === 'song' ? (exportTarget.value?.cover ?? null) : blobUrl.value))
+/**
+ * The cover is chosen in one place, the library's "Choose cover", and kept with the song; the server puts it into
+ * every file itself. Only a song without one gets the drawn cover, sent along with this export.
+ */
+const drawn = ref<Blob | null>(null)
+const drawnUrl = ref<string | null>(null)
+const coverUrl = computed(() => exportTarget.value?.cover ?? drawnUrl.value)
 
 const formatOptions = computed(() => exportFormats.map((value) => ({ value, label: value.toUpperCase() })))
 
-function setCover(blob: Blob | null): void {
-  if (blobUrl.value) {
-    URL.revokeObjectURL(blobUrl.value)
+function setDrawn(blob: Blob | null): void {
+  if (drawnUrl.value) {
+    URL.revokeObjectURL(drawnUrl.value)
   }
-  cover.value = blob
-  blobUrl.value = blob ? URL.createObjectURL(blob) : null
+  drawn.value = blob
+  drawnUrl.value = blob ? URL.createObjectURL(blob) : null
 }
 
-function useSongCover(): void {
-  setCover(null)
-  coverKind.value = 'song'
-}
-
-async function useDrawnCover(): Promise<void> {
-  const target = exportTarget.value
-  if (!target) {
-    return
-  }
-  coverKind.value = 'drawn'
+async function drawFor(target: ExportTarget): Promise<void> {
   try {
-    setCover(await drawCover(target))
-  } catch {
-    setCover(null) // exported without a cover rather than not at all
-  }
-}
-
-async function pickCover(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = '' // so that picking the same photo again fires a change
-  if (!file) {
-    return
-  }
-  const target = exportTarget.value
-  let photo: Blob
-  try {
-    photo = await photoCover(file)
-  } catch {
-    state.value = { step: 'failed', message: t('photoUnreadable') }
-    return
-  }
-  setCover(photo)
-  coverKind.value = 'photo'
-  coverError.value = null
-  if (!target) {
-    return
-  }
-  // The photo was chosen for the song, not only for this file: the library and the player show it from now on.
-  try {
-    await putCover(target.songId, photo)
-  } catch (caught) {
+    const blob = await drawCover(target)
     if (exportTarget.value === target) {
-      coverError.value = t('coverSaveFailed', { message: caught instanceof Error ? caught.message : String(caught) })
+      setDrawn(blob)
     }
+  } catch {
+    // exported without a cover rather than not at all
   }
 }
 
@@ -100,18 +60,16 @@ watch(
     if (target) {
       state.value = { step: 'options' }
       genre.value = genreOf(target.style)
-      coverError.value = null
-      if (target.cover) {
-        useSongCover()
-      } else {
-        void useDrawnCover()
+      setDrawn(null)
+      if (!target.cover) {
+        void drawFor(target)
       }
     }
   },
   { immediate: true },
 )
 
-onBeforeUnmount(() => setCover(null))
+onBeforeUnmount(() => setDrawn(null))
 
 async function start(): Promise<void> {
   const target = exportTarget.value
@@ -121,7 +79,13 @@ async function start(): Promise<void> {
   saveExportSettings({ format: format.value, artist: artist.value.trim() })
   state.value = { step: 'preparing' }
   try {
-    const file = await exportSongFile(target.songId, format.value, artist.value.trim(), genre.value.trim(), cover.value)
+    const file = await exportSongFile(
+      target.songId,
+      format.value,
+      artist.value.trim(),
+      genre.value.trim(),
+      target.cover ? null : drawn.value,
+    )
     // The dialog may have been closed and opened for another song meanwhile.
     if (exportTarget.value === target) {
       state.value = { step: 'ready', file }
@@ -192,36 +156,9 @@ function close(): void {
           <img v-if="coverUrl" :src="coverUrl" :alt="t('exportCover')" class="w-24 h-24 rounded-md object-cover" />
           <div v-else class="w-24 h-24 rounded-md bg-emphasis" />
         </div>
-        <div class="flex flex-col gap-2 min-w-0 flex-1">
-          <Button
-            :label="t('exportCoverPhoto')"
-            icon="pi pi-image"
-            severity="secondary"
-            size="small"
-            @click="coverInput?.click()"
-          />
-          <Button
-            v-if="exportTarget?.cover && coverKind === 'drawn'"
-            :label="t('exportCoverSong')"
-            icon="pi pi-image"
-            severity="secondary"
-            text
-            size="small"
-            @click="useSongCover"
-          />
-          <Button
-            v-if="coverKind !== 'drawn'"
-            :label="t('exportCoverDrawn')"
-            icon="pi pi-palette"
-            severity="secondary"
-            text
-            size="small"
-            @click="useDrawnCover"
-          />
-          <small v-if="coverError" class="danger">{{ coverError }}</small>
-          <small v-else-if="coverKind === 'photo'" class="muted">{{ t('exportCoverKept') }}</small>
-          <input ref="coverInput" type="file" accept="image/*" class="hidden" @change="pickCover" />
-        </div>
+        <small class="muted min-w-0 flex-1">{{
+          t(exportTarget?.cover ? 'exportCoverSong' : 'exportCoverDrawn')
+        }}</small>
       </div>
       <label class="flex flex-col gap-1">
         <span>{{ t('exportArtist') }}</span>

@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.RegularExpressions;
+using YueUI.Api.Export;
 using YueUI.Api.Library;
 using YueUI.Api.Share;
 using YueUI.Api.Worker;
@@ -28,8 +29,11 @@ public static partial class LibraryEndpoints
     {
         api.MapGet("/library", (SongLibrary library) => library.ListRuns());
         // Range requests let the browser's player seek and start before a five-minute FLAC is loaded.
-        api.MapGet("/songs/{run}/{song}/audio", (string run, string song, bool? download, SongLibrary library) =>
-            SongFile(library, run, song, "audio.flac", "audio/flac", "flac", download == true));
+        // A download is a tagged copy (cover, lyrics); the player, the Logic page and range requests get the file itself.
+        api.MapGet("/songs/{run}/{song}/audio", (string run, string song, bool? download, SongLibrary library, TaggedFiles tagged) =>
+            download == true
+                ? AudioDownload(library, tagged, run, song)
+                : SongFile(library, run, song, "audio.flac", "audio/flac", "flac", download: false));
         // What the player plays: the AAC copy, since the Mac's home upload is too slow for the FLAC on the road.
         api.MapGet("/songs/{run}/{song}/stream", StreamAsync);
         // For the phone's share sheet: the FLAC is ten times larger than a messenger wants.
@@ -39,13 +43,13 @@ public static partial class LibraryEndpoints
         // What the song was made with, for "as a new song" in the web form.
         api.MapGet("/songs/{run}/{song}/request", (string run, string song, SongLibrary library) =>
             library.ReadRequest(run, song) is { } request ? Results.Ok(request) : Results.NotFound());
-        api.MapGet("/songs/{run}/{song}/zip", (string run, string song, SongLibrary library) =>
+        api.MapGet("/songs/{run}/{song}/zip", (string run, string song, SongLibrary library, TaggedFiles tagged) =>
             library.SongDirectory(run, song) is { } directory
-                ? Zip($"{FileName(library.TitleOf(run, directory), run)}-{song}.zip", SongEntries(library, run, directory))
+                ? TaggedZip($"{FileName(library.TitleOf(run, directory), run)}-{song}.zip", library, tagged, run, [directory])
                 : Results.NotFound());
-        api.MapGet("/runs/{run}/zip", (string run, SongLibrary library) =>
+        api.MapGet("/runs/{run}/zip", (string run, SongLibrary library, TaggedFiles tagged) =>
             library.SongDirectories(run) is { Count: > 0 } directories
-                ? Zip($"{FileName(library.TitleOf(run, directories[0]), run)}.zip", directories.SelectMany(d => SongEntries(library, run, d)))
+                ? TaggedZip($"{FileName(library.TitleOf(run, directories[0]), run)}.zip", library, tagged, run, directories)
                 : Results.NotFound());
         // A version in the works reads the song's audio; it is cancelled with its song by deleting the version first.
         api.MapDelete("/songs/{run}/{song}", (string run, string song, SongLibrary library, WorkerHost host, Voices.VoiceConverter voices) =>
@@ -88,7 +92,8 @@ public static partial class LibraryEndpoints
     /// The song as a small AAC, made anew each time into a temporary file that deletes itself once sent: it takes a
     /// few seconds, is shared rarely, and a cache would outlive deleted songs.
     /// </summary>
-    private static async Task<IResult> ShareAsync(string run, string song, SongLibrary library, IAudioEncoder encoder, CancellationToken cancellationToken)
+    private static async Task<IResult> ShareAsync(
+        string run, string song, SongLibrary library, IAudioEncoder encoder, TaggedFiles tagged, CancellationToken cancellationToken)
     {
         if (library.SongDirectory(run, song) is not { } directory || !File.Exists(Path.Combine(directory, "audio.flac")))
         {
@@ -102,6 +107,8 @@ public static partial class LibraryEndpoints
             {
                 return Results.Problem(title: "Neither afconvert nor ffmpeg is installed.", statusCode: StatusCodes.Status501NotImplemented);
             }
+            // The messenger or the phone it lands on shows the cover and the lyrics too.
+            tagged.TryTag(temp, StreamCopies.TagsFor(library, run, song, directory).Build());
             var stream = new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Delete, 1 << 16, FileOptions.DeleteOnClose);
             return Results.File(stream, "audio/mp4", $"{FileName(library.TitleOf(run, directory), run)}-{song}.m4a");
         }
@@ -188,12 +195,52 @@ public static partial class LibraryEndpoints
         return new StorageInfo(drive.AvailableFreeSpace, drive.TotalSize);
     }
 
-    /// <summary>What a song is worth keeping: its audio and its score, named like the single downloads.</summary>
-    private static IEnumerable<(string Path, string Name)> SongEntries(SongLibrary library, string run, string directory)
+    /// <summary>The song's FLAC as a tagged copy, named after its title.</summary>
+    private static IResult AudioDownload(SongLibrary library, TaggedFiles tagged, string run, string song)
     {
-        var name = $"{FileName(library.TitleOf(run, directory), run)}-{Path.GetFileName(directory)}";
-        yield return (Path.Combine(directory, "audio.flac"), $"{name}.flac");
-        yield return (Path.Combine(directory, "score.abc"), $"{name}.abc");
+        if (library.SongDirectory(run, song) is not { } directory || !File.Exists(Path.Combine(directory, "audio.flac")))
+        {
+            return Results.NotFound();
+        }
+        return tagged.Download(
+            Path.Combine(directory, "audio.flac"),
+            StreamCopies.TagsFor(library, run, song, directory).Build(),
+            "audio/flac",
+            $"{FileName(library.TitleOf(run, directory), run)}-{song}.flac");
+    }
+
+    /// <summary>
+    /// What a song is worth keeping: its audio, tagged like a download (into temporary copies, deleted once the
+    /// archive is written), and its score, named like the single downloads.
+    /// </summary>
+    private static IResult TaggedZip(string fileName, SongLibrary library, TaggedFiles tagged, string run, IReadOnlyList<string> directories)
+    {
+        var copies = new List<string>();
+        try
+        {
+            var entries = new List<(string Path, string Name)>();
+            foreach (var directory in directories)
+            {
+                var song = Path.GetFileName(directory);
+                var name = $"{FileName(library.TitleOf(run, directory), run)}-{song}";
+                var flac = Path.Combine(directory, "audio.flac");
+                if (File.Exists(flac))
+                {
+                    var copy = tagged.Copy(flac, StreamCopies.TagsFor(library, run, song, directory).Build());
+                    copies.Add(copy);
+                    entries.Add((copy, $"{name}.flac"));
+                }
+                entries.Add((Path.Combine(directory, "score.abc"), $"{name}.abc"));
+            }
+            return Zip(fileName, entries);
+        }
+        finally
+        {
+            foreach (var copy in copies)
+            {
+                File.Delete(copy);
+            }
+        }
     }
 
     /// <summary>

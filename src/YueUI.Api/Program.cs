@@ -43,6 +43,7 @@ builder.Services.AddSingleton<StreamCopies>();
 builder.Services.AddHostedService<StreamCopyMaker>();
 // Exporting it as MP3, M4A or FLAC with title, lyrics and cover.
 builder.Services.AddSingleton<IAudioTagger, TagLibTagger>();
+builder.Services.AddSingleton<TaggedFiles>();
 
 // Web Push: notifies subscribed browsers (the app on a phone's home screen) when something finishes.
 builder.Services.Configure<PushOptions>(builder.Configuration.GetSection(PushOptions.Section));
