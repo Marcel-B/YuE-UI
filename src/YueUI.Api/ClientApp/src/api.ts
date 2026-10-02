@@ -332,7 +332,7 @@ export async function getVoiceInfo(): Promise<VoiceInfo> {
   return (await send('/api/voice')).json() as Promise<VoiceInfo>
 }
 
-/** The reference voices ChangeMyVoice keeps. */
+/** The reference voices. */
 export async function listVoices(): Promise<ReferenceVoice[]> {
   return (await send('/api/voices')).json() as Promise<ReferenceVoice[]>
 }
@@ -382,7 +382,7 @@ export function versionStreamUrl(songId: string, versionId: string): string {
   return `${apiBase}/api/songs/${songId}/versions/${versionId}/stream`
 }
 
-/** The separation models StemMyWav offers, this server's default marked; at least that one. */
+/** The separation models offered, this server's default marked; at least that one. */
 export async function listStemModels(): Promise<StemModel[]> {
   return (await send('/api/stems/models')).json() as Promise<StemModel[]>
 }

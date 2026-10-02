@@ -10,7 +10,7 @@ import type { ReferenceVoice, VersionState } from '../types'
 import { showSong } from '../view'
 
 /**
- * The reference voices ChangeMyVoice keeps, the ones a song can be sung with ("Sing with a voice" in the library),
+ * The reference voices, the ones a song can be sung with ("Sing with a voice" in the library),
  * and the versions in the works. The voices live only in the service, as in yue-to-logic-pro, so both apps share one
  * collection.
  */
@@ -91,8 +91,8 @@ async function add(): Promise<void> {
 
 /**
  * The chosen file, played in the browser, so the part to keep can be found by ear: a recording often starts with
- * talking or silence, and ChangeMyVoice keeps only 25 seconds. Only the numbers go to the server, the whole file
- * with them; ChangeMyVoice cuts it (since its #20).
+ * talking or silence, and only 25 seconds are kept. Only the numbers go to the server, the whole file
+ * with them; the server cuts it.
  */
 const preview = useTemplateRef<HTMLAudioElement>('preview')
 const previewUrl = ref<string | null>(null)
@@ -107,7 +107,7 @@ const position = ref(0)
 /** Set while "play the part" runs, so playback stops at the end. */
 const playingClip = ref(false)
 
-/** ChangeMyVoice's limits: it keeps 25 seconds from the start and refuses a part shorter than 3. */
+/** The server's limits (Seed-VC's and ChangeMyVoice's alike): it keeps 25 seconds from the start and refuses a part shorter than 3. */
 const keptSeconds = 25
 const minSeconds = 3
 

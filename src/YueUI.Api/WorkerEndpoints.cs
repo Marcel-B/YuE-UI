@@ -54,7 +54,7 @@ public static class WorkerEndpoints
     private static async Task<IResult> Generate(
         GenerateRequest request,
         JobQueue queue,
-        VoiceClient voices,
+        VoiceEngine voices,
         IOptions<VoiceOptions> options,
         CancellationToken cancellationToken)
     {
@@ -68,7 +68,7 @@ public static class WorkerEndpoints
         {
             if (!options.Value.ConversionConfigured)
             {
-                return Results.Problem(title: "Voices are not configured (Voice:BaseUrl, the stem service and their keys).", statusCode: StatusCodes.Status501NotImplemented);
+                return Results.Problem(title: "Voices are not set up: neither Seed-VC and the separator (deploy/setup-mac.sh --voices) nor ChangeMyVoice and StemMyWav (Voice:BaseUrl, Voice:StemsBaseUrl and their keys).", statusCode: StatusCodes.Status501NotImplemented);
             }
             try
             {

@@ -28,8 +28,8 @@ public sealed class VoiceConverter(
     WorkerHost host,
     LyricsWriter lyrics,
     Speech.SpeechActivity speech,
-    VoiceClient voices,
-    StemClient stems,
+    VoiceEngine voices,
+    StemSeparator stems,
     IAudioMixer mixer,
     IOptions<VoiceOptions> options,
     TimeProvider time,
@@ -196,7 +196,6 @@ public sealed class VoiceConverter(
             _cancel = cancel;
         }
         var work = Path.Combine(Path.GetTempPath(), $"yueui-voice-{id}");
-        string? job = null;
         try
         {
             Interlocked.Exchange(ref _waitingTicks, version.CreatedAt.UtcTicks);
@@ -220,11 +219,10 @@ public sealed class VoiceConverter(
             var separated = await stems.SeparateAsync(Path.Combine(directory, "audio.flac"), version.StemModel, work, cancel.Token);
 
             version = Update(version, v => v with { Stage = "converting", Fraction = 0 });
-            var started = await voices.StartJobAsync(version, separated.Vocals, cancel.Token);
-            job = started.Id;
-            await WaitForJobAsync(version, started, cancel.Token);
             var converted = Path.Combine(work, "converted.wav");
-            await voices.DownloadResultAsync(job, converted, cancel.Token);
+            // Reaching 1 means the estimate ran out; the browser says so instead of a percentage stuck at the end.
+            await voices.ConvertAsync(version, separated.Vocals, converted, (fraction, estimated) =>
+                version = Update(version, v => v with { Fraction = Math.Round(Math.Clamp(fraction, 0, 1), 3), EstimatedSeconds = estimated }), cancel.Token);
 
             version = Update(version, v => v with { Stage = "mixing", Fraction = 0 });
             var mix = Path.Combine(work, "mix.flac");
@@ -262,10 +260,6 @@ public sealed class VoiceConverter(
             {
                 _running = null;
                 _cancel = null;
-            }
-            if (job is not null)
-            {
-                await voices.DeleteJobAsync(job);
             }
             try
             {
@@ -320,7 +314,7 @@ public sealed class VoiceConverter(
             var files = await stems.ExtractAsync(Path.Combine(directory, "audio.flac"), set.Model, set.Dereverb, work, cancel.Token);
             if (files.Count == 0)
             {
-                throw new VoiceServiceException($"The stem service's model {set.Model} gave no stems.");
+                throw new VoiceServiceException($"The separation model {set.Model} gave no stems.");
             }
             // The model has left the memory; measuring and encoding need none to speak of.
             _converting = false;
@@ -436,29 +430,6 @@ public sealed class VoiceConverter(
         }
 
         bool Occupied() => host.InUse || lyrics.IsWriting || speech.IsSpeaking;
-    }
-
-    /// <summary>ChangeMyVoice says how long it expects; the fraction is the time since the start against that.</summary>
-    private async Task WaitForJobAsync(VersionState version, VoiceJob job, CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            switch (job.Status)
-            {
-                case "COMPLETED":
-                    return;
-                case "FAILED" or "CANCELLED":
-                    throw new VoiceServiceException(job.Error ?? $"The voice service reports the job as {job.Status.ToLowerInvariant()}.");
-            }
-            if (job.StartedAt is { } started && job.EstimatedSeconds > 0)
-            {
-                // Reaching 1 means the estimate ran out; the browser says so instead of a percentage stuck at the end.
-                var fraction = Math.Min(1, (time.GetUtcNow() - started).TotalSeconds / job.EstimatedSeconds);
-                Update(version, v => v with { Fraction = Math.Round(fraction, 3), EstimatedSeconds = job.EstimatedSeconds });
-            }
-            await Task.Delay(options.Value.PollInterval, time, cancellationToken);
-            job = await voices.GetJobAsync(job.Id, cancellationToken);
-        }
     }
 
     /// <summary>Stores the change (a version deleted meanwhile stays deleted) and tells the browsers.</summary>

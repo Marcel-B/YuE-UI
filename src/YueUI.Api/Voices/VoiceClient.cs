@@ -17,8 +17,11 @@ public sealed class VoiceServiceException(string message, HttpStatusCode status 
 /// <param name="EstimatedSeconds">How long ChangeMyVoice expects the conversion to take.</param>
 public sealed record VoiceJob(string Id, string Status, string? Error, DateTimeOffset? StartedAt, double EstimatedSeconds);
 
-/// <summary>ChangeMyVoice's Mac API (<c>/api/v1</c>), with the key from <see cref="VoiceOptions"/>.</summary>
-public sealed class VoiceClient(IHttpClientFactory clients, IOptions<VoiceOptions> options)
+/// <summary>
+/// ChangeMyVoice's Mac API (<c>/api/v1</c>), with the key from <see cref="VoiceOptions"/>. Used where this server's
+/// own Seed-VC is not installed, and to take ChangeMyVoice's voices over once it is (<see cref="VoiceEngine"/>).
+/// </summary>
+public sealed class VoiceClient(IHttpClientFactory clients, IOptions<VoiceOptions> options, TimeProvider time) : IVoiceBackend
 {
     public const string HttpClientName = "voice";
 
@@ -52,17 +55,53 @@ public sealed class VoiceClient(IHttpClientFactory clients, IOptions<VoiceOption
         return ToVoice(await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken) ?? []);
     }
 
-    /// <summary>The stored recording (mono WAV, 44.1 kHz, at most 25 s); the caller disposes the response.</summary>
-    public Task<HttpResponseMessage> VoiceAudioAsync(string id, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Get, $"api/v1/voices/{Uri.EscapeDataString(id)}/audio", null, cancellationToken, headersOnly: true);
+    /// <summary>The stored recording (mono WAV, 44.1 kHz, at most 25 s), a few megabytes.</summary>
+    public async Task<VoiceAudio> VoiceAudioAsync(string id, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Get, $"api/v1/voices/{Uri.EscapeDataString(id)}/audio", null, cancellationToken);
+        return new VoiceAudio(await response.Content.ReadAsByteArrayAsync(cancellationToken), response.Content.Headers.ContentType?.MediaType ?? "audio/wav");
+    }
 
     public async Task DeleteVoiceAsync(string id, CancellationToken cancellationToken)
     {
         using var _ = await SendAsync(HttpMethod.Delete, $"api/v1/voices/{Uri.EscapeDataString(id)}", null, cancellationToken);
     }
 
+    /// <summary>
+    /// Hands the vocals to a job, follows it until it is done (ChangeMyVoice says how long it expects; the fraction is
+    /// the time since the start against that) and fetches the result; the job's files go at once afterwards.
+    /// </summary>
+    public async Task ConvertAsync(VersionState version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken)
+    {
+        var job = await StartJobAsync(version, vocals, cancellationToken);
+        try
+        {
+            while (true)
+            {
+                switch (job.Status)
+                {
+                    case "COMPLETED":
+                        await DownloadResultAsync(job.Id, output, cancellationToken);
+                        return;
+                    case "FAILED" or "CANCELLED":
+                        throw new VoiceServiceException(job.Error ?? $"The voice service reports the job as {job.Status.ToLowerInvariant()}.");
+                }
+                if (job.StartedAt is { } started && job.EstimatedSeconds > 0)
+                {
+                    progress((time.GetUtcNow() - started).TotalSeconds / job.EstimatedSeconds, job.EstimatedSeconds);
+                }
+                await Task.Delay(options.Value.PollInterval, time, cancellationToken);
+                job = await GetJobAsync(job.Id, cancellationToken);
+            }
+        }
+        finally
+        {
+            await DeleteJobAsync(job.Id);
+        }
+    }
+
     /// <summary>Hands the vocals over; the singing path (F0 conditioning) is ChangeMyVoice's default.</summary>
-    public async Task<VoiceJob> StartJobAsync(VersionState version, string vocals, CancellationToken cancellationToken)
+    private async Task<VoiceJob> StartJobAsync(VersionState version, string vocals, CancellationToken cancellationToken)
     {
         await using var source = File.OpenRead(vocals);
         var audio = new StreamContent(source);
@@ -85,13 +124,13 @@ public sealed class VoiceClient(IHttpClientFactory clients, IOptions<VoiceOption
         return ToJob(await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken) ?? []);
     }
 
-    public async Task<VoiceJob> GetJobAsync(string id, CancellationToken cancellationToken)
+    private async Task<VoiceJob> GetJobAsync(string id, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, $"api/v1/jobs/{Uri.EscapeDataString(id)}", null, cancellationToken);
         return ToJob(await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken) ?? []);
     }
 
-    public async Task DownloadResultAsync(string id, string path, CancellationToken cancellationToken)
+    private async Task DownloadResultAsync(string id, string path, CancellationToken cancellationToken)
     {
         using var response = await SendAsync(HttpMethod.Get, $"api/v1/jobs/{Uri.EscapeDataString(id)}/result", null, cancellationToken, headersOnly: true);
         await using var file = File.Create(path);
@@ -99,7 +138,7 @@ public sealed class VoiceClient(IHttpClientFactory clients, IOptions<VoiceOption
     }
 
     /// <summary>Cancels a running job or drops a finished one's files at once rather than at the service's next clean-up.</summary>
-    public async Task DeleteJobAsync(string id)
+    private async Task DeleteJobAsync(string id)
     {
         try
         {

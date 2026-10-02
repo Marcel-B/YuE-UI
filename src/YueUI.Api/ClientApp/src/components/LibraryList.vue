@@ -44,9 +44,9 @@ const props = defineProps<{
   error: string | null
   /** Songs the worker is working on; they cannot be rendered again meanwhile. */
   busyIds: Set<string>
-  /** ChangeMyVoice and StemMyWav are configured, so songs can be sung with another voice. */
+  /** Seed-VC and the separator are set up, so songs can be sung with another voice. */
   voices: boolean
-  /** StemMyWav is configured, so songs can be split into stems on the voices page. */
+  /** The separator is set up, so songs can be split into stems on the voices page. */
   stems?: boolean
   /** Versions as the event stream reports them, newer than the listing while they are in the works. */
   liveVersions: VersionState[]

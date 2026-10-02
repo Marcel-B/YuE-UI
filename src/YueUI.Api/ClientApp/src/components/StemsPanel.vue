@@ -9,7 +9,7 @@ import { showSong, songHref, stemSong } from '../view'
 import WaveformView from './WaveformView.vue'
 
 /**
- * Songs split into their stems by StemMyWav: pick a song and a model, and the stems are listed below once they are
+ * Songs split into their stems: pick a song and a model, and the stems are listed below once they are
  * made, each with its waveform to listen to and download. The separation waits in the same queue as the voices,
  * since it needs the same memory.
  */

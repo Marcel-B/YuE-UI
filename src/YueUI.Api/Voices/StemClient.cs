@@ -13,27 +13,11 @@ public sealed record Stems(string Vocals, string Instrumental, string? Reverb);
 /// <summary>
 /// StemMyWav's Mac API: <c>POST /api/separate</c> takes the FLAC and answers, once the separation is done, with a
 /// ZIP of 48 kHz WAVs. It is synchronous and one at a time, unlike its gateway, which queues; this server has its
-/// own queue and calls it on the same Mac.
+/// own queue and calls it on the same Mac. Used only where this server's own separator is not installed.
 /// </summary>
-public sealed class StemClient(IHttpClientFactory clients, IOptions<VoiceOptions> options)
+public sealed class StemClient(IHttpClientFactory clients, IOptions<VoiceOptions> options) : IStemBackend
 {
     public const string HttpClientName = "stems";
-
-    /// <param name="model">The model the version was asked with; the configured one where it names none.</param>
-    public async Task<Stems> SeparateAsync(string flac, string? model, string directory, CancellationToken cancellationToken)
-    {
-        model ??= options.Value.StemModel;
-        // Dry vocals: Seed-VC would copy the reverb into the new voice, and it is mixed back in untouched instead.
-        await ExtractAsync(flac, model, dereverb: true, directory, cancellationToken);
-        string? Stem(string name) => File.Exists(Path.Combine(directory, name)) ? Path.Combine(directory, name) : null;
-        var vocals = Stem("vocals_dry.wav") ?? Stem("vocals.wav");
-        var instrumental = Stem("instrumental.wav");
-        if (vocals is null || instrumental is null)
-        {
-            throw new VoiceServiceException($"The stem service's model {model} gave no vocals and instrumental.");
-        }
-        return new Stems(vocals, instrumental, Stem("vocals_reverb.wav"));
-    }
 
     /// <summary>
     /// Separates <paramref name="flac"/> into <paramref name="directory"/> and answers the WAVs the model made, in the

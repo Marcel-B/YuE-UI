@@ -9,8 +9,8 @@ using YueUI.Api.Voices;
 namespace YueUI.Api;
 
 /// <summary>
-/// Reference voices (kept by ChangeMyVoice, managed here like in yue-to-logic-pro) and songs sung with them
-/// (<see cref="VoiceConverter"/>). The key stays in this server's configuration; the browser only learns ids.
+/// Reference voices (this server's own where Seed-VC is installed, else ChangeMyVoice's) and songs sung with them
+/// (<see cref="VoiceConverter"/>). A key for ChangeMyVoice stays in this server's configuration; the browser only learns ids.
 /// </summary>
 public static class VoiceEndpoints
 {
@@ -21,14 +21,14 @@ public static class VoiceEndpoints
     {
         api.MapGet("/voice", (IOptions<VoiceOptions> options) =>
             new VoiceInfo(options.Value.VoicesConfigured, options.Value.ConversionConfigured, options.Value.StemsConfigured));
-        api.MapGet("/voices", (VoiceClient voices, CancellationToken cancellationToken) =>
+        api.MapGet("/voices", (VoiceEngine voices, CancellationToken cancellationToken) =>
             Call(async () => Results.Ok(await voices.ListVoicesAsync(cancellationToken))));
         api.MapPost("/voices", AddVoiceAsync)
             .DisableAntiforgery()
             .WithMetadata(new RequestSizeLimitAttribute(MaxVoiceBytes + 64 * 1024))
             .WithFormOptions(multipartBodyLengthLimit: MaxVoiceBytes);
         api.MapGet("/voices/{id}/audio", VoiceAudioAsync);
-        api.MapDelete("/voices/{id}", (string id, VoiceClient voices, CancellationToken cancellationToken) =>
+        api.MapDelete("/voices/{id}", (string id, VoiceEngine voices, CancellationToken cancellationToken) =>
             Call(async () =>
             {
                 await voices.DeleteVoiceAsync(id, cancellationToken);
@@ -58,7 +58,7 @@ public static class VoiceEndpoints
         IFormFile? file,
         [FromForm] double? startSeconds,
         [FromForm] double? endSeconds,
-        VoiceClient voices,
+        VoiceEngine voices,
         CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string[]>();
@@ -92,16 +92,14 @@ public static class VoiceEndpoints
     }
 
     /// <summary>Passed through as it arrives, to listen to the voice again.</summary>
-    private static async Task<IResult> VoiceAudioAsync(string id, VoiceClient voices, CancellationToken cancellationToken)
+    private static async Task<IResult> VoiceAudioAsync(string id, VoiceEngine voices, CancellationToken cancellationToken)
     {
         try
         {
             // Buffered rather than streamed through: Safari plays audio only from a source that answers range
             // requests, and a reference voice is at most 25 seconds, a few megabytes.
-            using var response = await voices.VoiceAudioAsync(id, cancellationToken);
-            var audio = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-            var type = response.Content.Headers.ContentType?.MediaType ?? "audio/wav";
-            return Results.File(audio, type, enableRangeProcessing: true);
+            var audio = await voices.VoiceAudioAsync(id, cancellationToken);
+            return Results.File(audio.Audio, audio.ContentType, enableRangeProcessing: true);
         }
         catch (VoiceServiceException exception)
         {
@@ -114,14 +112,14 @@ public static class VoiceEndpoints
         string song,
         VersionRequest request,
         SongLibrary library,
-        VoiceClient voices,
+        VoiceEngine voices,
         VoiceConverter converter,
         IOptions<VoiceOptions> options,
         CancellationToken cancellationToken)
     {
         if (!options.Value.ConversionConfigured)
         {
-            return Results.Problem(title: "Voices are not configured (Voice:BaseUrl, the stem service and their keys).", statusCode: StatusCodes.Status501NotImplemented);
+            return Results.Problem(title: "Voices are not set up: neither Seed-VC and the separator (deploy/setup-mac.sh --voices) nor ChangeMyVoice and StemMyWav (Voice:BaseUrl, Voice:StemsBaseUrl and their keys).", statusCode: StatusCodes.Status501NotImplemented);
         }
         var errors = request.Validate();
         if (errors.Count > 0)

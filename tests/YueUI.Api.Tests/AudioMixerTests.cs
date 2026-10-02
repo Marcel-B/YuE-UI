@@ -48,9 +48,10 @@ public sealed class AudioMixerTests : IDisposable
         var original = Path.Combine(_directory, "vocals_dry.wav");
         await Run(ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3",
             "-af", "volume=0.3,volume=enable='lt(t,1)':volume=0", "-ac", "2", original);
-        // Seed-VC's hiss everywhere, the song's voice from the second second.
+        // Seed-VC's hiss everywhere, the song's voice from the second second. A fixed seed: its peaks decide the
+        // second check, which a random one failed now and then.
         var converted = Path.Combine(_directory, "converted.wav");
-        await Run(ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=color=white:amplitude=0.05:sample_rate=44100:duration=3",
+        await Run(ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=color=white:amplitude=0.05:sample_rate=44100:duration=3:seed=1",
             "-ac", "1", converted);
         var output = Path.Combine(_directory, "mix.flac");
 

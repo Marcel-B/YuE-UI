@@ -26,6 +26,9 @@
     <!-- Run by YuE Studio's Python in front of its worker (PythonWorkerLauncher.ExtensionScript). -->
     <None Update="Worker\yueui_worker.py" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Speech\yueui_speech.py" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Seed-VC's conversion, run with its own Python (SeedVcEngine.Script). -->
+    <None Update="Voices\yueui_seedvc.py" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Voices\stem-models.json" LogicalName="stem-models.json" />
   </ItemGroup>
 
   <ItemGroup>

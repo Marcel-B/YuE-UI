@@ -65,11 +65,16 @@ builder.Services.AddSingleton<SqliteInstrumentStore>();
 builder.Services.AddSingleton<SqliteLogicPresetStore>();
 builder.Services.AddSingleton<SqliteSynthStore>();
 
-// Songs sung with a reference voice: StemMyWav separates, ChangeMyVoice converts, ffmpeg mixes. A slow separation
-// model takes three times as long as the song and answers only when it is done.
+// Songs sung with a reference voice: mlx-audio-separator separates, Seed-VC converts (both run here when installed,
+// else StemMyWav's and ChangeMyVoice's APIs), ffmpeg mixes. A slow separation model takes three times as long as the song.
 builder.Services.Configure<VoiceOptions>(builder.Configuration.GetSection(VoiceOptions.Section));
+builder.Services.AddSingleton<SqliteReferenceVoiceStore>();
 builder.Services.AddSingleton<VoiceClient>();
+builder.Services.AddSingleton<SeedVcVoices>();
+builder.Services.AddSingleton<VoiceEngine>();
 builder.Services.AddSingleton<StemClient>();
+builder.Services.AddSingleton<MlxStemSeparator>();
+builder.Services.AddSingleton<StemSeparator>();
 builder.Services.AddSingleton<IAudioMixer, FfmpegMixer>();
 builder.Services.AddHttpClient(VoiceClient.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(10));
 builder.Services.AddHttpClient(StemClient.HttpClientName, client => client.Timeout = TimeSpan.FromHours(2));

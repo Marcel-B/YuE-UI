@@ -2,9 +2,9 @@ using System.Text.Json.Serialization;
 
 namespace YueUI.Api.Voices;
 
-/// <param name="VoicesConfigured">ChangeMyVoice is set up, so reference voices can be managed.</param>
-/// <param name="ConversionConfigured">StemMyWav is set up as well, so songs can be sung with another voice.</param>
-/// <param name="StemsConfigured">StemMyWav is set up, so songs can be split into stems, with or without ChangeMyVoice.</param>
+/// <param name="VoicesConfigured">Seed-VC (or ChangeMyVoice) is set up, so reference voices can be managed.</param>
+/// <param name="ConversionConfigured">The separator is set up as well, so songs can be sung with another voice.</param>
+/// <param name="StemsConfigured">The separator (or StemMyWav) is set up, so songs can be split into stems, with or without voices.</param>
 public sealed record VoiceInfo(bool VoicesConfigured, bool ConversionConfigured, bool StemsConfigured = false);
 
 /// <summary>A reference voice kept by ChangeMyVoice; songs are sung with its timbre.</summary>
