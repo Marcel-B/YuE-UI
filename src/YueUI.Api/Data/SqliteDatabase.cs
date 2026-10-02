@@ -334,6 +334,22 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     PRAGMA user_version = 12;
                     """);
             }
+            if (current < 13)
+            {
+                // Reference voices moved here from ChangeMyVoice; their ids stay, since versions name them.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE reference_voices (
+                        id TEXT PRIMARY KEY,
+                        label TEXT NOT NULL,
+                        seconds REAL NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 13;
+                    """);
+            }
             _ready = true;
         }
     }

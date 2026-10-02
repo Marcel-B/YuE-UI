@@ -19,7 +19,7 @@ const props = defineProps<{
   queuedIds: Set<string>
   /** The last lyrics draft from the event stream, from any browser. */
   lyricsDraft: LyricsState | null
-  /** Songs can be sung with another voice (ChangeMyVoice and StemMyWav are configured). */
+  /** Songs can be sung with another voice (Seed-VC and the separator are set up). */
   voices: boolean
 }>()
 const form = defineModel<FormState>({ required: true })

@@ -27,14 +27,14 @@ Auf einem Mac, auf dem außer macOS nichts installiert ist, richtet ein Skript a
 ```sh
 xcode-select --install                 # Command Line Tools (git, clang), einmal
 git clone https://github.com/Marcel-B/YuE-UI.git ~/repos/YueUI
-~/repos/YueUI/deploy/setup-mac.sh      # --transcription, --speech oder --all für mehr
+~/repos/YueUI/deploy/setup-mac.sh      # --transcription, --voices, --speech oder --all für mehr
 ```
 
 Es prüft den Mac (Apple Silicon, macOS 14+, Speicher, rund 20 GB frei) und installiert, was fehlt: Homebrew, uv, ffmpeg, Node.js und das .NET 10 SDK. Danach holt es YuE2 ohne die App, nämlich als Git-Checkout von [YuE Studio](https://github.com/tonywestonuk/YuE-Studio) in der Version, gegen die Tonwerks Erweiterung des Workers geprüft ist (`ENGINE_REF`, derzeit v0.4.0). Es baut die Brücke zur Neural Engine, legt die Python-Umgebung an und lädt die Modelle (etwa 7 GB). Am Ende veröffentlicht es Tonwerk mit `deploy/install.sh` und startet den Worker einmal zur Probe. Mit `--transcription` kommt SheetSage2 dazu (etwa 2 GB), mit `--speech` das Sprachlabor.
 
 Die Schritte entsprechen denen des Installers der App und landen in denselben Ordnern (`~/Library/Application Support/YuE Studio`, Songs in `~/Music/YuE Studio`). Tonwerk braucht deshalb keine andere Konfiguration, und eine später installierte App findet die Modelle. Öffnet man die App, installiert sie ihre eigene Kopie über den Checkout; das funktioniert, nur die Git-Historie ist dann weg. Umgekehrt lässt das Skript eine Installation der App unangetastet, solange es nicht mit `--engine-from-source` läuft.
 
-Das Skript kann beliebig oft laufen: Was schon da ist, überspringt es. Mit einem anderen `ENGINE_REF` (zum Beispiel `ENGINE_REF=v0.5.0 deploy/setup-mac.sh`) wechselt es die Version von YuE2. Danach sagt die letzte Zeile, ob die Erweiterung von Tonwerk noch passt. Nicht eingerichtet werden Tailscale, LM Studio für die Songtexte und die Dienste für Stimmen und Stems (ChangeMyVoice, StemMyWav).
+Das Skript kann beliebig oft laufen: Was schon da ist, überspringt es. Mit einem anderen `ENGINE_REF` (zum Beispiel `ENGINE_REF=v0.5.0 deploy/setup-mac.sh`) wechselt es die Version von YuE2. Danach sagt die letzte Zeile, ob die Erweiterung von Tonwerk noch passt. Mit `--voices` richtet es auch die Stem-Trennung (mlx-audio-separator) und Seed-VC für andere Stimmen ein, je in einer eigenen Umgebung unter `~/Library/Application Support/YuE UI/engines`; findet es dort nichts, aber die Installationen von StemMyWav (`~/repos/StemMyWav/.venv`) und ChangeMyVoice (`~/mlx-vc`, `~/seed-vc-ref`), trägt es diese in `appsettings.Production.json` ein, statt alles neu zu laden. Nicht eingerichtet werden Tailscale und LM Studio für die Songtexte.
 
 ## Entwicklung
 
@@ -62,7 +62,7 @@ Auf dem iPhone lässt sich die Seite über „Teilen → Zum Home-Bildschirm“ 
 
 ## Seiten, Player und Playlists
 
-Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter), **Titel** (die Bibliothek) und **Playlist**; unter **Werkzeuge** stehen **Transkription** (SheetSage2), **Stimmen** (nur mit ChangeMyVoice oder StemMyWav, siehe unten), **Logic**, **Begleitstimmen** und **Sprachlabor** (siehe unten). Auf dem Handy steckt das hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also. Rechts führt die Sanduhr zur **Warteschlange** (was gerade rechnet und was wartet, mit Protokoll); solange etwas rechnet oder wartet, steht die Anzahl daneben, auch auf dem Handy. Das Zahnrad daneben schaltet Benachrichtigungen und die Sprache um, in der App auf dem Home-Bildschirm lädt es auch neu. Auf **Erstellen** zeigt dann eine Zeile, welches Modell gerade den Speicher hat.
+Die Menüleiste oben wechselt zwischen **Erstellen** (Formular, erweiterte Parameter), **Titel** (die Bibliothek) und **Playlist**; unter **Werkzeuge** stehen **Transkription** (SheetSage2), **Stimmen** (nur mit Stem-Trennung oder Seed-VC, siehe unten), **Logic**, **Begleitstimmen** und **Sprachlabor** (siehe unten). Auf dem Handy steckt das hinter dem Menüknopf. Die Seite steht in der Adresse (`/ui/#/songs`), die Zurück-Taste und ein Lesezeichen funktionieren also. Rechts führt die Sanduhr zur **Warteschlange** (was gerade rechnet und was wartet, mit Protokoll); solange etwas rechnet oder wartet, steht die Anzahl daneben, auch auf dem Handy. Das Zahnrad daneben schaltet Benachrichtigungen und die Sprache um, in der App auf dem Home-Bildschirm lädt es auch neu. Auf **Erstellen** zeigt dann eine Zeile, welches Modell gerade den Speicher hat.
 
 In der Warteschlange zeigt jeder Song seine Schritte als waagerechte Zeitleiste: Warten, Partitur, Tokens, Synthese und Audio, mit der Dauer jedes erledigten Schritts. Der Kreis des laufenden Schritts füllt sich mit dessen Fortschritt, darunter steht, was der Worker gerade meldet. Ein neu gerenderter Entwurf beginnt gleich bei der Synthese. Fertige Songs klappen auf eine Zeile mit der Gesamtdauer zusammen; **Schritte** öffnet die Zeitleiste wieder.
 
@@ -159,23 +159,23 @@ curl -s -X POST -H 'Content-Type: application/json' --data @ytl.json https://<ma
 
 ## Mit anderer Stimme singen
 
-YuE2 singt mit einer Stimme, die es selbst wählt. Mit [ChangeMyVoice](https://github.com/Marcel-B/ChangeMyVoice) (Seed-VC) und StemMyWav (Stem-Trennung), die beide auf demselben Mac laufen, singt Tonwerk einen fertigen Song mit einer Referenzstimme neu:
+YuE2 singt mit einer Stimme, die es selbst wählt. Mit Stem-Trennung (mlx-audio-separator) und [Seed-VC](https://github.com/Plachtaa/seed-vc), die Tonwerk selbst startet, singt es einen fertigen Song mit einer Referenzstimme neu:
 
-1. StemMyWav trennt `audio.flac` in trockenen Gesang, Hall und Instrumental.
-2. ChangeMyVoice singt den trockenen Gesang mit der gewählten Stimme neu, auf Wunsch eine Oktave höher oder tiefer.
+1. mlx-audio-separator trennt `audio.flac` in trockenen Gesang, Hall und Instrumental.
+2. Seed-VC singt den trockenen Gesang mit der gewählten Stimme neu, auf Wunsch eine Oktave höher oder tiefer.
 3. ffmpeg mischt die neue Stimme auf den Pegel der alten zurück unter das Instrumental, auf Wunsch mit dem Hall des Originals.
 
 Das Ergebnis ist eine **Fassung** des Songs: eine FLAC im Datenordner von Tonwerk (`versions/` neben `yueui.db`), nicht im Song-Ordner von YuE Studio. Die Bibliothek zeigt die Fassungen unter dem Song, zum Abspielen, Herunterladen und Löschen; wird der Song gelöscht, gehen seine Fassungen mit. Gestartet wird sie über den Knopf **Mit Stimme singen** beim Song (Stimme, Tonlage, Stärke der Stimme, Qualität, Hall). Ist sie fertig, kommt eine Benachrichtigung.
 
 Soll ein neuer Song gleich mit einer Stimme gesungen werden, wählt man sie schon im Formular unter **Danach mit Stimme singen** (mit Tonlage, Stärke und Qualität; der Hall des Originals bleibt wie im Dialog). Jeder Song des Laufs kommt dann, sobald er fertig ist, von selbst als Fassung in die Reihe; die Warteschlange zeigt die Stimme am Auftrag und am Song. Eine Neuberechnung (etwa ein Entwurf in voller Qualität) macht keine zweite Fassung.
 
-Die Seite **Stimmen** zeigt die Sammlung von ChangeMyVoice (dieselbe wie in yue-to-logic-pro): anhören, löschen und neue Aufnahmen hochladen. Am besten 10 bis 25 Sekunden trockener Gesang ohne Musik; ChangeMyVoice behält nur die ersten 25 Sekunden. Darunter stehen die Fassungen, die gerade entstehen.
+Die Seite **Stimmen** zeigt die Referenzstimmen: anhören, löschen und neue Aufnahmen hochladen. Am besten 10 bis 25 Sekunden trockener Gesang ohne Musik; Tonwerk behält höchstens 25 Sekunden ab dem gewählten Anfang, kürzer als 3 Sekunden nimmt es nicht. Die Stimmen liegen in `voices/` neben der Datenbank; die Sammlung von ChangeMyVoice übernimmt Tonwerk einmal mit ihren Kennungen, solange dort noch eine erreichbar ist (danach gelöschte bleiben gelöscht). Darunter stehen die Fassungen, die gerade entstehen.
 
-Darunter trennt **Stems** einen Song mit StemMyWav in seine Spuren: Song und Modell wählen (die Liste kommt von StemMyWav, sonst nur `Voice:StemModel`), auf Wunsch den Hall vom Gesang trennen, **Trennen**. Das wartet wie eine Fassung, bis YuE2 und das Textmodell den Speicher freigeben, und meldet sich per Benachrichtigung. Jede Spur lässt sich mit ihrer Wellenform anhören (ein Tipp in die Wellenform springt dorthin, beim Wechsel zu einer anderen Spur desselben Songs läuft die Zeit weiter) und als FLAC herunterladen. Die Dateien liegen in `stems/` neben der Datenbank, nicht im Songordner, und gehen mit dem Song. In der Bibliothek führt **In Stems trennen** beim Song direkt dorthin.
+Darunter trennt **Stems** einen Song in seine Spuren: Song und Modell wählen (die 27 Modelle aus dem Katalog von StemMyWav; jedes lädt beim ersten Mal herunter), auf Wunsch den Hall vom Gesang trennen, **Trennen**. Das wartet wie eine Fassung, bis YuE2 und das Textmodell den Speicher freigeben, und meldet sich per Benachrichtigung. Jede Spur lässt sich mit ihrer Wellenform anhören (ein Tipp in die Wellenform springt dorthin, beim Wechsel zu einer anderen Spur desselben Songs läuft die Zeit weiter) und als FLAC herunterladen. Die Dateien liegen in `stems/` neben der Datenbank, nicht im Songordner, und gehen mit dem Song. In der Bibliothek führt **In Stems trennen** beim Song direkt dorthin.
 
 Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für YuE2, Stem-Trennung und Seed-VC zugleich, deshalb geht immer nur eine Fassung, und erst wenn YuE2 nichts rechnet und kein Textentwurf läuft; ein untätiger YuE-Worker wird vorher beendet. Solange eine Fassung entsteht, warten neue Songs, Neuberechnungen und Textentwürfe in der Warteschlange.
 
-**Einrichtung.** ChangeMyVoice braucht einen eigenen Schlüssel für Tonwerk (`scripts/neuer-zugang.sh` im ChangeMyVoice-Repository) und muss Anfragen von der Adresse zulassen, von der Tonwerk kommt (bei `Voice:BaseUrl` über die Tailscale-Adresse des Macs ist es diese). Den Schlüssel liest Tonwerk aus `Voice:ApiKey` oder einer Datei (`Voice:ApiKeyFile`). Der Schlüssel für StemMyWav liegt schon in `~/.config/stemmywav/mac-api-key`, dort sucht Tonwerk ihn von selbst. Die Tonlage braucht ChangeMyVoice mit Halbton-Versatz (`setup-inference.sh --with-f0`). Ohne `Voice:BaseUrl` gibt es weder die Seite noch den Knopf; ohne StemMyWav nur die Seite.
+**Einrichtung.** `deploy/setup-mac.sh --voices` (siehe oben). Solange die Programme fehlen, nutzt Tonwerk wie bisher die APIs von ChangeMyVoice und StemMyWav, falls eingerichtet: ChangeMyVoice braucht einen eigenen Schlüssel für Tonwerk (`scripts/neuer-zugang.sh` im ChangeMyVoice-Repository) und muss Anfragen von der Adresse zulassen, von der Tonwerk kommt (bei `Voice:BaseUrl` über die Tailscale-Adresse des Macs ist es diese). Den Schlüssel liest Tonwerk aus `Voice:ApiKey` oder einer Datei (`Voice:ApiKeyFile`). Der Schlüssel für StemMyWav liegt schon in `~/.config/stemmywav/mac-api-key`, dort sucht Tonwerk ihn von selbst. Die Tonlage braucht ChangeMyVoice mit Halbton-Versatz (`setup-inference.sh --with-f0`). Ohne Seed-VC und ChangeMyVoice gibt es keinen Knopf zum Singen, ohne Trennung und Stimmen auch die Seite nicht.
 
 ## Sprachlabor
 
@@ -218,13 +218,19 @@ Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/`
 | `Lyrics:Lms` (`Lyrics__Lms`) | `~/.lmstudio/bin/lms` | Kommandozeilenwerkzeug, mit dem Tonwerk den Server von LM Studio startet |
 | `Logic:SplitSections` (`Logic__SplitSections`) | `false` | eine Region je Songabschnitt statt einer je Spur |
 | `Queue:BundleWindow` (`Queue__BundleWindow`) | `00:20:00` | so lange dürfen Songs für YuE2 an einem wartenden Textentwurf oder einer wartenden Fassung vorbei; `00:00:00` hält die Reihenfolge streng ein |
-| `Voice:BaseUrl` (`Voice__BaseUrl`) | – | ChangeMyVoice ohne `/api`, z. B. `http://100.93.85.52:5080`; leer schaltet Stimmen und Fassungen ab |
+| `Voice:EngineRoot` (`Voice__EngineRoot`) | `~/Library/Application Support/YuE UI/engines` | wo `--voices` Trennung und Seed-VC einrichtet; die folgenden fünf liegen darunter |
+| `Voice:Separator` (`Voice__Separator`) | `separator/env/bin/mlx-audio-separator` | das Trennprogramm; ist es da, trennt Tonwerk selbst statt über StemMyWav |
+| `Voice:SeparatorModels` (`Voice__SeparatorModels`) | `separator/models` | seine Modelle |
+| `Voice:SeedVcPython` (`Voice__SeedVcPython`) | `seed-vc/env/bin/python` | Python mit den Paketen von Seed-VC; mit `Voice:SeedVcPath` singt Tonwerk selbst statt über ChangeMyVoice |
+| `Voice:SeedVcPath` (`Voice__SeedVcPath`) | `seed-vc/src` | Checkout von Seed-VC |
+| `Voice:SeedVcModels` (`Voice__SeedVcModels`) | `seed-vc/models` | Checkpoints von Seed-VC (`HF_HUB_CACHE`), beim ersten Singen geladen |
+| `Voice:BaseUrl` (`Voice__BaseUrl`) | – | ChangeMyVoice ohne `/api` (nur ohne eigenes Seed-VC, und einmal für die Übernahme der Stimmen), z. B. `http://100.93.85.52:5080`; leer schaltet Stimmen und Fassungen ab |
 | `Voice:ApiKey` (`Voice__ApiKey`) | – | Schlüssel für ChangeMyVoice (`X-Api-Key`) |
 | `Voice:ApiKeyFile` (`Voice__ApiKeyFile`) | – | oder eine Datei, in der er steht |
 | `Voice:StemsBaseUrl` (`Voice__StemsBaseUrl`) | `http://127.0.0.1:5081` | API von StemMyWav auf dem Mac (nicht das Gateway) |
 | `Voice:StemsApiKey` (`Voice__StemsApiKey`) | – | Schlüssel für StemMyWav; ohne ihn gilt `Voice:StemsApiKeyFile` |
 | `Voice:StemsApiKeyFile` (`Voice__StemsApiKeyFile`) | `~/.config/stemmywav/mac-api-key` | Datei mit dem Schlüssel für StemMyWav |
-| `Voice:StemModel` (`Voice__StemModel`) | `mel-roformer-kim-vocals` | Trennmodell von StemMyWav |
+| `Voice:StemModel` (`Voice__StemModel`) | `mel-roformer-kim-vocals` | Trennmodell für Fassungen |
 | `Speech:Root` (`Speech__Root`) | `~/Library/Application Support/YuE UI/speech` | Ordner des Sprachlabors (Python-Umgebung und Modelle) |
 | `Speech:Python` (`Speech__Python`) | `<Root>/env/bin/python` | Python mit mlx-audio |
 | `Speech:ModelCache` (`Speech__ModelCache`) | `<Root>/models` | Hugging-Face-Cache der Sprachmodelle (`HF_HOME`) |
@@ -281,10 +287,10 @@ Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/`
 | `GET` | `/api/storage` | `{ freeBytes, totalBytes }` des Datenträgers der Bibliothek |
 | `GET` | `/api/lyrics/models` | Modelle für Textentwürfe: `{ default, models: [{ id, name, sizeBytes, loaded, vision }] }` (`vision`: kann Fotos lesen, `null`, wenn der Server es nicht sagt); startet den Server von LM Studio bei Bedarf, `503`, wenn er nicht erreichbar ist |
 | `POST` | `/api/lyrics` | Songtext entwerfen: `{ keywords, style?, language?, model?, image? }` (ohne `model` das eingestellte; `image` ein Foto als `data:image/jpeg;base64,…`-URL, dann ist `keywords` optional); mit `lyrics` und `instruction` statt dessen einen vorhandenen Text wie angewiesen überarbeiten (`keywords` optional, kein `image`); antwortet `202` mit `{ id, stage }`, der Entwurf kommt als `lyrics`-Event (`writing`, dann `done` mit `lyrics` oder `failed` mit `message`); solange YuE2 rechnet oder schon ein Entwurf entsteht, wartet er in der Warteschlange (`stage` ist dann `queued`) |
-| `GET` | `/api/voice` | `{ voicesConfigured, conversionConfigured }`: ob ChangeMyVoice bzw. dazu StemMyWav eingerichtet ist |
-| `GET` | `/api/voices` | Referenzstimmen von ChangeMyVoice: `[{ id, label, seconds, createdAt }]` |
+| `GET` | `/api/voice` | `{ voicesConfigured, conversionConfigured, stemsConfigured }`: ob Stimmen (Seed-VC oder ChangeMyVoice), dazu die Trennung, bzw. die Trennung eingerichtet ist |
+| `GET` | `/api/voices` | Referenzstimmen: `[{ id, label, seconds, createdAt }]` |
 | `POST` | `/api/voices` | Stimme anlegen: Formular mit `label` und `file` (Audio bis 64 MB) |
-| `GET` | `/api/voices/{id}/audio` | Aufnahme der Stimme, wie ChangeMyVoice sie behalten hat |
+| `GET` | `/api/voices/{id}/audio` | Aufnahme der Stimme, wie sie behalten wurde |
 | `DELETE` | `/api/voices/{id}` | Stimme löschen; `409`, solange ein Auftrag von ChangeMyVoice sie braucht |
 | `POST` | `/api/songs/{run}/{song}/versions` | Song mit einer Stimme neu singen: `{ voiceId, semiToneShift?: -24–24, strength?: 0–1, diffusionSteps?: 10–100, keepReverb? }`; antwortet `202`, der Fortschritt kommt als `version`-Event (`queued`, `separating`, `converting`, `mixing`, dann `done` oder `failed`); `400` für eine unbekannte Stimme, `501` ohne Einrichtung |
 | `GET` | `/api/songs/{run}/{song}/versions/{id}/audio` | fertige Fassung als FLAC (Range-fähig; `?download=true` als getaggter Download wie beim Song) |

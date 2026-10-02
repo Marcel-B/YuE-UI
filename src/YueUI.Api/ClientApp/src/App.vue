@@ -260,7 +260,7 @@ const badges = computed<Partial<Record<View, number>>>(() => ({
 }))
 
 /**
- * Voices need ChangeMyVoice, stems StemMyWav; without either the page is left out of the menu, and the library offers
+ * Voices need Seed-VC (or ChangeMyVoice), stems the separator (or StemMyWav); without either the page is left out of the menu, and the library offers
  * only what is there.
  */
 const voiceInfo = ref<VoiceInfo>({ voicesConfigured: false, conversionConfigured: false, stemsConfigured: false })

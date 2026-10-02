@@ -287,15 +287,15 @@ export interface StorageInfo {
   totalBytes: number
 }
 
-/** Whether voices can be managed (ChangeMyVoice) and songs sung with them (StemMyWav as well); VoiceEndpoints.cs. */
+/** Whether voices can be managed (Seed-VC or ChangeMyVoice) and songs sung with them (the separator as well); VoiceEndpoints.cs. */
 export interface VoiceInfo {
   voicesConfigured: boolean
   conversionConfigured: boolean
-  /** StemMyWav alone: songs can be split into stems, with or without ChangeMyVoice. */
+  /** The separator alone: songs can be split into stems, with or without voices. */
   stemsConfigured: boolean
 }
 
-/** A separation model StemMyWav offers (Voices/StemModels.cs). */
+/** A separation model (Voices/StemModels.cs). */
 export interface StemModel {
   id: string
   name: string
@@ -311,7 +311,7 @@ export interface StemModel {
 
 /** One stem of a separation (Voices/StemModels.cs). */
 export interface StemFile {
-  /** What StemMyWav called it: vocals, instrumental, drums, vocals_dry, … */
+  /** What the model called it: vocals, instrumental, drums, vocals_dry, … */
   name: string
   file: string
   seconds: number
@@ -337,7 +337,7 @@ export interface StemSetState {
   finished: boolean
 }
 
-/** A reference voice ChangeMyVoice keeps (Voices/VoiceModels.cs). */
+/** A reference voice (Voices/VoiceModels.cs). */
 export interface ReferenceVoice {
   id: string
   label: string
@@ -360,7 +360,7 @@ export interface VersionState {
   strength: number
   diffusionSteps: number
   keepReverb: boolean
-  /** StemMyWav's model that separated the vocals; null for versions made before it was kept. */
+  /** The separation model that separated the vocals; null for versions made before it was kept. */
   stemModel: string | null
   stage: VersionStage
   /** Progress of the conversion, 0–1, estimated from the time the voice service expects; 1 once that has passed. */

@@ -35,7 +35,7 @@ public static class StemEndpoints
     /// StemMyWav's catalog with this server's model marked as the default; only that model where the service lists
     /// none (its Mac API may not answer <c>api/models</c>, only its gateway surely does).
     /// </summary>
-    private static async Task<IResult> ListModelsAsync(StemClient stems, IOptions<VoiceOptions> options, CancellationToken cancellationToken)
+    private static async Task<IResult> ListModelsAsync(StemSeparator stems, IOptions<VoiceOptions> options, CancellationToken cancellationToken)
     {
         if (!options.Value.StemsConfigured)
         {
@@ -93,5 +93,5 @@ public static class StemEndpoints
     }
 
     private static IResult NotConfigured() =>
-        Results.Problem(title: "No stem service is configured (Voice:StemsBaseUrl and its key).", statusCode: StatusCodes.Status501NotImplemented);
+        Results.Problem(title: "No separator is installed (deploy/setup-mac.sh --voices) and no stem service configured (Voice:StemsBaseUrl and its key).", statusCode: StatusCodes.Status501NotImplemented);
 }

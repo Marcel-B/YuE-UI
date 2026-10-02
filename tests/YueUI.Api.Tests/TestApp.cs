@@ -154,6 +154,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
                 options.StemsApiKeyFile = null;
                 options.PollInterval = TimeSpan.FromMilliseconds(10);
                 options.WaitInterval = TimeSpan.FromMilliseconds(10);
+                // Empty unless a test installs fake engines there (LocalEngines).
+                options.EngineRoot = Path.Combine(Root, "engines");
             });
             services.AddHttpClient(VoiceClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeVoiceService.Handler(Voice));
             services.AddHttpClient(StemClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeStems.Handler(Stems));

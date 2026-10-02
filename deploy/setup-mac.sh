@@ -5,8 +5,9 @@
 #
 #   deploy/setup-mac.sh                    everything Tonwerk needs to make songs
 #   deploy/setup-mac.sh --transcription    plus SheetSage2 for transcriptions (about 2 GB more)
+#   deploy/setup-mac.sh --voices           plus stem separation and Seed-VC for other voices (about 3 GB more)
 #   deploy/setup-mac.sh --speech           plus the speech lab's environment (deploy/install-speech.sh)
-#   deploy/setup-mac.sh --all              both
+#   deploy/setup-mac.sh --all              all three
 #   deploy/setup-mac.sh --engine-from-source
 #                                          replace an engine the YuE Studio app installed by a git checkout
 #
@@ -30,17 +31,23 @@ ENGINE_REF="${ENGINE_REF:-v0.4.0}"
 ROOT="$HOME/Library/Application Support/YuE Studio"
 OUTPUT="$HOME/Music/YuE Studio"
 SHEETSAGE_RECIPE=1   # SheetSageInstaller.recipe: the app reinstalls when its recipe differs from the marker's
+# Stems and voices: Tonwerk runs mlx-audio-separator and Seed-VC itself (Voice:EngineRoot, default below).
+ENGINES="$HOME/Library/Application Support/YuE UI/engines"
+SEED_VC_REPO="https://github.com/Plachtaa/seed-vc.git"
+SEED_VC_REF="${SEED_VC_REF:-51383efd921027683c89e5348211d93ff12ac2a8}"
 
 TRANSCRIPTION=false
+VOICES=false
 SPEECH=false
 FROM_SOURCE=false
 for argument in "$@"; do
   case "$argument" in
     --transcription) TRANSCRIPTION=true ;;
+    --voices) VOICES=true ;;
     --speech) SPEECH=true ;;
-    --all) TRANSCRIPTION=true; SPEECH=true ;;
+    --all) TRANSCRIPTION=true; VOICES=true; SPEECH=true ;;
     --engine-from-source) FROM_SOURCE=true ;;
-    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown argument: $argument" >&2; exit 2 ;;
   esac
 done
@@ -184,6 +191,76 @@ if [ "$TRANSCRIPTION" = true ]; then
   fi
 fi
 
+if [ "$VOICES" = true ]; then
+  step "Stem separation (mlx-audio-separator)"
+  # Separator and Seed-VC each get an environment of their own: Seed-VC needs transformers 4.46 and
+  # huggingface-hub below 1.0, which neither YuE2 nor mlx-audio-separator should be held to.
+  SEPARATOR="$ENGINES/separator"
+  OVERRIDES=""
+  if [ -x "$SEPARATOR/env/bin/mlx-audio-separator" ]; then
+    echo "Already installed."
+  elif [ -x "$HOME/repos/StemMyWav/.venv/bin/mlx-audio-separator" ]; then
+    # StemMyWav's Mac API ran it before; its environment and downloaded models serve as they are.
+    echo "Using StemMyWav's installation."
+    OVERRIDES="${OVERRIDES}Separator=$HOME/repos/StemMyWav/.venv/bin/mlx-audio-separator
+SeparatorModels=$HOME/repos/StemMyWav/.models
+"
+  else
+    uv python install 3.12
+    uv venv "$SEPARATOR/env" --python 3.12 --clear
+    uv pip install --python "$SEPARATOR/env/bin/python" --quiet "mlx-audio-separator[convert]"
+    mkdir -p "$SEPARATOR/models"
+    echo "Installed; each model downloads on its first separation."
+  fi
+
+  step "Seed-VC"
+  SEED_VC="$ENGINES/seed-vc"
+  if [ -x "$SEED_VC/env/bin/python" ] && [ -f "$SEED_VC/src/inference.py" ]; then
+    echo "Already installed."
+  elif [ -x "$HOME/mlx-vc/.venv/bin/python" ] && [ -f "$HOME/seed-vc-ref/inference.py" ]; then
+    # ChangeMyVoice's installation (its init.md), with the checkpoints it already downloaded.
+    echo "Using ChangeMyVoice's installation."
+    OVERRIDES="${OVERRIDES}SeedVcPython=$HOME/mlx-vc/.venv/bin/python
+SeedVcPath=$HOME/seed-vc-ref
+SeedVcModels=$HOME/seed-vc-ref/checkpoints/hf_cache
+"
+  else
+    [ -d "$SEED_VC/src/.git" ] || git clone --filter=blob:none --quiet "$SEED_VC_REPO" "$SEED_VC/src"
+    git -C "$SEED_VC/src" fetch --quiet origin
+    git -C "$SEED_VC/src" checkout --quiet --detach "$SEED_VC_REF"
+    # The steps of ChangeMyVoice's init.md, which found this combination working on the Mac: Python 3.10, PyTorch
+    # from PyPI (requirements-mac.txt's first four lines want nightlies and CUDA indexes), matplotlib for BigVGAN,
+    # huggingface-hub 0.28.1 for transformers 4.46.3.
+    uv python install 3.10
+    uv venv "$SEED_VC/env" --python 3.10 --clear
+    SEED_PYTHON="$SEED_VC/env/bin/python"
+    uv pip install --python "$SEED_PYTHON" --quiet torch torchaudio
+    tail -n +5 "$SEED_VC/src/requirements-mac.txt" > "$SEED_VC/requirements.txt"
+    uv pip install --python "$SEED_PYTHON" --quiet -r "$SEED_VC/requirements.txt" matplotlib
+    uv pip install --python "$SEED_PYTHON" --quiet "huggingface-hub==0.28.1"
+    mkdir -p "$SEED_VC/models"
+    "$SEED_PYTHON" -c 'import torch, munch, librosa, transformers; print("torch", torch.__version__, "MPS", torch.backends.mps.is_available())'
+    echo "Installed; the checkpoints download on the first conversion."
+  fi
+
+  if [ -n "$OVERRIDES" ]; then
+    # install.sh rewrites appsettings.json, not this file, which the server reads over it.
+    SETTINGS="$HOME/Library/Application Support/YueUI/app/appsettings.Production.json"
+    mkdir -p "$(dirname "$SETTINGS")"
+    OVERRIDES="$OVERRIDES" /usr/bin/python3 - "$SETTINGS" <<'PY'
+import json, os, sys
+path, pairs = sys.argv[1], os.environ["OVERRIDES"].split("\n")[:-1]
+settings = json.load(open(path)) if os.path.exists(path) else {}
+voice = settings.setdefault("Voice", {})
+for pair in pairs:
+    key, value = pair.split("=", 1)
+    voice[key] = value
+json.dump(settings, open(path, "w"), indent=2)
+PY
+    echo "Settings for the existing installations written to $SETTINGS."
+  fi
+fi
+
 step "Tonwerk"
 "$REPO/deploy/install.sh"
 
@@ -209,5 +286,5 @@ cat <<EOF
 Tonwerk runs on http://127.0.0.1:5090/ui/. Not set up by this script:
   - access from the phone: install Tailscale, then  tailscale serve --bg --https=8443 5090
   - lyrics drafts: LM Studio (brew install --cask lm-studio) with a model, see the README
-  - voices and stems: ChangeMyVoice and StemMyWav, each from its own repository
+  - voices and stems, unless --voices was given: run this again with --voices
 EOF
