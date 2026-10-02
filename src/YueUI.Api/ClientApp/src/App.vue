@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
-import { getStorage, getVoiceInfo, listLibrary, songRequest, songScore, subscribe } from './api'
+import { coverUrl, getStorage, getVoiceInfo, listLibrary, songRequest, songScore, subscribe } from './api'
 import AdvancedParameters from './components/AdvancedParameters.vue'
 import GenerateForm from './components/GenerateForm.vue'
 import SettingsMenu from './components/SettingsMenu.vue'
@@ -18,8 +18,7 @@ import { current, refreshTracks } from './player'
 import { loadPlaylists, playlistIds } from './playlist'
 import { ratings, setRatings } from './ratings'
 import { reviewCount, reviewDays } from './review'
-import { shareState } from './share'
-import { exportTarget } from './export'
+import { exportTarget, registerExportLookup } from './export'
 import { checkForUpdate, reload, updateAvailable } from './update'
 import { visuals } from './spectrum'
 import QueueOverview from './components/QueueOverview.vue'
@@ -44,7 +43,6 @@ import type {
 // Loaded after the first paint: the library brings DataView with its Paginator and InputNumber, Fieldset and
 // Dialog, a good part of PrimeVue that the create page does not need; sharing needs its dialog only when used.
 const LibraryList = defineAsyncComponent(() => import('./components/LibraryList.vue'))
-const ShareDialog = defineAsyncComponent(() => import('./components/ShareDialog.vue'))
 const ExportDialog = defineAsyncComponent(() => import('./components/ExportDialog.vue'))
 // The Logic page brings the options form, the piano roll and the MIDI preview; loaded only once it is opened.
 const LogicPage = defineAsyncComponent(() => import('./components/LogicPage.vue'))
@@ -331,6 +329,18 @@ const librarySongs = computed(
   () => new Map(runs.value.flatMap((run) => run.songs.map((song) => [song.id, { run, song }] as const))),
 )
 const listedIds = computed(() => new Set(librarySongs.value.keys()))
+// The share and export dialog opened from the player or the playlist, which know a song only by its id.
+registerExportLookup((songId) => {
+  const found = librarySongs.value.get(songId)
+  return found
+    ? {
+        songId,
+        title: found.run.title,
+        style: found.run.style,
+        cover: found.song.coverUpdatedAt ? coverUrl(songId, found.song.coverUpdatedAt) : undefined,
+      }
+    : undefined
+})
 const storage = ref<StorageInfo | null>(null)
 /** What all runs take, so it is clear what deleting would gain. */
 const storageLabel = computed(() =>
@@ -462,7 +472,6 @@ async function useAsNewSong(songId: string): Promise<void> {
 <template>
   <AudioBackground v-if="visuals.background" />
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
-  <ShareDialog v-if="shareState" />
   <ExportDialog v-if="exportTarget" />
   <!--
     Header and player frame the page like the rollers of a scroll: both as wide as the page including its padding,

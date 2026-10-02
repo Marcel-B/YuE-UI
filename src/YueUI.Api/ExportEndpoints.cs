@@ -7,7 +7,7 @@ using YueUI.Api.Share;
 namespace YueUI.Api;
 
 /// <summary>
-/// A song as a file for a music library: MP3, M4A or FLAC with title, artist, album, genre, lyrics and cover in the
+/// A song as a file for a music library or to share: MP3, M4A, FLAC or a small AAC with title, artist, album, genre, lyrics and cover in the
 /// format's own tags, so a phone or Apple Music shows them. The browser picks the artist, genre and cover (it draws a
 /// default cover itself); without one the song's own cover goes in, if it has one. Everything else comes from the song. Made anew each time into a temporary file, like the
 /// share endpoint's AAC.
@@ -49,9 +49,9 @@ public static class ExportEndpoints
             return Results.NotFound();
         }
         var errors = new Dictionary<string, string[]>();
-        if (format?.ToLowerInvariant() is not ("mp3" or "m4a" or "flac"))
+        if (format?.ToLowerInvariant() is not ("mp3" or "m4a" or "flac" or "small"))
         {
-            errors["format"] = ["One of mp3, m4a or flac."];
+            errors["format"] = ["One of mp3, m4a, flac or small (AAC to share)."];
         }
         if (artist?.Length > MaxFieldLength)
         {
@@ -79,7 +79,8 @@ public static class ExportEndpoints
             image = new CoverImage(await File.ReadAllBytesAsync(own.Path, cancellationToken), own.ContentType);
         }
 
-        var extension = format!.ToLowerInvariant();
+        var kind = format!.ToLowerInvariant();
+        var extension = kind == "small" ? "m4a" : kind;
         var temp = Path.Combine(Path.GetTempPath(), $"yueui-export-{Guid.NewGuid():N}.{extension}");
         try
         {
@@ -92,7 +93,7 @@ public static class ExportEndpoints
                 flac,
                 temp,
                 extension == "mp3" ? AudioFormat.Mp3 : AudioFormat.M4a,
-                extension == "mp3" ? Mp3BitRate : M4aBitRate,
+                kind switch { "mp3" => Mp3BitRate, "small" => AacEncoder.BitRate, _ => M4aBitRate },
                 cancellationToken))
             {
                 File.Delete(temp);

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using YueUI.Api.Data;
+using YueUI.Api.Export;
 using YueUI.Api.Library;
 using YueUI.Api.Share;
 using YueUI.Api.Voices;
@@ -36,8 +37,8 @@ public static class VoiceEndpoints
 
         api.MapPost("/songs/{run}/{song}/versions", AddVersionAsync);
         // Range requests, as for the song itself: the player seeks and starts before the whole FLAC is there.
-        api.MapGet("/songs/{run}/{song}/versions/{id}/audio", (string run, string song, string id, bool? download, SqliteVersionStore store, SongLibrary library) =>
-            VersionAudio(run, song, id, download == true, store, library));
+        api.MapGet("/songs/{run}/{song}/versions/{id}/audio", (string run, string song, string id, bool? download, SqliteVersionStore store, SongLibrary library, TaggedFiles tagged) =>
+            VersionAudio(run, song, id, download == true, store, library, tagged));
         // The player's copy, as for the song itself (LibraryEndpoints.StreamAsync).
         api.MapGet("/songs/{run}/{song}/versions/{id}/stream", VersionStreamAsync);
         api.MapDelete("/songs/{run}/{song}/versions/{id}", (string run, string song, string id, SqliteVersionStore store, VoiceConverter converter) =>
@@ -157,16 +158,23 @@ public static class VoiceEndpoints
             : LibraryEndpoints.StreamFile(context, store.FilePath(id), "audio/flac");
     }
 
-    private static IResult VersionAudio(string run, string song, string id, bool download, SqliteVersionStore store, SongLibrary library)
+    /// <summary>A download is a tagged copy with the song's cover and lyrics, like the song's own (LibraryEndpoints).</summary>
+    private static IResult VersionAudio(
+        string run, string song, string id, bool download, SqliteVersionStore store, SongLibrary library, TaggedFiles tagged)
     {
         if (store.Get(id) is not { Stage: "done" } version || version.SongId != $"{run}/{song}" || !File.Exists(store.FilePath(id)))
         {
             return Results.NotFound();
         }
-        var fileName = download && library.SongDirectory(run, song) is { } directory
-            ? $"{LibraryEndpoints.FileName(library.TitleOf(run, directory), run)}-{song}-{LibraryEndpoints.FileName(version.VoiceLabel, "voice")}.flac"
-            : null;
-        return Results.File(store.FilePath(id), "audio/flac", fileName, enableRangeProcessing: true);
+        if (download && library.SongDirectory(run, song) is { } directory)
+        {
+            return tagged.Download(
+                store.FilePath(id),
+                StreamCopies.TagsFor(library, run, song, directory, version.VoiceLabel).Build(),
+                "audio/flac",
+                $"{LibraryEndpoints.FileName(library.TitleOf(run, directory), run)}-{song}-{LibraryEndpoints.FileName(version.VoiceLabel, "voice")}.flac");
+        }
+        return Results.File(store.FilePath(id), "audio/flac", enableRangeProcessing: true);
     }
 
     private static async Task<IResult> Call(Func<Task<IResult>> call)
