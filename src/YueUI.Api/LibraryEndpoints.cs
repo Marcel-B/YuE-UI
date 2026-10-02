@@ -36,8 +36,6 @@ public static partial class LibraryEndpoints
                 : SongFile(library, run, song, "audio.flac", "audio/flac", "flac", download: false));
         // What the player plays: the AAC copy, since the Mac's home upload is too slow for the FLAC on the road.
         api.MapGet("/songs/{run}/{song}/stream", StreamAsync);
-        // For the phone's share sheet: the FLAC is ten times larger than a messenger wants.
-        api.MapGet("/songs/{run}/{song}/share", ShareAsync);
         api.MapGet("/songs/{run}/{song}/score", (string run, string song, SongLibrary library) =>
             SongFile(library, run, song, "score.abc", "text/vnd.abc; charset=utf-8", "abc", download: true));
         // What the song was made with, for "as a new song" in the web form.
@@ -86,42 +84,6 @@ public static partial class LibraryEndpoints
         context.Response.Headers.CacheControl = "no-cache";
         var tag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{info.LastWriteTimeUtc.Ticks:x}-{info.Length:x}\"");
         return Results.File(path, contentType, lastModified: info.LastWriteTimeUtc, entityTag: tag, enableRangeProcessing: true);
-    }
-
-    /// <summary>
-    /// The song as a small AAC, made anew each time into a temporary file that deletes itself once sent: it takes a
-    /// few seconds, is shared rarely, and a cache would outlive deleted songs.
-    /// </summary>
-    private static async Task<IResult> ShareAsync(
-        string run, string song, SongLibrary library, IAudioEncoder encoder, TaggedFiles tagged, CancellationToken cancellationToken)
-    {
-        if (library.SongDirectory(run, song) is not { } directory || !File.Exists(Path.Combine(directory, "audio.flac")))
-        {
-            return Results.NotFound();
-        }
-
-        var temp = Path.Combine(Path.GetTempPath(), $"yueui-share-{Guid.NewGuid():N}.m4a");
-        try
-        {
-            if (!await encoder.EncodeAsync(Path.Combine(directory, "audio.flac"), temp, AudioFormat.M4a, AacEncoder.BitRate, cancellationToken))
-            {
-                return Results.Problem(title: "Neither afconvert nor ffmpeg is installed.", statusCode: StatusCodes.Status501NotImplemented);
-            }
-            // The messenger or the phone it lands on shows the cover and the lyrics too.
-            tagged.TryTag(temp, StreamCopies.TagsFor(library, run, song, directory).Build());
-            var stream = new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Delete, 1 << 16, FileOptions.DeleteOnClose);
-            return Results.File(stream, "audio/mp4", $"{FileName(library.TitleOf(run, directory), run)}-{song}.m4a");
-        }
-        catch (InvalidOperationException exception)
-        {
-            File.Delete(temp);
-            return Results.Problem(title: "The song could not be encoded.", detail: exception.Message, statusCode: StatusCodes.Status500InternalServerError);
-        }
-        catch
-        {
-            File.Delete(temp);
-            throw;
-        }
     }
 
     /// <summary>

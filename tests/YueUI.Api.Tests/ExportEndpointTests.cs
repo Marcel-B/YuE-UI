@@ -69,6 +69,24 @@ public sealed class ExportEndpointTests : IDisposable
         Assert.Equal((AudioFormat.M4a, ExportEndpoints.M4aBitRate), (_app.Encoder.Format, _app.Encoder.BitRate));
     }
 
+    [Fact]
+    public async Task A_small_file_to_share_is_aac_at_the_lowest_rate_with_the_songs_own_cover_and_lyrics()
+    {
+        _app.AddSong(Run, "song1");
+        var cover = new ByteArrayContent(Jpeg);
+        cover.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+        await _app.CreateClient().PutAsync($"/api/songs/{Run}/song1/cover", new MultipartFormDataContent { { cover, "cover", "cover.jpg" } });
+
+        var response = await Export("song1", "small");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("audio/mp4", response.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("Neon Night-song1.m4a", response.Content.Headers.ContentDisposition!.FileNameStar);
+        Assert.Equal((AudioFormat.M4a, AacEncoder.BitRate), (_app.Encoder.Format, _app.Encoder.BitRate));
+        Assert.Equal(Jpeg, _app.Tagger.Tags!.Cover!.Data);
+        Assert.Equal("[verse]\nLa la", _app.Tagger.Tags.Lyrics);
+    }
+
     [Theory]
     [InlineData("wav", null)]
     [InlineData(null, null)]

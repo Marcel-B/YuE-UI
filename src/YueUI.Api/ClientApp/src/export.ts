@@ -2,13 +2,14 @@ import { ref } from 'vue'
 import { styleCategories } from './styleTags'
 
 /**
- * Exporting a song for a music library: MP3, M4A or FLAC with title, lyrics, artist, genre and cover in its tags.
- * The server writes the tags; the browser picks artist and genre and makes the cover, a drawn one by default or a
- * photo. `ExportDialog.vue` (one, in App.vue) asks for them.
+ * Sharing or exporting a song, behind one button: a small AAC for a messenger, or MP3, M4A or FLAC for a music
+ * library, each with title, lyrics, artist, genre and cover in its tags, then saved or handed to the share sheet.
+ * The server writes the tags and puts in the song's own cover; only a song without one gets the drawn cover from
+ * the browser. `ExportDialog.vue` (one, in App.vue) asks for the rest.
  */
-export type ExportFormat = 'mp3' | 'm4a' | 'flac'
+export type ExportFormat = 'small' | 'mp3' | 'm4a' | 'flac'
 
-export const exportFormats: ExportFormat[] = ['mp3', 'm4a', 'flac']
+export const exportFormats: ExportFormat[] = ['small', 'mp3', 'm4a', 'flac']
 
 /** The song the dialog is open for. */
 export interface ExportTarget {
@@ -25,6 +26,18 @@ export function openExport(target: ExportTarget): void {
   exportTarget.value = target
 }
 
+/** App.vue knows the library; a place that has only a song id (player, playlist) asks it through this. */
+let lookup: (songId: string) => ExportTarget | undefined = () => undefined
+
+export function registerExportLookup(find: (songId: string) => ExportTarget | undefined): void {
+  lookup = find
+}
+
+/** Opens the dialog for a song known only by its id; without the library at hand, with what the id says. */
+export function openExportFor(songId: string, title = ''): void {
+  openExport(lookup(songId) ?? { songId, title, style: '' })
+}
+
 export interface ExportSettings {
   format: ExportFormat
   artist: string
@@ -37,11 +50,11 @@ export function loadExportSettings(): ExportSettings {
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<ExportSettings>
     return {
-      format: exportFormats.includes(stored.format as ExportFormat) ? (stored.format as ExportFormat) : 'mp3',
+      format: exportFormats.includes(stored.format as ExportFormat) ? (stored.format as ExportFormat) : 'small',
       artist: typeof stored.artist === 'string' ? stored.artist : '',
     }
   } catch {
-    return { format: 'mp3', artist: '' }
+    return { format: 'small', artist: '' }
   }
 }
 

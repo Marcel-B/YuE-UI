@@ -20,21 +20,6 @@ public sealed class TaggedDownloadTests : IDisposable
     public void Dispose() => _app.Dispose();
 
     [Fact]
-    public async Task A_shared_song_carries_its_cover_and_lyrics()
-    {
-        _app.AddSong(Run, "song1");
-        await SetCover("song1");
-
-        var response = await _client.GetAsync($"/api/songs/{Run}/song1/share");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var tags = _app.Tagger.Tags!;
-        Assert.Equal(("Neon Night", "[verse]\nLa la"), (tags.Title, tags.Lyrics));
-        Assert.Equal(Jpeg, tags.Cover!.Data);
-        Assert.Equal(_app.Encoder.Target, _app.Tagger.Path);
-    }
-
-    [Fact]
     public async Task A_downloaded_flac_is_a_tagged_copy_and_the_songs_own_file_stays_as_it_is()
     {
         _app.AddSong(Run, "song1");

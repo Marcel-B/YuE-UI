@@ -14,7 +14,11 @@ import {
 } from '../export'
 import { t } from '../i18n'
 
-/** App.vue holds the one dialog; the library's "Export" opens it through `openExport`. */
+/**
+ * App.vue holds the one dialog for sharing and exporting; the library, the player and the playlist open it through
+ * `openExport`/`openExportFor`. The file is made first, then saved or handed to the share sheet from a fresh tap,
+ * since Safari refuses `navigator.share` once the tap that asked for it is a few seconds old.
+ */
 type Step =
   { step: 'options' } | { step: 'preparing' } | { step: 'ready'; file: File } | { step: 'failed'; message: string }
 
@@ -32,7 +36,9 @@ const drawn = ref<Blob | null>(null)
 const drawnUrl = ref<string | null>(null)
 const coverUrl = computed(() => exportTarget.value?.cover ?? drawnUrl.value)
 
-const formatOptions = computed(() => exportFormats.map((value) => ({ value, label: value.toUpperCase() })))
+const formatOptions = computed(() =>
+  exportFormats.map((value) => ({ value, label: value === 'small' ? t('exportFormatSmall') : value.toUpperCase() })),
+)
 
 function setDrawn(blob: Blob | null): void {
   if (drawnUrl.value) {

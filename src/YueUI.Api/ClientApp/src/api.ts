@@ -229,19 +229,13 @@ export function runZipUrl(runId: string): string {
  * The song as a small AAC (`.m4a`, about a tenth of the FLAC) for the share sheet, named after its title. The
  * server encodes it first, which takes a few seconds.
  */
-export async function songShareFile(songId: string): Promise<File> {
-  const response = await send(`/api/songs/${songId}/share`)
-  const name = fileName(response.headers.get('Content-Disposition')) ?? 'Tonwerk.m4a'
-  return new File([await response.blob()], name, { type: 'audio/mp4' })
-}
-
 /**
  * The song as MP3, M4A or FLAC with its tags and cover, named after its title. The server encodes it first, which
  * takes a few seconds (not for FLAC, which only gets its tags).
  */
 export async function exportSongFile(
   songId: string,
-  format: 'mp3' | 'm4a' | 'flac',
+  format: 'small' | 'mp3' | 'm4a' | 'flac',
   artist: string,
   genre: string,
   cover: Blob | null,
@@ -254,7 +248,7 @@ export async function exportSongFile(
     form.append('cover', cover, 'cover.jpg')
   }
   const response = await send(`/api/songs/${songId}/export`, { method: 'POST', body: form })
-  const name = fileName(response.headers.get('Content-Disposition')) ?? `Tonwerk.${format}`
+  const name = fileName(response.headers.get('Content-Disposition')) ?? `Tonwerk.${format === 'small' ? 'm4a' : format}`
   const blob = await response.blob()
   return new File([blob], name, { type: blob.type })
 }
