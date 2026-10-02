@@ -3,12 +3,15 @@ import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 import Menu from 'primevue/menu'
 import type { MenuItem } from 'primevue/menuitem'
 import { disablePush, enablePush, initPush, pushState, updatePushLanguage } from '../push'
-import { locale, setLocale, t } from '../i18n'
+import { formatDateTime, locale, setLocale, t } from '../i18n'
 import { reload, standalone } from '../update'
+import { ApiError, getBackup, startBackup } from '../api'
+import type { BackupStatus } from '../types'
 
 /**
- * What is set once per device rather than used while working: notifications, the language and, in the home-screen app,
- * a reload. Behind one button, so the menu bar keeps its room for the pages.
+ * What is set once per device rather than used while working: notifications, the language, the Nextcloud backup (only
+ * when the server has one configured) and, in the home-screen app, a reload. Behind one button, so the menu bar keeps
+ * its room for the pages.
  */
 const emit = defineEmits<{ notice: [text: string, error: boolean] }>()
 
@@ -22,7 +25,60 @@ const items = computed<MenuItem[]>(() => [
   },
   { label: t('language'), icon: 'pi pi-globe', command: () => setLocale(locale.value === 'de' ? 'en' : 'de') },
   ...(standalone ? [{ label: t('reload'), icon: 'pi pi-refresh', command: reload }] : []),
+  ...backupItems.value,
 ])
+
+const backup = ref<BackupStatus | null>(null)
+const backupItems = computed<MenuItem[]>(() => {
+  const status = backup.value
+  if (!status?.configured) {
+    return []
+  }
+  const last = status.last
+  return [
+    { separator: true },
+    {
+      label: status.running
+        ? t('backupRunning', { done: status.done, total: status.total })
+        : last === null
+          ? t('backupNever')
+          : t(last.success ? 'backupLast' : 'backupFailed', { time: formatDateTime(last.finishedAt) }),
+      icon: status.running
+        ? 'pi pi-spin pi-spinner'
+        : last?.success === false
+          ? 'pi pi-exclamation-triangle'
+          : 'pi pi-cloud',
+      // Only a failure has more to say: why, in the notice.
+      disabled: last?.success !== false || status.running,
+      command: () => emit('notice', last?.error ?? '', true),
+    },
+    { label: t('backupNow'), icon: 'pi pi-cloud-upload', disabled: status.running, command: () => void backUp() },
+  ]
+})
+
+async function open(event: Event): Promise<void> {
+  menu.value?.toggle(event)
+  try {
+    backup.value = await getBackup()
+  } catch {
+    // An older server without the backup, or no connection: the menu just leaves it out.
+  }
+}
+
+async function backUp(): Promise<void> {
+  try {
+    backup.value = await startBackup()
+    emit('notice', t('backupStarted'), false)
+  } catch (caught) {
+    emit(
+      'notice',
+      t('backupError', {
+        message: caught instanceof ApiError || caught instanceof Error ? caught.message : String(caught),
+      }),
+      true,
+    )
+  }
+}
 
 const working = ref(false)
 onMounted(() => {
@@ -77,7 +133,7 @@ async function toggle(): Promise<void> {
     :aria-label="t('settings')"
     aria-haspopup="true"
     v-tooltip.bottom="t('settings')"
-    @click="menu?.toggle($event)"
+    @click="void open($event)"
   />
   <Menu ref="menu" :model="items" popup />
 </template>

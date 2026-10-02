@@ -282,6 +282,29 @@ export interface MidiScore {
   warnings: string[]
 }
 
+/** How the last Nextcloud backup went (Backup/CloudBackup.cs). */
+export interface BackupRun {
+  startedAt: string
+  finishedAt: string
+  success: boolean
+  archive: string | null
+  files: number
+  bytes: number
+  error: string | null
+  scheduled: boolean
+}
+
+/** The Nextcloud backup; `done` of `total` files while it runs. */
+export interface BackupStatus {
+  configured: boolean
+  running: boolean
+  done: number
+  total: number
+  last: BackupRun | null
+  nextRun: string | null
+  files: boolean
+}
+
 export interface StorageInfo {
   freeBytes: number
   totalBytes: number
