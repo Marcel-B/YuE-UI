@@ -214,6 +214,31 @@ deploy/install-speech.sh --test   # danach jedes Modell einen Testsatz sprechen 
 
 Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/` (`env/`, `models/`), Aufnahmen und Ergebnisse daneben in `speech/voices/` und `speech/takes/`. Das Skript nimmt `uv`, wenn es installiert ist, sonst ein Python ab 3.10 (das von macOS ist 3.9, dann `brew install python@3.12`). Für die Aufnahmen braucht der Server `ffmpeg`.
 
+## Datensicherung in die Nextcloud
+
+Tonwerk sichert sich jede Nacht um 3 Uhr selbst in eine Nextcloud (über WebDAV, also auch in jeden anderen WebDAV-Speicher), nach dem Vorbild von module-o-mat. Hochgeladen werden:
+
+- `tonwerk-mon.zip` bis `tonwerk-sun.zip`: eine Kopie von `yueui.db` (Playlists, Titel, Bewertungen, Warteschlange, Instrumente, Klänge, …) und `push.json`, je Wochentag eine, die Nextcloud hat also die letzten sieben Tage. Die Datenbank wird mit SQLites eigener Sicherung kopiert, auch wenn Tonwerk gerade schreibt.
+- die Dateien daneben, jede nur einmal und danach nur, wenn sie sich ändert: die Songs (`songs/<Lauf>/songN/` mit FLAC, Partitur und `request.json`), Fassungen (`versions/`), Stems (`stems/`), Cover (`covers/`), die Stimmen und Ergebnisse des Sprachlabors (`speech/voices/`, `speech/takes/`) und Transkriptionen (`transcriptions/`). Was schon oben ist, merkt sich Tonwerk in `backup.json` neben `yueui.db`. Die erste Sicherung dauert deshalb lange, die folgenden nur so lange wie die neuen Songs.
+
+In der Nextcloud wird nichts gelöscht: Ein versehentlich gelöschter Song liegt dort weiter. Nicht gesichert werden die Streaming-Kopien (entstehen neu aus der FLAC), Python und Modelle des Sprachlabors (lassen sich neu laden) und Songs, an denen der Worker gerade rechnet; die nimmt die nächste Sicherung mit.
+
+**Einrichten.** In der Nextcloud unter *Einstellungen → Sicherheit → Geräte & Sitzungen* ein App-Passwort anlegen und die WebDAV-Adresse ablesen (*Dateien → Dateieinstellungen → WebDAV*). Adresse, Benutzer und Passwort stehen nirgends im Repository und nicht in den appsettings, sondern in einer `.env`-Datei auf dem Mac, mit denselben Namen wie bei module-o-mat: `~/.config/tonwerk/nextcloud.env`
+
+```sh
+NEXTCLOUD_WEBDAV_URL=https://cloud.example.de/remote.php/dav/files/marcel/Tonwerk
+NEXTCLOUD_USERNAME=marcel
+NEXTCLOUD_APP_PASSWORD=xxxxx-xxxxx-xxxxx-xxxxx-xxxxx
+```
+
+Die Datei sollte nur der eigene Benutzer lesen dürfen (`chmod 600 ~/.config/tonwerk/nextcloud.env`). Tonwerk liest sie bei jeder Sicherung neu, ein Neustart ist nicht nötig. Gleichnamige Umgebungsvariablen gehen der Datei vor.
+
+Der Ordner `Tonwerk` entsteht von selbst, der darüber muss existieren. Eine Adresse im Heimnetz (`192.168.…`) erreicht der LaunchAgent nicht (macOS fragt dafür nach „Lokales Netzwerk“, was über SSH nicht geht); die Tailscale-Adresse oder die öffentliche Adresse der Nextcloud funktionieren.
+
+Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die Nextcloud sichern** startet eine Sicherung sofort. Schlägt eine fehl, kommt eine Benachrichtigung; der Eintrag im Menü sagt dann warum. Eine fehlgeschlagene nächtliche Sicherung versucht es nach 30 Minuten noch einmal.
+
+**Zurückholen.** Tonwerk stoppen (`launchctl bootout gui/$(id -u)/de.bvelop.yueui` oder `deploy/uninstall.sh`), `yueui.db` und `push.json` aus dem ZIP nach `~/Library/Application Support/YuE UI/` legen, die Ordner `versions`, `stems`, `covers` und `speech` ebenfalls dorthin, den Inhalt von `songs/` und `transcriptions/` nach `~/Music/YuE Studio/`, dann wieder starten (`deploy/install.sh`).
+
 ## Konfiguration
 
 `appsettings.json` bzw. Umgebungsvariablen:
@@ -252,6 +277,10 @@ Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/`
 | `Push:DataPath` (`Push__DataPath`) | `~/Library/Application Support/YuE UI/push.json` | VAPID-Schlüssel und Abonnements für Benachrichtigungen |
 | `Data:Path` (`Data__Path`) | `~/Library/Application Support/YuE UI/yueui.db` | SQLite-Datenbank von Tonwerk (Playlists, geänderte Titel, Bewertungen) |
 | `Push:Subject` (`Push__Subject`) | `https://github.com/Marcel-B/YuE-UI` | Kontaktadresse (`mailto:` oder `https:`) für die Push-Dienste; Apple lehnt Adressen wie `mailto:ich@localhost` ab |
+| `Backup:EnvFile` (`Backup__EnvFile`) | `~/.config/tonwerk/nextcloud.env` | `.env`-Datei mit `NEXTCLOUD_WEBDAV_URL`, `NEXTCLOUD_USERNAME` und `NEXTCLOUD_APP_PASSWORD` für die Datensicherung; fehlt eins davon, ist sie aus |
+| `Backup:At` (`Backup__At`) | `03:00` | Uhrzeit der nächtlichen Sicherung; leer heißt nur von Hand |
+| `Backup:TimeZone` (`Backup__TimeZone`) | `Europe/Berlin` | Zeitzone dafür |
+| `Backup:Files` (`Backup__Files`) | `true` | Songs, Fassungen, Stems, Cover und Sprachlabor mitsichern; `false` sichert nur die Datenbank |
 
 ## API
 
@@ -325,6 +354,8 @@ Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/`
 | `GET` | `/api/push` | `{ publicKey }`: VAPID-Schlüssel für `pushManager.subscribe` |
 | `POST` | `/api/push/subscriptions` | Browser benachrichtigen: `PushSubscription.toJSON()` plus `language` (`de`/`en`) |
 | `DELETE` | `/api/push/subscriptions` | `{ endpoint }`: Abonnement entfernen |
+| `GET` | `/api/backup` | Datensicherung: `{ configured, running, done, total, last, nextRun, files }`, `last` ist `{ startedAt, finishedAt, success, archive, files, bytes, error, scheduled }` |
+| `POST` | `/api/backup` | Datensicherung jetzt starten; `202`, `409` während eine läuft, `501` ohne Einrichtung |
 | `POST` | `/api/push/test` | `{ endpoint }`: Test-Nachricht an genau diesen Browser; `404`, wenn er nicht abonniert ist |
 
 OpenAPI unter `/api/openapi`.

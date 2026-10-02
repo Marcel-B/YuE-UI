@@ -52,6 +52,10 @@ public static class PushTexts
             : (de ? "Songtext fehlgeschlagen" : "Lyrics failed", lyrics.Message ?? "");
     }
 
+    public static (string Title, string Body) BackupFailed(string error, string language) => IsGerman(language)
+        ? ("Datensicherung fehlgeschlagen", error)
+        : ("Backup failed", error);
+
     public static (string Title, string Body) Test(string language) => IsGerman(language)
         ? ("Tonwerk", "Benachrichtigungen funktionieren.")
         : ("Tonwerk", "Notifications work.");

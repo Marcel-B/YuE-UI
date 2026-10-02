@@ -1,4 +1,5 @@
 import type {
+  BackupStatus,
   GenerateRequest,
   LogEntry,
   LyricsLanguage,
@@ -168,6 +169,16 @@ export async function deletePlaylist(id: number): Promise<void> {
 }
 
 /** Free and total space of the volume the songs are written to. */
+/** The Nextcloud backup: whether it is configured, running, and how the last one went. */
+export async function getBackup(): Promise<BackupStatus> {
+  return (await send('/api/backup')).json() as Promise<BackupStatus>
+}
+
+/** Starts a backup now; 409 while one runs. */
+export async function startBackup(): Promise<BackupStatus> {
+  return (await send('/api/backup', { method: 'POST' })).json() as Promise<BackupStatus>
+}
+
 export async function getStorage(): Promise<StorageInfo> {
   return (await send('/api/storage')).json() as Promise<StorageInfo>
 }
