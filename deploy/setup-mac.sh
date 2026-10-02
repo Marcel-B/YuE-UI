@@ -329,5 +329,5 @@ cat <<EOF
 Tonwerk runs on http://127.0.0.1:5090/ui/. Not set up by this script:
   - access from the phone: install Tailscale, then  tailscale serve --bg --https=8443 5090
   - lyrics drafts: LM Studio (brew install --cask lm-studio) with a model, see the README
-  - voices and stems, unless --voices was given: run this again with --voices
 EOF
+[ "$VOICES" = true ] || echo "  - voices and stems: run this again with --voices"
