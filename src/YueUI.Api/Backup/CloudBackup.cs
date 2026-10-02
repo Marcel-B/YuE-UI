@@ -212,8 +212,15 @@ public sealed class CloudBackup(
 
             if (settings.Files)
             {
-                (files, var sent) = await UploadFilesAsync();
+                (files, var sent, var skipped) = await UploadFilesAsync();
                 bytes += sent;
+                // Failed, so that a nightly backup tries again after RetryAfter instead of tomorrow.
+                if (skipped.Count > 0)
+                {
+                    error = skipped.Count == 1
+                        ? $"{skipped[0]}; the next backup tries it again"
+                        : $"{skipped.Count} files could not be uploaded yet, e.g. {skipped[0]}; the next backup tries them again";
+                }
             }
         }
         catch (Exception exception) when (exception is WebDavException or HttpRequestException or IOException or UnauthorizedAccessException or SqliteException)
@@ -278,7 +285,12 @@ public sealed class CloudBackup(
         }
     }
 
-    private async Task<(int Files, long Bytes)> UploadFilesAsync()
+    /// <summary>
+    /// Uploads what is new or changed. A file the Nextcloud refuses for the moment (<see cref="WebDavException.Transient"/>)
+    /// is tried again after <see cref="BackupOptions.TransientRetryDelay"/>, then left for the next backup while the
+    /// others go on; any other refusal (password, full disk) ends the backup, since every file would meet it.
+    /// </summary>
+    private async Task<(int Files, long Bytes, List<string> Skipped)> UploadFilesAsync()
     {
         var candidates = Candidates().ToList();
         Dictionary<string, string> uploaded;
@@ -290,6 +302,7 @@ public sealed class CloudBackup(
         var settled = time.GetUtcNow() - options.Value.Settle;
         var count = 0;
         long bytes = 0;
+        var skipped = new List<string>();
         try
         {
             foreach (var (remote, file) in candidates)
@@ -309,7 +322,10 @@ public sealed class CloudBackup(
                 {
                     await webDav.EnsureFoldersAsync(remote[..slash], CancellationToken.None);
                 }
-                await webDav.PutAsync(remote, file, CancellationToken.None);
+                if (!await PutPatientlyAsync(remote, file, skipped))
+                {
+                    continue;
+                }
                 uploaded[remote] = stamp;
                 count++;
                 bytes += info.Length;
@@ -324,7 +340,29 @@ public sealed class CloudBackup(
         {
             Remember(uploaded);
         }
-        return (count, bytes);
+        return (count, bytes, skipped);
+    }
+
+    private async Task<bool> PutPatientlyAsync(string remote, string file, List<string> skipped)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await webDav.PutAsync(remote, file, CancellationToken.None);
+                return true;
+            }
+            catch (WebDavException exception) when (exception.Transient)
+            {
+                if (attempt >= 3)
+                {
+                    logger.LogWarning("Leaving {Path} for the next backup: {Error}", remote, exception.Message);
+                    skipped.Add(exception.Message);
+                    return false;
+                }
+                await Task.Delay(options.Value.TransientRetryDelay * attempt, time);
+            }
+        }
     }
 
     private void Remember(Dictionary<string, string> uploaded)

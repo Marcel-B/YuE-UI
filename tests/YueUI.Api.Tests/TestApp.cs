@@ -195,6 +195,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
                 options.At = BackupAt;
                 // The test's files are seconds old.
                 options.Settle = TimeSpan.Zero;
+                options.TransientRetryDelay = TimeSpan.Zero;
             });
             services.AddHttpClient(WebDavClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new FakeNextcloud.Handler(Nextcloud));
             if (_fakeWorker)
@@ -839,6 +840,9 @@ public sealed class FakeNextcloud
     /// <summary>Answers every request with this instead, e.g. 401 for a wrong password.</summary>
     public HttpStatusCode? Status { get; set; }
 
+    /// <summary>Paths answered with 423, as Nextcloud does while it still holds a lock on the file.</summary>
+    public HashSet<string> Locked { get; } = [];
+
     /// <summary>Holds every request until a test lets it go, to look at the server meanwhile.</summary>
     public TaskCompletionSource? Gate { get; set; }
 
@@ -881,6 +885,10 @@ public sealed class FakeNextcloud
                 }
                 if (request.Method == HttpMethod.Put)
                 {
+                    if (cloud.Locked.Contains(path))
+                    {
+                        return new HttpResponseMessage(HttpStatusCode.Locked);
+                    }
                     var folder = path[..path.LastIndexOf('/')];
                     if (!cloud.Folders.Contains(folder))
                     {

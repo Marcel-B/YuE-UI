@@ -63,7 +63,7 @@ public sealed class WebDavClient(IHttpClientFactory clients, IOptions<BackupOpti
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new WebDavException($"Uploading {path} took longer than {options.Value.UploadTimeout.TotalMinutes:0} minutes");
+            throw new WebDavException($"Uploading {path} took longer than {options.Value.UploadTimeout.TotalMinutes:0} minutes", transient: true);
         }
         using (response)
         {
@@ -74,8 +74,10 @@ public sealed class WebDavClient(IHttpClientFactory clients, IOptions<BackupOpti
                     HttpStatusCode.Unauthorized => "Nextcloud refused the user or app password (401)",
                     HttpStatusCode.InsufficientStorage => "The Nextcloud is full (507)",
                     HttpStatusCode.RequestEntityTooLarge => $"The Nextcloud refused {path} as too large (413)",
+                    HttpStatusCode.Locked => $"The Nextcloud has {path} locked (423)",
                     var status => $"Could not upload {path} (HTTP {(int)status})",
-                });
+                }, transient: response.StatusCode is HttpStatusCode.Locked or HttpStatusCode.TooManyRequests
+                    or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout);
             }
         }
     }
@@ -103,4 +105,11 @@ public sealed class WebDavClient(IHttpClientFactory clients, IOptions<BackupOpti
 }
 
 /// <summary>The WebDAV server refused or did not answer; the message says what to do about it.</summary>
-public sealed class WebDavException(string message) : Exception(message);
+/// <param name="transient">
+/// Worth trying again later rather than failing the backup: 423 (Nextcloud still holds a lock on the file, e.g. from
+/// an upload a restart cut off, until its lock expires), 429, 502–504, or an upload that took too long.
+/// </param>
+public sealed class WebDavException(string message, bool transient = false) : Exception(message)
+{
+    public bool Transient { get; } = transient;
+}

@@ -131,6 +131,29 @@ public sealed class BackupEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_locked_file_is_left_for_the_next_backup_while_the_others_go_on()
+    {
+        var client = _app.CreateClient();
+        _app.AddSong(Run, "song1");
+        _app.AddSong(Run, "song2");
+        _app.Nextcloud.Locked.Add($"{Base}/songs/{Run}/song1/audio.flac");
+
+        var first = await Backup(client);
+
+        Assert.False(first.Last!.Success);
+        Assert.Contains("423", first.Last.Error);
+        Assert.Contains($"{Base}/songs/{Run}/song2/audio.flac", _app.Nextcloud.PutPaths());
+        Assert.Equal(7, first.Last.Files);
+
+        _app.Nextcloud.Locked.Clear();
+        var before = _app.Nextcloud.PutPaths().Length;
+        var second = await Backup(client);
+
+        Assert.True(second.Last!.Success, second.Last.Error);
+        Assert.Equal([$"{Base}/songs/{Run}/song1/audio.flac"], _app.Nextcloud.PutPaths()[before..].Where(p => !p.EndsWith(".zip")));
+    }
+
+    [Fact]
     public async Task A_refused_backup_says_why_and_is_announced()
     {
         var client = _app.CreateClient();

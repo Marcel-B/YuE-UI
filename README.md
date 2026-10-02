@@ -235,7 +235,7 @@ Die Datei sollte nur der eigene Benutzer lesen dürfen (`chmod 600 ~/.config/ton
 
 Der Ordner `Tonwerk` entsteht von selbst, der darüber muss existieren. Eine Adresse im Heimnetz (`192.168.…`) erreicht der LaunchAgent nicht (macOS fragt dafür nach „Lokales Netzwerk“, was über SSH nicht geht); die Tailscale-Adresse oder die öffentliche Adresse der Nextcloud funktionieren.
 
-Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die Nextcloud sichern** startet eine Sicherung sofort. Schlägt eine fehl, kommt eine Benachrichtigung; der Eintrag im Menü sagt dann warum. Eine fehlgeschlagene nächtliche Sicherung versucht es nach 30 Minuten noch einmal.
+Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die Nextcloud sichern** startet eine Sicherung sofort. Schlägt eine fehl, kommt eine Benachrichtigung; der Eintrag im Menü sagt dann warum. Eine fehlgeschlagene nächtliche Sicherung versucht es nach 30 Minuten noch einmal. Hält die Nextcloud eine Datei noch gesperrt (HTTP 423, etwa nach einem Upload, den ein Neustart abgebrochen hat; die Sperre fällt nach spätestens einer Stunde), lässt Tonwerk nur diese Datei für die nächste Sicherung liegen und sichert den Rest weiter.
 
 **Zurückholen.** Tonwerk stoppen (`launchctl bootout gui/$(id -u)/de.bvelop.yueui` oder `deploy/uninstall.sh`), `yueui.db` und `push.json` aus dem ZIP nach `~/Library/Application Support/YuE UI/` legen, die Ordner `versions`, `stems`, `covers` und `speech` ebenfalls dorthin, den Inhalt von `songs/` und `transcriptions/` nach `~/Music/YuE Studio/`, dann wieder starten (`deploy/install.sh`).
 
