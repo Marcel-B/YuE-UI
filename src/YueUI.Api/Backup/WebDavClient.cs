@@ -95,7 +95,7 @@ public sealed class WebDavClient(IHttpClientFactory clients, IOptions<BackupOpti
         var escaped = string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
         var request = new HttpRequestMessage(method, new Uri(baseUri, escaped));
         request.Headers.Authorization = new AuthenticationHeaderValue(
-            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{settings.Username}:{settings.ResolvedPassword}")));
+            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{settings.ResolvedUsername}:{settings.ResolvedPassword}")));
         return request;
     }
 

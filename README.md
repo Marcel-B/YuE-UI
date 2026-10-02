@@ -192,25 +192,15 @@ Tonwerk sichert sich jede Nacht um 3 Uhr selbst in eine Nextcloud (über WebDAV,
 
 In der Nextcloud wird nichts gelöscht: Ein versehentlich gelöschter Song liegt dort weiter. Nicht gesichert werden die Streaming-Kopien (entstehen neu aus der FLAC), Python und Modelle des Sprachlabors (lassen sich neu laden) und Songs, an denen der Worker gerade rechnet; die nimmt die nächste Sicherung mit.
 
-**Einrichten.** In der Nextcloud unter *Einstellungen → Sicherheit → Geräte & Sitzungen* ein App-Passwort anlegen und die WebDAV-Adresse ablesen (*Dateien → Dateieinstellungen → WebDAV*). Auf dem Mac in `~/Library/Application Support/YueUI/app/appsettings.Production.json` (überlebt Deploys):
-
-```json
-{
-  "Backup": {
-    "WebDavUrl": "https://cloud.example.de/remote.php/dav/files/marcel/Tonwerk",
-    "Username": "marcel"
-  }
-}
-```
-
-und das App-Passwort in eine Datei, die nur der eigene Benutzer lesen kann (ohne Kommentare in einer Zeile eingeben):
+**Einrichten.** In der Nextcloud unter *Einstellungen → Sicherheit → Geräte & Sitzungen* ein App-Passwort anlegen und die WebDAV-Adresse ablesen (*Dateien → Dateieinstellungen → WebDAV*). Adresse, Benutzer und Passwort stehen nirgends im Repository und nicht in den appsettings, sondern in einer `.env`-Datei auf dem Mac, mit denselben Namen wie bei module-o-mat: `~/.config/tonwerk/nextcloud.env`
 
 ```sh
-mkdir -p ~/.config/tonwerk
-printf '%s' 'xxxxx-xxxxx-xxxxx-xxxxx-xxxxx' > ~/.config/tonwerk/nextcloud-app-password
-chmod 600 ~/.config/tonwerk/nextcloud-app-password
-launchctl kickstart -k gui/$(id -u)/de.bvelop.yueui
+NEXTCLOUD_WEBDAV_URL=https://cloud.example.de/remote.php/dav/files/marcel/Tonwerk
+NEXTCLOUD_USERNAME=marcel
+NEXTCLOUD_APP_PASSWORD=xxxxx-xxxxx-xxxxx-xxxxx-xxxxx
 ```
+
+Die Datei sollte nur der eigene Benutzer lesen dürfen (`chmod 600 ~/.config/tonwerk/nextcloud.env`). Tonwerk liest sie bei jeder Sicherung neu, ein Neustart ist nicht nötig. Gleichnamige Umgebungsvariablen gehen der Datei vor.
 
 Der Ordner `Tonwerk` entsteht von selbst, der darüber muss existieren. Eine Adresse im Heimnetz (`192.168.…`) erreicht der LaunchAgent nicht (macOS fragt dafür nach „Lokales Netzwerk“, was über SSH nicht geht); die Tailscale-Adresse oder die öffentliche Adresse der Nextcloud funktionieren.
 
@@ -250,10 +240,7 @@ Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die
 | `Push:DataPath` (`Push__DataPath`) | `~/Library/Application Support/YuE UI/push.json` | VAPID-Schlüssel und Abonnements für Benachrichtigungen |
 | `Data:Path` (`Data__Path`) | `~/Library/Application Support/YuE UI/yueui.db` | SQLite-Datenbank von Tonwerk (Playlists, geänderte Titel, Bewertungen) |
 | `Push:Subject` (`Push__Subject`) | `https://github.com/Marcel-B/YuE-UI` | Kontaktadresse (`mailto:` oder `https:`) für die Push-Dienste; Apple lehnt Adressen wie `mailto:ich@localhost` ab |
-| `Backup:WebDavUrl` (`Backup__WebDavUrl`) | – | WebDAV-Ordner für die Datensicherung, z. B. `https://cloud.example.de/remote.php/dav/files/marcel/Tonwerk`; leer schaltet sie ab |
-| `Backup:Username` (`Backup__Username`) | – | Benutzer der Nextcloud |
-| `Backup:AppPassword` (`Backup__AppPassword`) | – | App-Passwort der Nextcloud; ohne es gilt `Backup:AppPasswordFile` |
-| `Backup:AppPasswordFile` (`Backup__AppPasswordFile`) | `~/.config/tonwerk/nextcloud-app-password` | Datei mit dem App-Passwort |
+| `Backup:EnvFile` (`Backup__EnvFile`) | `~/.config/tonwerk/nextcloud.env` | `.env`-Datei mit `NEXTCLOUD_WEBDAV_URL`, `NEXTCLOUD_USERNAME` und `NEXTCLOUD_APP_PASSWORD` für die Datensicherung; fehlt eins davon, ist sie aus |
 | `Backup:At` (`Backup__At`) | `03:00` | Uhrzeit der nächtlichen Sicherung; leer heißt nur von Hand |
 | `Backup:TimeZone` (`Backup__TimeZone`) | `Europe/Berlin` | Zeitzone dafür |
 | `Backup:Files` (`Backup__Files`) | `true` | Songs, Fassungen, Stems, Cover und Sprachlabor mitsichern; `false` sichert nur die Datenbank |

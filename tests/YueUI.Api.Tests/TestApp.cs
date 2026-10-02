@@ -72,6 +72,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
     /// <summary>The backup folder in the fake Nextcloud; null (the default) leaves the backup off.</summary>
     public string? NextcloudUrl { get; set; }
 
+    /// <summary>The env file with the Nextcloud's address, user and password; null (the default) reads none.</summary>
+    public string? BackupEnvFile { get; set; }
+
     /// <summary>When the nightly backup starts; null for manual backups only.</summary>
     public string? BackupAt { get; set; }
 
@@ -186,7 +189,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
                 options.WebDavUrl = NextcloudUrl;
                 options.Username = "marcel";
                 options.AppPassword = "app-password";
-                options.AppPasswordFile = null;
+                options.EnvFile = BackupEnvFile;
                 options.At = BackupAt;
                 // The test's files are seconds old.
                 options.Settle = TimeSpan.Zero;

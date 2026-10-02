@@ -86,6 +86,26 @@ public sealed class BackupEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task Address_user_and_password_come_from_the_env_file()
+    {
+        _app.NextcloudUrl = null;
+        _app.BackupEnvFile = Path.Combine(_app.Root, "nextcloud.env");
+        File.WriteAllText(_app.BackupEnvFile, $"""
+            # Tonwerk's backup
+            NEXTCLOUD_WEBDAV_URL="https://cloud.test{Base}/"
+            export NEXTCLOUD_USERNAME=anna
+            NEXTCLOUD_APP_PASSWORD='abc=def'
+            """);
+        var client = _app.CreateClient();
+
+        var status = await Backup(client);
+
+        Assert.True(status.Last!.Success, status.Last.Error);
+        Assert.Equal($"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("anna:abc=def"))}", _app.Nextcloud.Authorization);
+        Assert.Contains($"{Base}/{status.Last.Archive}", _app.Nextcloud.PutPaths());
+    }
+
+    [Fact]
     public async Task Later_backups_upload_only_new_or_changed_files()
     {
         var client = _app.CreateClient();

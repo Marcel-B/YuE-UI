@@ -116,7 +116,7 @@ public sealed class CloudBackup(
     {
         if (!options.Value.Configured)
         {
-            logger.LogInformation("Nextcloud backup is off: no Backup:WebDavUrl, Username and AppPassword");
+            logger.LogInformation("Nextcloud backup is off: no NEXTCLOUD_WEBDAV_URL, NEXTCLOUD_USERNAME and NEXTCLOUD_APP_PASSWORD in {EnvFile} or the environment", options.Value.EnvFile);
         }
         using var timer = new PeriodicTimer(CheckInterval, time);
         try

@@ -13,7 +13,7 @@ public static class BackupEndpoints
         {
             if (!backup.Status.Configured)
             {
-                return Results.Problem(title: "No Nextcloud is configured (Backup:WebDavUrl, Username and AppPassword).", statusCode: StatusCodes.Status501NotImplemented);
+                return Results.Problem(title: "No Nextcloud is configured (NEXTCLOUD_WEBDAV_URL, NEXTCLOUD_USERNAME and NEXTCLOUD_APP_PASSWORD in ~/.config/tonwerk/nextcloud.env).", statusCode: StatusCodes.Status501NotImplemented);
             }
             return backup.Start()
                 ? Results.Accepted("/api/backup", backup.Status)
