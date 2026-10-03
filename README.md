@@ -96,6 +96,8 @@ Der Stift neben einem Lauf gibt ihm einen neuen Titel. Er gilt für Bibliothek, 
 
 Jeder Song lässt sich mit 1 bis 5 Sternen bewerten, in der Bibliothek und im Player für den Song, der gerade läuft. Ein Tipp auf denselben Stern nimmt die Bewertung wieder weg. Die Bewertung gehört zum einzelnen Song, nicht zum Lauf, und liegt in `yueui.db`. Die Auswahl neben der Suche zeigt nur Songs ab einer Bewertung (oder nur die mit fünf Sternen); was dann in der Liste steht, spielt der Player auch nacheinander ab. Die zweite Auswahl sortiert die Bibliothek: nach Datum (neueste oder älteste zuerst), nach Bewertung oder nach Dauer (längste oder kürzeste zuerst). Ein Lauf bleibt dabei zusammen und rückt nach seinem besten Song ein, der dann innerhalb des Laufs vorne steht. Die Reihenfolge merkt sich jeder Browser selbst.
 
+Zu jedem Song lässt sich eine Notiz schreiben: Die Sprechblase neben FLAC und ABC klappt ein Textfeld auf und wieder zu. Gespeichert wird von selbst, kurz nachdem man aufhört zu tippen, beim Verlassen des Feldes und wenn die App in den Hintergrund geht. Hat ein Song eine Notiz, ist die Sprechblase grün gefüllt. Ein geleertes Feld löscht die Notiz. Notizen liegen wie die Bewertungen in `yueui.db` und verschwinden mit dem Song.
+
 **Abspielen unterwegs.** Der Player spielt nicht die FLAC (rund 1 Mbit/s), sondern eine AAC-Kopie mit 192 kbit/s, etwa ein Sechstel davon: Der Mac hängt an einem Anschluss mit langsamem Upload, und über Mobilfunk hat die FLAC oft lange geladen. Die Kopie entsteht mit `afconvert` (sonst `ffmpeg`), sobald ein Song oder eine Fassung fertig ist, bei älteren Songs beim ersten Abspielen. Sie liegt in `stream/` neben der Datenbank (die einer Fassung neben deren FLAC in `versions/`), wird nach einem Neu-Rendern neu gemacht und geht mit dem Song. Wie ein Export trägt sie Titel, Album, Nummer, Songtext, Stil samt Seed und das eigene Cover des Songs (Fassungen mit der Stimme im Titel); ändern sich Titel, Cover oder Text, bekommt sie beim nächsten Abspielen neue Tags, ohne neu kodiert zu werden. Songs ohne eigenes Cover haben keins in der Datei, das gezeichnete gibt es nur im Browser. Herunterladen, Exportieren und die Logic-Seite nehmen weiter die FLAC (Downloads und Exporte mit denselben Tags, siehe unten); ohne Encoder spielt auch der Player sie.
 
 
@@ -338,6 +340,7 @@ Die Zeilen liegen als JSON, eine Datei pro Tag (`tonwerk-JJJJ-MM-TT.jsonl`), unt
 | `GET` / `PUT` | `/api/instruments/assignments[/{track}]` | Welche Spur welches Instrument spielt (`PUT` mit `{ instrumentId }`, `null` nimmt es weg) |
 | `POST` | `/api/midi/abc` | Multipart-Feld `file`: MIDI-Datei (bis 4 MB), zurück in eine Partitur gewandelt: `{ abc, warnings }`; `422`, wenn keine Partitur daraus wird, `413` für zu große Dateien |
 | `DELETE` | `/api/songs/{run}/{song}` | Song löschen, mit dem letzten auch den Lauf; `409`, solange der Worker daran arbeitet |
+| `PUT` | `/api/songs/{run}/{song}/note` | Notiz zum Song (`{"note": "…"}`, leer nimmt sie weg); `400` über 10 000 Zeichen |
 | `PUT` | `/api/songs/{run}/{song}/rating` | Song bewerten (`{"rating": 1…5}`, `null` oder `0` nimmt die Bewertung weg); `400` außerhalb von 1 bis 5 |
 | `PUT` | `/api/runs/{run}/title` | Lauf umbenennen (`{"title": "…"}`, leer = ursprünglicher Titel); Ordner und Song-IDs bleiben |
 | `DELETE` | `/api/runs/{run}` | Lauf mit allen Songs löschen; `409`, solange der Worker an einem davon arbeitet |
@@ -379,6 +382,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 
 - [x] Suche in der Bibliothek: nach Titel und im Volltext (Style und Lyrics)
 - [x] Songs bewerten (1 bis 5 Sterne)
+- [x] Notizen pro Song
 - [x] Bibliothek sortieren (Datum, Sterne, Dauer)
 - [x] Songtext-Entwurf mit einer kurzen Anweisung überarbeiten lassen
 - [x] Songs vom Handy teilen (kleine AAC statt FLAC)

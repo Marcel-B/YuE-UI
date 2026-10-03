@@ -194,6 +194,77 @@ public sealed class LibraryEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_song_keeps_its_note_until_it_is_emptied()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        _app.AddSong(run, "song1");
+        _app.AddSong(run, "song2");
+
+        var response = await _client.PutAsJsonAsync($"/api/songs/{run}/song2/note", new { note = "  Bridge zu lang.\nIntro neu.  " });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Equal([null, "Bridge zu lang.\nIntro neu."], listed.Songs.Select(s => s.Note));
+
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song2/note", new { note = "Passt." });
+        listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Equal("Passt.", listed.Songs[1].Note);
+
+        // Only blank lines count as no note, so the song's button is not marked for them.
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song2/note", new { note = " \n " });
+        listed = Assert.Single((await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!);
+        Assert.Null(listed.Songs[1].Note);
+    }
+
+    [Fact]
+    public async Task A_note_longer_than_a_page_is_refused()
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1");
+
+        var response = await _client.PutAsJsonAsync(
+            "/api/songs/20260921-165850-Neon-Night/song1/note",
+            new { note = new string('a', LibraryEndpoints.MaxNoteLength + 1) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("20260921-165850-Neon-Night", "song2")]
+    [InlineData("..", "song1")]
+    public async Task A_note_on_a_song_that_does_not_exist_is_not_found(string run, string song)
+    {
+        _app.AddSong("20260921-165850-Neon-Night", "song1");
+
+        var response = await _client.PutAsJsonAsync($"/api/songs/{run}/{song}/note", new { note = "x" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Deleted_songs_and_runs_forget_their_notes()
+    {
+        const string run = "20260921-165850-Neon-Night";
+        const string other = "20260921-165850-Neon-Nightb";
+        _app.AddSong(run, "song1");
+        _app.AddSong(run, "song2");
+        _app.AddSong(other, "song1");
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song1/note", new { note = "eins" });
+        await _client.PutAsJsonAsync($"/api/songs/{run}/song2/note", new { note = "zwei" });
+        await _client.PutAsJsonAsync($"/api/songs/{other}/song1/note", new { note = "andere" });
+
+        await _client.DeleteAsync($"/api/songs/{run}/song1");
+        _app.AddSong(run, "song1");
+        var listed = (await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!;
+        Assert.Equal([null, "zwei"], listed.Single(r => r.Id == run).Songs.Select(s => s.Note));
+
+        await _client.DeleteAsync($"/api/runs/{run}");
+        _app.AddSong(run, "song2");
+        listed = (await _client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json))!;
+        Assert.Null(listed.Single(r => r.Id == run).Songs[0].Note);
+        Assert.Equal("andere", listed.Single(r => r.Id == other).Songs[0].Note);
+    }
+
+    [Fact]
     public async Task A_renamed_runs_request_carries_the_new_title()
     {
         _app.AddSong("20260921-165850-Neon-Night", "song1");

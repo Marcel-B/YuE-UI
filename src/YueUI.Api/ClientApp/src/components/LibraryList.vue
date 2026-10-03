@@ -36,6 +36,7 @@ import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
 import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
 import { focusedSong, focusRequest, openOnLogicPage, openStems, view } from '../view'
 import PlaylistToggle from './PlaylistToggle.vue'
+import SongNote from './SongNote.vue'
 import TextActions from './TextActions.vue'
 
 const props = defineProps<{
@@ -271,6 +272,33 @@ function useMidi(run: RunInfo, song: SongInfo): void {
     }
   })
 }
+
+/** Songs whose note is open; closed by default, the button shows whether one is written. */
+const notesOpen = ref(new Set<string>())
+/** Notes saved here before the library's reload brings them; a note on another song's field must not wait for it. */
+const savedNotes = ref<Record<string, string>>({})
+
+function noteOf(song: SongInfo): string {
+  return savedNotes.value[song.id] ?? song.note ?? ''
+}
+
+function toggleNote(song: SongInfo): void {
+  if (!notesOpen.value.delete(song.id)) {
+    notesOpen.value.add(song.id)
+  }
+}
+
+// Once the server lists what was saved here, its copy (which another browser may change later) is the one shown.
+watch(
+  () => props.runs,
+  (runs) => {
+    for (const song of runs.flatMap((run) => run.songs)) {
+      if (song.id in savedNotes.value && (song.note ?? '') === savedNotes.value[song.id]) {
+        delete savedNotes.value[song.id]
+      }
+    }
+  },
+)
 
 /** Songs whose cover is being saved. */
 const covering = ref(new Set<string>())
@@ -830,6 +858,18 @@ const severityByQuality: Record<string, string> = {
                     <Button as="a" text v-if="song.hasScore" size="small" :href="scoreUrl(song.id)">{{
                       t('score')
                     }}</Button>
+                    <!-- Filled while a note is written, so it shows with the note closed. -->
+                    <Button
+                      icon="pi pi-comment"
+                      :text="!noteOf(song)"
+                      size="small"
+                      rounded
+                      :severity="noteOf(song) ? undefined : 'secondary'"
+                      v-tooltip="noteOf(song) ? t('songNoteHas') : t('songNote')"
+                      :aria-label="noteOf(song) ? t('songNoteHas') : t('songNote')"
+                      :aria-expanded="notesOpen.has(song.id)"
+                      @click="toggleNote(song)"
+                    />
                     <PlaylistToggle
                       v-if="song.hasAudio"
                       :song-id="song.id"
@@ -868,6 +908,13 @@ const severityByQuality: Record<string, string> = {
                     />
                   </div>
                 </div>
+                <SongNote
+                  v-if="notesOpen.has(song.id)"
+                  :song-id="song.id"
+                  :note="noteOf(song)"
+                  @saved="savedNotes[song.id] = $event"
+                  @error="emit('error', $event)"
+                />
                 <ul v-if="versionsOf(song).length > 0" class="versions">
                   <li v-for="version in versionsOf(song)" :key="version.id" class="flex flex-wrap items-center gap-x-2">
                     <Button
