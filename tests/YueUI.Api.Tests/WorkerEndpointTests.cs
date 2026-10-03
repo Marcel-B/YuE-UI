@@ -88,6 +88,16 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_seed_whose_batch_would_pass_the_models_limit_is_refused()
+    {
+        var response = await _client.PostAsJsonAsync("/api/generate", new { style = "Pop", lyrics = "x", batch = 2, seed = long.MaxValue });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var errors = (await response.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject();
+        Assert.Equal(["seed"], errors.Select(e => e.Key));
+    }
+
+    [Fact]
     public async Task Sampling_full_steps_and_long_songs_reach_the_worker_extension()
     {
         var response = await _client.PostAsJsonAsync("/api/generate", new
