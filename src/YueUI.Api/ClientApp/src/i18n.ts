@@ -40,7 +40,7 @@ const messages = {
     styleBlocks: 'Bausteine',
     styleBlocksIntro: 'Antippen setzt einen Baustein in den Stil, nochmal Antippen nimmt ihn heraus.',
     styleBlocksMore:
-      'Eigene Begriffe im Stil bleiben stehen. Nach YuEs Prompt-Leitfaden wirken Genre, Instrument, Stimmung, Stimme und Klangfarbe am stabilsten, am besten alle fünf. Die Auswahl stammt aus YuEs Liste der 200 häufigsten Tags (top_200_tags.json); YuE2 versteht aber auch freie Beschreibungen wie „rounded bass and light drums“. Sprache kommt nach vorn, Tempo ans Ende, der Rest in der Reihenfolge der Reiter dazwischen.',
+      'Eigene Begriffe im Stil bleiben stehen. YuE2 empfiehlt Genre, Instrumente, Stimme, Sprache und Tempo und beschreibt sie in seinen Beispielen mit kurzen Wendungen („expressive female voice, acoustic piano, rounded bass and light drums“); eine feste Tag-Liste hat es nicht. Die einzelnen Wörter stammen aus der Liste der 200 häufigsten Tags des Vorgängers YuE v1 (top_200_tags.json), es sind schlichte englische Begriffe, die YuE2 genauso liest; die Wendungen aus YuE2s Beispielen stehen bei Instrumente und Gestaltung. Genauer wird es, wenn man Wörter verbindet, etwa „warm piano pop“ statt „warm vocal, piano, pop“. Sprache kommt nach vorn, Tempo ans Ende, der Rest in der Reihenfolge der Reiter dazwischen.',
     styleBlocksInstrumental: 'Bei „Instrumental“ ohne Wirkung.',
     styleBlocks_language: 'Sprache',
     styleBlocks_languageHint:
@@ -49,7 +49,7 @@ const messages = {
     styleBlocks_genreHint: 'Mehrere lassen sich mischen, zwei bis drei bleiben meist stimmig.',
     styleBlocks_voice: 'Stimme',
     styleBlocks_voiceHint:
-      'Wer singt, eine Wahl pro Song. „male and female duet“ und „choir“ sind freie Beschreibungen, keine Tags aus YuEs Liste: Wer welche Zeile singt, lässt sich nicht festlegen.',
+      'Wer singt, eine Wahl pro Song. „male and female duet“ und „choir“ sind freie Beschreibungen, keine Tags aus YuE v1s Liste: Wer welche Zeile singt, lässt sich nicht festlegen.',
     styleBlocks_timbre: 'Klangfarbe',
     styleBlocks_timbreHint:
       'Wie die Stimme klingt, auch die Stimmlage (soprano, alto, tenor, baritone). Ein bis zwei genügen.',
@@ -57,9 +57,12 @@ const messages = {
     styleBlocks_instrumentsHint: 'Was die Begleitung spielt; drei bis vier prägen das Arrangement deutlich.',
     styleBlocks_mood: 'Stimmung',
     styleBlocks_moodHint: 'Die Stimmung färbt Melodie, Harmonie und Gesang.',
+    styleBlocks_arrangement: 'Gestaltung',
+    styleBlocks_arrangementHint:
+      'Melodie, Phrasierung, Aussprache und Harmonik, Wendungen aus YuE2s eigenen Beispielen.',
     styleBlocks_tempo: 'Tempo',
     styleBlocks_tempoHint:
-      'Eines pro Song, es steht hinten wie in den YuE2-Beispielen und ersetzt ein von Hand geschriebenes. Ballade etwa 60–80, Pop 100–120, Dance 120–130 BPM.',
+      'Eines pro Song, es steht hinten wie in den YuE2-Beispielen und ersetzt ein von Hand geschriebenes. Mit eigener Partitur sollte es zu deren Q: passen, sagt YuE2s Anleitung. Ballade etwa 60–80, Pop 100–120, Dance 120–130 BPM.',
     lyrics: 'Songtext',
     lyricsOptional: 'Songtext (optional)',
     lyricsPlaceholder: '[Verse]\n…\n\n[Chorus]\n…',
@@ -756,7 +759,7 @@ const messages = {
     styleBlocks: 'Building blocks',
     styleBlocksIntro: 'Tap to put a building block into the style, tap again to take it out.',
     styleBlocksMore:
-      'Your own words in the style stay. According to YuE’s prompt guide, genre, instrument, mood, voice and timbre give the most stable results, ideally all five. The choice comes from YuE’s list of its 200 most common tags (top_200_tags.json); YuE2 also understands free descriptions such as “rounded bass and light drums”. Language goes first, tempo last, the rest in between in the order of the tabs.',
+      'Your own words in the style stay. YuE2 recommends genre, instruments, voice, language and tempo, and its examples describe them in short phrases (“expressive female voice, acoustic piano, rounded bass and light drums”); it has no fixed tag list. The single words come from the list of the 200 most common tags of its predecessor YuE v1 (top_200_tags.json), plain English terms that YuE2 reads just the same; the phrases from YuE2’s examples are under Instruments and Arrangement. Joining words is more precise, e.g. “warm piano pop” instead of “warm vocal, piano, pop”. Language goes first, tempo last, the rest in between in the order of the tabs.',
     styleBlocksInstrumental: 'No effect with “Instrumental”.',
     styleBlocks_language: 'Language',
     styleBlocks_languageHint:
@@ -765,7 +768,7 @@ const messages = {
     styleBlocks_genreHint: 'Several can be mixed, two or three usually stay coherent.',
     styleBlocks_voice: 'Voice',
     styleBlocks_voiceHint:
-      'Who sings, one choice per song. “male and female duet” and “choir” are free descriptions, not tags from YuE’s list: which line goes to whom cannot be set.',
+      'Who sings, one choice per song. “male and female duet” and “choir” are free descriptions, not tags from YuE v1’s list: which line goes to whom cannot be set.',
     styleBlocks_timbre: 'Timbre',
     styleBlocks_timbreHint:
       'How the voice sounds, including its range (soprano, alto, tenor, baritone). One or two are enough.',
@@ -773,9 +776,11 @@ const messages = {
     styleBlocks_instrumentsHint: 'What the accompaniment plays; three or four shape the arrangement clearly.',
     styleBlocks_mood: 'Mood',
     styleBlocks_moodHint: 'The mood colours melody, harmony and singing.',
+    styleBlocks_arrangement: 'Arrangement',
+    styleBlocks_arrangementHint: 'Melody, phrasing, diction and harmony, in phrases from YuE2’s own examples.',
     styleBlocks_tempo: 'Tempo',
     styleBlocks_tempoHint:
-      'One per song; it goes last as in the YuE2 examples and replaces one typed by hand. Ballad about 60–80, pop 100–120, dance 120–130 BPM.',
+      'One per song; it goes last as in the YuE2 examples and replaces one typed by hand. With your own score it should match its Q:, as YuE2’s guide says. Ballad about 60–80, pop 100–120, dance 120–130 BPM.',
     lyrics: 'Lyrics',
     lyricsOptional: 'Lyrics (optional)',
     lyricsPlaceholder: '[Verse]\n…\n\n[Chorus]\n…',

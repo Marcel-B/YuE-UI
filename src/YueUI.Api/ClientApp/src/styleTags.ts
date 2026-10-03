@@ -1,10 +1,12 @@
 /**
- * Building blocks for the style prompt. YuE v1's prompt guide asks for genre, instrument, mood, gender and timbre,
- * all five if possible, and recommends its top_200_tags.json for stable results; YuE2's guide adds language (first,
- * as in its examples) and tempo. The tags below are picked from that list, cleaned of duplicates and Chinese
- * spellings; the duet and choir are free descriptions, which YuE2 accepts as well.
+ * Building blocks for the style prompt. YuE2 publishes no tag list: its guide (docs/generation.md) asks for genre,
+ * instruments, vocal character, language and tempo, and its examples are short descriptive phrases ("warm piano
+ * pop, expressive female voice, acoustic piano, rounded bass and light drums, lyrical memorable melody, unhurried
+ * phrasing, 88 BPM"), which the prompt still puts under a [Tags] header. The single words come from YuE v1's
+ * top_200_tags.json, cleaned of duplicates and Chinese spellings, since they remain plain English YuE2 reads; the
+ * phrases from YuE2's own examples are added to instruments and to the arrangement, which v1 had no tags for.
  */
-export type StyleCategory = 'language' | 'genre' | 'voice' | 'timbre' | 'instruments' | 'mood' | 'tempo'
+export type StyleCategory = 'language' | 'genre' | 'voice' | 'timbre' | 'instruments' | 'mood' | 'arrangement' | 'tempo'
 
 interface CategoryDefinition {
   key: StyleCategory
@@ -128,14 +130,21 @@ export const styleCategories: CategoryDefinition[] = [
     key: 'instruments',
     tags: [
       'piano',
+      'acoustic piano',
       'electric piano',
+      'Rhodes',
       'organ',
       'acoustic guitar',
       'electric guitar',
       'bass',
+      'rounded electric bass',
+      'upright bass',
       'synth bass',
       '808 bass',
       'drums',
+      'light drums',
+      'restrained drums',
+      'brushed drums',
       'drum machine',
       'percussion',
       'turntables',
@@ -146,6 +155,7 @@ export const styleCategories: CategoryDefinition[] = [
       'harp',
       'flute',
       'saxophone',
+      'tenor saxophone',
       'trumpet',
       'trombone',
       'brass',
@@ -194,6 +204,10 @@ export const styleCategories: CategoryDefinition[] = [
       'playful',
       'groovy',
     ],
+  },
+  {
+    key: 'arrangement',
+    tags: ['lyrical memorable melody', 'unhurried phrasing', 'clear diction', 'spacious modern harmony'],
   },
   {
     key: 'tempo',
