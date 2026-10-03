@@ -286,7 +286,9 @@ class LoraSwitch:
         """Runs the scheduler's policy (under its lock) with every waiting synthesis hidden whose LoRA differs from
         the one being synthesized now, or, with nothing synthesizing, from the first waiting song's."""
         worker, sched = self.worker, self.worker.SCHED
-        busy = [s for s in (sched.gpu_synth, sched.ane_synth, sched.remote_synth) if s is not None]
+        # remote_synth came with the iPhone in YuE Studio 0.4.
+        slots = (sched.gpu_synth, sched.ane_synth, getattr(sched, "remote_synth", None))
+        busy = [s for s in slots if s is not None]
         waiting = sorted((s for s in sched.songs if s.state == worker.SYNTH_WAIT and not s.cancel.is_set()),
                          key=lambda s: s.priority)
         lead = busy[0] if busy else waiting[0] if waiting else None
