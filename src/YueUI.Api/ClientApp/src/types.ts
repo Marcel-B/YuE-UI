@@ -228,6 +228,8 @@ export interface SongInfo {
   versions: VersionState[]
   /** When the song's own cover was chosen, null while it has the drawn one. */
   coverUpdatedAt: string | null
+  /** A note written to the song in this app, null while there is none. */
+  note: string | null
 }
 
 /**

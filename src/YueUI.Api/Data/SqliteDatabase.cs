@@ -25,6 +25,8 @@ namespace YueUI.Api.Data;
 /// Version 10: songs split into stems (<see cref="SqliteStemStore"/>).
 /// Version 11: the speech lab's recorded voices and takes (<see cref="SqliteSpeechStore"/>).
 /// Version 12: songs' covers (<see cref="SqliteCoverStore"/>).
+/// Version 13: reference voices of this app's own (<see cref="SqliteReferenceVoiceStore"/>).
+/// Version 14: notes written to songs (<see cref="SqliteSongNoteStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -348,6 +350,20 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         created_at TEXT NOT NULL
                     );
                     PRAGMA user_version = 13;
+                    """);
+            }
+            if (current < 14)
+            {
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE song_notes (
+                        song_id TEXT PRIMARY KEY,
+                        note TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 14;
                     """);
             }
             _ready = true;

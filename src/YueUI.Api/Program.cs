@@ -60,6 +60,7 @@ builder.Services.AddSingleton<SqliteDatabase>();
 builder.Services.AddSingleton<SqlitePlaylistStore>();
 builder.Services.AddSingleton<SqliteRunTitleStore>();
 builder.Services.AddSingleton<SqliteSongRatingStore>();
+builder.Services.AddSingleton<SqliteSongNoteStore>();
 builder.Services.AddSingleton<SqliteVersionStore>();
 builder.Services.AddSingleton<SqliteStemStore>();
 builder.Services.AddSingleton<SqliteCoverStore>();

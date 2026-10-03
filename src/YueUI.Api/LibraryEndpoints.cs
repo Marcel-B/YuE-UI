@@ -13,6 +13,9 @@ public sealed record RenameRequest(string? Title);
 /// <param name="Rating">One to five stars; null (or 0) takes the rating away.</param>
 public sealed record RatingRequest(int? Rating);
 
+/// <param name="Note">The song's note; empty (or null) takes it away.</param>
+public sealed record NoteRequest(string? Note);
+
 /// <param name="FreeBytes">What the current user can still write.</param>
 public sealed record StorageInfo(long FreeBytes, long TotalBytes);
 
@@ -24,6 +27,9 @@ public static partial class LibraryEndpoints
 {
     /// <summary>Titles show in one line on a phone; this is only a guard against pasting a whole text.</summary>
     public const int MaxTitleLength = 200;
+
+    /// <summary>Room for a page of thoughts; only a guard against pasting a whole file.</summary>
+    public const int MaxNoteLength = 10_000;
 
     public static RouteGroupBuilder MapLibraryEndpoints(this RouteGroupBuilder api)
     {
@@ -50,6 +56,8 @@ public static partial class LibraryEndpoints
             Rename(library, host, run, request.Title?.Trim() ?? ""));
         api.MapPut("/songs/{run}/{song}/rating", (string run, string song, RatingRequest request, SongLibrary library, WorkerHost host) =>
             Rate(library, host, run, song, request.Rating is 0 ? null : request.Rating));
+        api.MapPut("/songs/{run}/{song}/note", (string run, string song, NoteRequest request, SongLibrary library, WorkerHost host) =>
+            SetNote(library, host, run, song, request.Note ?? ""));
         api.MapGet("/storage", (YuePaths paths) => Storage(paths.OutputDir));
         return api;
     }
@@ -129,6 +137,28 @@ public static partial class LibraryEndpoints
             });
         }
         if (!library.Rate(run, song, rating))
+        {
+            return Results.NotFound();
+        }
+        host.LibraryChanged();
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Whitespace around the text is dropped, so a note of only blank lines counts as none and the button by the
+    /// song is not marked for it. Every open browser reloads its library, like for the stars.
+    /// </summary>
+    private static IResult SetNote(SongLibrary library, WorkerHost host, string run, string song, string note)
+    {
+        note = note.Trim();
+        if (note.Length > MaxNoteLength)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["note"] = [$"At most {MaxNoteLength} characters."],
+            });
+        }
+        if (!library.SetNote(run, song, note))
         {
             return Results.NotFound();
         }

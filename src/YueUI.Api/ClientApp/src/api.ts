@@ -148,6 +148,12 @@ export async function rateSong(songId: string, rating: number | null): Promise<v
   await send(`/api/songs/${songId}/rating`, json('PUT', { rating }))
 }
 
+/** Writes the song's note; an empty one (or only blank lines) takes it away. */
+export async function saveSongNote(songId: string, note: string): Promise<void> {
+  // keepalive: a note typed just before the page goes away (the app closed, a reload) still arrives.
+  await send(`/api/songs/${songId}/note`, { ...json('PUT', { note }), keepalive: true })
+}
+
 /** Every playlist, oldest first, with its song ids in order; songs deleted since are left out. */
 export async function getPlaylists(): Promise<PlaylistInfo[]> {
   return (await send('/api/playlists')).json() as Promise<PlaylistInfo[]>

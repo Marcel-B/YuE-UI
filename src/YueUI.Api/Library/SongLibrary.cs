@@ -33,6 +33,7 @@ public sealed record RunInfo(
 /// <param name="Rating">One to five stars given in this app, null while not rated.</param>
 /// <param name="Versions">The song sung with other voices, oldest first; cancelled ones are left out.</param>
 /// <param name="CoverUpdatedAt">When the song's cover was chosen, null while it has the drawn one.</param>
+/// <param name="Note">A note written to the song in this app, null while there is none.</param>
 public sealed record SongInfo(
     string Id,
     int Index,
@@ -45,7 +46,8 @@ public sealed record SongInfo(
     long Bytes,
     int? Rating,
     IReadOnlyList<VersionState> Versions,
-    DateTimeOffset? CoverUpdatedAt = null);
+    DateTimeOffset? CoverUpdatedAt = null,
+    string? Note = null);
 
 /// <summary>
 /// What a song was generated with, from its <c>request.json</c>, in the terms of <see cref="GenerateRequest"/>, so the
@@ -83,6 +85,7 @@ public sealed partial class SongLibrary(
     SqliteVersionStore versions,
     SqliteStemStore stems,
     SqliteCoverStore covers,
+    SqliteSongNoteStore notes,
     StreamCopies streams)
 {
     public string OutputDir => paths.OutputDir;
@@ -97,6 +100,7 @@ public sealed partial class SongLibrary(
         var renamed = Read(titles.All) ?? new Dictionary<string, string>();
         var rated = Read(ratings.All) ?? new Dictionary<string, int>();
         var covered = Read(covers.All) ?? new Dictionary<string, DateTimeOffset>();
+        var noted = Read(notes.All) ?? new Dictionary<string, string>();
         var sung = (Read(versions.All) ?? [])
             .Where(v => v.Stage != "cancelled")
             .GroupBy(v => v.SongId)
@@ -106,7 +110,7 @@ public sealed partial class SongLibrary(
             .. root.EnumerateDirectories()
                 .Where(d => RunName().IsMatch(d.Name))
                 .OrderByDescending(d => d.Name, StringComparer.Ordinal)
-                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated, covered, sung))
+                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated, covered, noted, sung))
                 // A run still tokenizing has no song folders yet; the queue shows it.
                 .Where(r => r.Songs.Count > 0),
         ];
@@ -149,6 +153,7 @@ public sealed partial class SongLibrary(
             versions.RemoveSong($"{run}/{song}");
             stems.RemoveSong($"{run}/{song}");
             covers.Remove($"{run}/{song}");
+            notes.Remove($"{run}/{song}");
         });
         streams.ForgetSong(run, song);
         var runDirectory = new DirectoryInfo(Path.Combine(paths.OutputDir, run));
@@ -207,6 +212,25 @@ public sealed partial class SongLibrary(
         else
         {
             ratings.Remove($"{run}/{song}");
+        }
+        return true;
+    }
+
+    /// <summary>Writes the song's note, or with an empty one takes it away.</summary>
+    /// <returns>False for a name the worker would not write or a song that does not exist.</returns>
+    public bool SetNote(string run, string song, string note)
+    {
+        if (SongDirectory(run, song) is null)
+        {
+            return false;
+        }
+        if (note.Length == 0)
+        {
+            notes.Remove($"{run}/{song}");
+        }
+        else
+        {
+            notes.Set($"{run}/{song}", note);
         }
         return true;
     }
@@ -315,6 +339,7 @@ public sealed partial class SongLibrary(
         versions.RemoveRun(run);
         stems.RemoveRun(run);
         covers.RemoveRun(run);
+        notes.RemoveRun(run);
         streams.ForgetRun(run);
     });
 
@@ -335,6 +360,7 @@ public sealed partial class SongLibrary(
         string? renamed,
         IReadOnlyDictionary<string, int> rated,
         IReadOnlyDictionary<string, DateTimeOffset> covered,
+        IReadOnlyDictionary<string, string> noted,
         IReadOnlyDictionary<string, IReadOnlyList<VersionState>> sung)
     {
         var songs = new List<SongInfo>();
@@ -368,7 +394,8 @@ public sealed partial class SongLibrary(
                 Size(folder),
                 rated.TryGetValue(id, out var rating) ? rating : null,
                 sung.GetValueOrDefault(id) ?? [],
-                covered.TryGetValue(id, out var cover) ? cover : null));
+                covered.TryGetValue(id, out var cover) ? cover : null,
+                noted.GetValueOrDefault(id)));
         }
 
         var original = title.Length > 0 ? title : TitleFromName(run.Name);
