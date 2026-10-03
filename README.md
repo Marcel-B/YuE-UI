@@ -119,6 +119,12 @@ Jeder Song belegt mit FLAC, Tokens und Zwischendateien einiges an Platz. Die Bib
 
 Beide haben einen eigenen Worker und damit ein eigenes Modell im Speicher. Rechnen beide gleichzeitig, kann der Speicher knapp werden. Die Oberfläche zeigt deshalb einen Hinweis, solange die App geöffnet ist. **Worker beenden** in der Warteschlange gibt den Speicher von Tonwerk sofort frei. Ansonsten entlädt der Worker das Modell nach zehn Minuten Leerlauf von selbst.
 
+## Vorlagen
+
+Ist ein Song gut geworden, lässt sich das Formular als Vorlage speichern: Das Lesezeichen neben **Vorlage laden** auf „Neuer Song“ fragt nach einem Namen und danach, was hinein soll: **Stil** (mit „Instrumental“), **Seed**, **Parameter** (Qualität, Anzahl, Planung, Schritte, Länge, Rechenwerke und beide Sampling-Gruppen samt Temperatur) und, wo Stimmen eingerichtet sind, die **Stimme** für danach. Titel, Songtext und Partitur gehören nie dazu. Trägt man den Namen einer vorhandenen Vorlage ein (oder speichert direkt nach dem Laden einer), wird sie überschrieben. Eine geladene Vorlage ändert nur, was sie enthält; eine Vorlage nur mit Stil lässt Seed und Parameter stehen. Mit einer eigenen Partitur im Formular bleibt deren Planung.
+
+**Werkzeuge → Vorlagen** listet alle mit Stil und den wichtigsten Werten, zum Laden, Umbenennen und Löschen. Vorlagen liegen in `yueui.db` und kommen damit in die nächtliche Sicherung.
+
 ## Stil aus Bausteinen
 
 Unter dem Stil-Feld öffnet **Bausteine** eine Auswahl nach Reitern: Sprache, Genre, Stimme (männlich, weiblich, Duett, Chor, Kinderstimme), Klangfarbe, Instrumente, Stimmung und Tempo. Antippen setzt einen Baustein in den Stil, nochmal Antippen nimmt ihn heraus; selbst geschriebene Begriffe bleiben stehen. Sprache, Stimme und Tempo gibt es nur einmal pro Song, eine neue Wahl ersetzt die alte (beim Tempo auch ein von Hand geschriebenes wie `95 BPM`). Die Sprache kommt nach vorn und das Tempo ans Ende, wie in den Beispielen von YuE2.
@@ -342,6 +348,8 @@ Die Zeilen liegen als JSON, eine Datei pro Tag (`tonwerk-JJJJ-MM-TT.jsonl`), unt
 | `GET` / `PUT` | `/api/instruments/assignments[/{track}]` | Welche Spur welches Instrument spielt (`PUT` mit `{ instrumentId }`, `null` nimmt es weg) |
 | `POST` | `/api/midi/abc` | Multipart-Feld `file`: MIDI-Datei (bis 4 MB), zurück in eine Partitur gewandelt: `{ abc, warnings }`; `422`, wenn keine Partitur daraus wird, `413` für zu große Dateien |
 | `DELETE` | `/api/songs/{run}/{song}` | Song löschen, mit dem letzten auch den Lauf; `409`, solange der Worker daran arbeitet |
+| `GET` / `POST` | `/api/templates` | Vorlagen (`{ name, settings }`, `settings` ein JSON-Objekt aus dem Formular); `409` bei vergebenem Namen (ohne Groß-/Kleinschreibung) |
+| `PUT` / `DELETE` | `/api/templates/{id}` | Vorlage umbenennen und/oder überschreiben (`name`, `settings`, je optional) oder löschen |
 | `PUT` | `/api/songs/{run}/{song}/note` | Notiz zum Song (`{"note": "…"}`, leer nimmt sie weg); `400` über 10 000 Zeichen |
 | `PUT` | `/api/songs/{run}/{song}/rating` | Song bewerten (`{"rating": 1…5}`, `null` oder `0` nimmt die Bewertung weg); `400` außerhalb von 1 bis 5 |
 | `PUT` | `/api/runs/{run}/title` | Lauf umbenennen (`{"title": "…"}`, leer = ursprünglicher Titel); Ordner und Song-IDs bleiben |
@@ -389,6 +397,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Suche in der Bibliothek: nach Titel und im Volltext (Style und Lyrics)
 - [x] Songs bewerten (1 bis 5 Sterne)
 - [x] Notizen pro Song
+- [x] Vorlagen für Stil und Parameter
 - [x] Bibliothek sortieren (Datum, Sterne, Dauer)
 - [x] Songtext-Entwurf mit einer kurzen Anweisung überarbeiten lassen
 - [x] Songs vom Handy teilen (kleine AAC statt FLAC)

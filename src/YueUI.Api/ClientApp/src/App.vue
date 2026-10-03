@@ -13,7 +13,7 @@ import VoicesPanel from './components/VoicesPanel.vue'
 import StemsPanel from './components/StemsPanel.vue'
 import VoiceSwapPanel from './components/VoiceSwapPanel.vue'
 import Message from 'primevue/message'
-import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
+import { applyTemplate, fromSongRequest, loadFormState, partsOf, planningFor, saveFormState } from './form'
 import { formatBytes, t, workerLabel, type MessageKey } from './i18n'
 import { current, refreshTracks } from './player'
 import { loadPlaylists, playlistIds } from './playlist'
@@ -24,10 +24,13 @@ import { checkForUpdate, reload, updateAvailable } from './update'
 import { visuals } from './spectrum'
 import QueueOverview from './components/QueueOverview.vue'
 import ScoreField from './components/ScoreField.vue'
+import TemplatePicker from './components/TemplatePicker.vue'
+import { loadedTemplateId, partList } from './templates'
 import { navigate, view, type View } from './view'
 import type {
   LogEntry,
   LyricsState,
+  PromptTemplate,
   RunInfo,
   SongInfo,
   SongState,
@@ -56,6 +59,7 @@ const InstrumentsPage = defineAsyncComponent(() => import('./components/Instrume
 const SpeechLab = defineAsyncComponent(() => import('./components/SpeechLab.vue'))
 // The log, likewise.
 const LogPage = defineAsyncComponent(() => import('./components/LogPage.vue'))
+const TemplatesPage = defineAsyncComponent(() => import('./components/TemplatesPage.vue'))
 
 const logCapacity = 300
 const form = ref(loadFormState())
@@ -239,6 +243,7 @@ const pages: Page[] = [
   { view: 'playlist', label: 'menuPlaylist', icon: 'pi pi-play-circle' },
 ]
 const tools: Page[] = [
+  { view: 'templates', label: 'menuTemplates', icon: 'pi pi-bookmark' },
   { view: 'transcribe', label: 'menuTranscribe', icon: 'pi pi-microphone' },
   { view: 'voices', label: 'menuVoices', icon: 'pi pi-users' },
   { view: 'logic', label: 'menuLogic', icon: 'pi pi-box' },
@@ -298,6 +303,7 @@ getVoiceInfo()
 const logicOpened = ref(view.value === 'logic')
 const labOpened = ref(view.value === 'lab')
 const logsOpened = ref(view.value === 'logs')
+const templatesOpened = ref(view.value === 'templates')
 const instrumentsOpened = ref(view.value === 'instruments')
 const harmonyOpened = ref(view.value === 'harmony')
 watch(view, (value) => {
@@ -315,6 +321,9 @@ watch(view, (value) => {
   }
   if (value === 'logs') {
     logsOpened.value = true
+  }
+  if (value === 'templates') {
+    templatesOpened.value = true
   }
 })
 
@@ -424,6 +433,20 @@ function useTemplate(run: RunInfo): void {
   form.value = { ...form.value, title: run.title, style: run.style, lyrics: run.lyrics }
   navigate('create')
   show(t('templateLoaded', { title: run.title || t('untitled') }))
+}
+
+/** A prompt template laid over the form; what it does not hold (title, lyrics, score, ...) stays. */
+function useTemplateSettings(template: PromptTemplate): void {
+  form.value = applyTemplate(form.value, template.settings)
+  loadedTemplateId.value = template.id
+  fieldErrors.value = {}
+  navigate('create')
+  show(t('templateApplied', { name: template.name, parts: partList(partsOf(template.settings)) }))
+}
+
+function resetForm(): void {
+  generateForm.value?.reset()
+  loadedTemplateId.value = null
 }
 
 /** A transcribed melody as the score of the next song: SheetSage2 writes it without chords, for planning "melody". */
@@ -580,11 +603,18 @@ async function useAsNewSong(songId: string): Promise<void> {
               {{ t('newSong') }}
             </div>
 
-            <Button icon="pi pi-trash" rounded text :aria-label="t('resetForm')" @click="generateForm?.reset()" />
+            <Button icon="pi pi-trash" rounded text :aria-label="t('resetForm')" @click="resetForm" />
           </div>
         </h2>
       </template>
       <template #content>
+        <TemplatePicker
+          v-model="form"
+          class="mb-6"
+          :voices="voiceInfo.conversionConfigured"
+          @notice="show($event)"
+          @error="show($event, true)"
+        />
         <GenerateForm
           ref="generateForm"
           v-model="form"
@@ -770,6 +800,23 @@ async function useAsNewSong(songId: string): Promise<void> {
   </main>
   <main v-if="logsOpened" v-show="view === 'logs'">
     <LogPage :active="view === 'logs'" />
+  </main>
+
+  <main v-if="templatesOpened" v-show="view === 'templates'">
+    <Card>
+      <template #title>
+        <h2>{{ t('templates') }}</h2>
+      </template>
+      <template #content>
+        <p class="muted mt-0">{{ t('templatesIntro') }}</p>
+        <TemplatesPage
+          :active="view === 'templates'"
+          @apply="useTemplateSettings"
+          @notice="show($event)"
+          @error="show($event, true)"
+        />
+      </template>
+    </Card>
   </main>
 
   <!-- Outside the pages, so switching between them does not stop the song. The spacer keeps it off the page's end. -->
