@@ -170,6 +170,17 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task Why_the_extension_is_off_is_logged_as_a_warning()
+    {
+        await Generate();
+        _app.Worker.Emit(new { @event = "ready", yueui_extensions = false, yueui_problem = "yue2_worker.run_remote is gone" });
+
+        await _app.WaitForStatus(_client, s => s.Worker.Status == WorkerStatus.Ready);
+        var report = await _client.GetStringAsync("/api/logs/report");
+        Assert.Contains("yue2_worker.run_remote is gone", report);
+    }
+
+    [Fact]
     public void The_worker_extension_ships_with_the_app()
     {
         Assert.True(File.Exists(PythonWorkerLauncher.ExtensionScript), PythonWorkerLauncher.ExtensionScript);

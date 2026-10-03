@@ -51,7 +51,7 @@ export interface StageTime {
 
 export interface LogEntry {
   time: string
-  level: 'info' | 'error' | 'stderr'
+  level: 'info' | 'warning' | 'error' | 'stderr'
   message: string
 }
 

@@ -21,7 +21,10 @@ iPhone keeps the plain weights it was sent once, so songs with a LoRA never go t
 
 The worker is loaded as a module and patched at a few seams (see ``SEAMS``). If one of them has changed — a
 YuE Studio update rewrote the worker — it runs as shipped and its ready event says "yueui_extensions": false,
-so the web interface can tell that the extra fields have no effect.
+so the web interface can tell that the extra fields have no effect. LoRAs need seams of their own
+(``LORA_SEAMS``); without them the other fields still work, the ready event says "yueui_lora": false and a
+generate command naming a LoRA fails. Engines before YuE Studio 0.4 have no iPhone (``run_remote``), which
+LoRAs do without.
 """
 import dataclasses
 import importlib.util
@@ -49,17 +52,25 @@ SEAMS = (
     ("run_batch", "generate_tokens(model, [p.prefix for p in plans], sampling"),
     ("Scheduler", "s.needs_plan == q.needs_plan"),
     ("emit", "json.dumps(event)"),
+)
+# What LoRAs rely on besides. Kept apart from SEAMS, so an engine without them (YuE Studio 0.3, which the app may
+# still have installed) loses only LoRAs and not sampling, steps and length.
+LORA_SEAMS = (
     ("Scheduler", "def schedule(self)"),
     ("Scheduler", "first(SYNTH_WAIT"),
     ("run_ane", "pipe, model = acquire_model()"),
     ("run_gpu", "pipe, model = acquire_model()"),
+    ("submit_render", "SCHED.submit([song])"),
+)
+# The iPhone came with YuE Studio 0.4; where these exist they have to look like this, where they are gone there is
+# no iPhone to keep LoRA songs away from.
+REMOTE_SEAMS = (
     ("run_remote", "pipe, model = acquire_model()"),
     ("remote_can_take", "REMOTE is not None"),
-    ("submit_render", "SCHED.submit([song])"),
 )
 # The engines read the NAR weights through this function (yue2.lean, imported by name into the Neural Engine's
 # runtime), the MLX solver at the time it converts them.
-LORA_SEAMS = (("yue2.lean", "nar_layer_state"), ("yue2.ane.runtime", "nar_layer_state"))
+LORA_MODULE_SEAMS = (("yue2.lean", "nar_layer_state"), ("yue2.ane.runtime", "nar_layer_state"))
 
 
 def load(path):
@@ -72,17 +83,29 @@ def load(path):
     return module
 
 
-def check(worker):
-    """None if every seam is in place, otherwise what is missing."""
-    for name, needle in SEAMS:
+def check(worker, seams, optional=()):
+    """None if every seam is in place, otherwise what is missing. An optional seam may be gone, but not changed."""
+    for name, needle in seams + optional:
         target = getattr(worker, name, None)
         if target is None:
+            if (name, needle) in optional:
+                continue
             return f"yue2_worker.{name} is gone"
         if needle not in inspect.getsource(target):
             return f"yue2_worker.{name} no longer contains {needle!r}"
-    for module, name in LORA_SEAMS:
-        if not hasattr(importlib.import_module(module), name):
-            return f"{module}.{name} is gone"
+    return None
+
+
+def check_lora(worker):
+    problem = check(worker, LORA_SEAMS, REMOTE_SEAMS)
+    if problem is not None:
+        return problem
+    for module, name in LORA_MODULE_SEAMS:
+        try:
+            if not hasattr(importlib.import_module(module), name):
+                return f"{module}.{name} is gone"
+        except Exception as exc:
+            return f"{module} cannot be imported ({type(exc).__name__}: {exc})"
     return None
 
 
@@ -110,7 +133,7 @@ class PlanKey:
         return f"PlanKey({self.needs_plan}, {self.sampling})"
 
 
-def patch(worker):
+def patch(worker, lora_problem=None):
     from yue2.protocol import GenerationConfig, Sampling
     defaults = GenerationConfig()
     submit_generate, steps_for, generate_tokens = worker.submit_generate, worker.steps_for, worker.generate_tokens
@@ -126,6 +149,8 @@ def patch(worker):
                 Sampling(**{**dataclasses.asdict(getattr(defaults, phase)), **overrides})    # raises on bad values
                 sampling[phase] = overrides
         limit = req.get("max_tokens")
+        if req.get("lora") and loras is None:
+            raise ValueError(f"LoRAs do not work with this YuE Studio version: {lora_problem}")
         lora = loras.get(req["lora"], req.get("lora_strength", 1.0)) if req.get("lora") else None
         return {"sampling": sampling, "limit": None if limit is None else max(1, min(int(limit), MAX_TOKENS)),
                 "lora": lora}
@@ -151,7 +176,7 @@ def patch(worker):
                 worker.log(f"Token limit {extras['limit']} (about {extras['limit'] / 25:.0f} s of audio)")
             if extras["lora"] is not None:
                 worker.log(f"LoRA {extras['lora'].path.name} at {extras['lora'].strength:g} for {[s.label for s in songs]}")
-        else:
+        elif loras is not None:
             for song in songs:                     # a render: the LoRA its song was made with
                 song.yueui_lora = loras.of_song(song)
         scheduler_submit(songs)
@@ -172,8 +197,9 @@ def patch(worker):
                        + ", ".join(f"{k}={v}" for k, v in overrides.items()))
         return generate_tokens(model, prefixes, sampling, seeds, phase, **kwargs)
 
-    loras = LoraSwitch(worker)
-    loras.install()                                # its imports come before any assignment, as here
+    loras = None if lora_problem is not None else LoraSwitch(worker)
+    if loras is not None:
+        loras.install()                            # its imports come before any assignment, as here
     worker.submit_generate = submit_generate_extended
     worker.SCHED.submit = scheduler_submit_extended
     worker.steps_for = steps_for_extended
@@ -247,11 +273,12 @@ class LoraSwitch:
                 return run(song)
             return run_with_lora
 
-        # The iPhone takes no song with a LoRA, but a plain one there must not get latent projections changed in place.
-        worker.run_ane, worker.run_gpu, worker.run_remote = (synthesizing(worker.run_ane), synthesizing(worker.run_gpu),
-                                                             synthesizing(worker.run_remote))
-        remote_can_take = worker.remote_can_take
-        worker.remote_can_take = lambda song: lora_key(song) is None and remote_can_take(song)
+        worker.run_ane, worker.run_gpu = synthesizing(worker.run_ane), synthesizing(worker.run_gpu)
+        if hasattr(worker, "run_remote"):          # YuE Studio 0.4 on: the iPhone
+            # It takes no song with a LoRA, but a plain one there must not get latent projections changed in place.
+            worker.run_remote = synthesizing(worker.run_remote)
+            remote_can_take = worker.remote_can_take
+            worker.remote_can_take = lambda song: lora_key(song) is None and remote_can_take(song)
         schedule = worker.SCHED.schedule
         worker.SCHED.schedule = lambda: self.gate(schedule)
 
@@ -315,13 +342,16 @@ class LoraSwitch:
             self.worker.log(f"Cannot write {marker}: {exc}")
 
 
-def announce(worker, active):
+def announce(worker, active, lora, problem):
     """Adds the extension's state to the worker's ready event."""
     emit = worker.emit
 
     def emit_announcing(**event):
         if event.get("event") == "ready":
             event["yueui_extensions"] = active
+            event["yueui_lora"] = lora
+            if problem:
+                event["yueui_problem"] = problem
         emit(**event)
 
     worker.emit = emit_announcing
@@ -331,15 +361,19 @@ def main():
     if len(sys.argv) != 2:
         sys.exit("usage: yueui_worker.py <path to yue2_worker.py>")
     worker = load(Path(sys.argv[1]).resolve())
-    problem = check(worker)
+    problem = check(worker, SEAMS)
+    lora_problem = check_lora(worker) if problem is None else problem
     if problem is None:
         try:
-            patch(worker)
+            patch(worker, lora_problem)
         except Exception as exc:                  # patch() assigns only at its end, so nothing is half-patched
-            problem = f"{type(exc).__name__}: {exc}"
-    announce(worker, problem is None)
+            problem = lora_problem = f"{type(exc).__name__}: {exc}"
+    active, lora = problem is None, lora_problem is None
     if problem is not None:
-        worker.log(f"YueUI extensions are off, the worker runs as YuE Studio ships it: {problem}")
+        problem = f"YueUI extensions are off, the worker runs as YuE Studio ships it: {problem}"
+    elif lora_problem is not None:
+        problem = f"YueUI extensions are on, LoRAs are off: {lora_problem}"
+    announce(worker, active, lora, problem)    # the app logs the reason as a warning
     worker.main()
 
 
