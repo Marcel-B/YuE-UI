@@ -6,7 +6,7 @@ namespace YueUI.Api;
 /// <param name="Batch">Songs with consecutive seeds; the worker tokenizes up to four together at the cost of one.</param>
 /// <param name="Quality">"draft" (few synthesis steps, minutes) or "full".</param>
 /// <param name="Cot">How the model plans before the audio: "full" (melody and structure), "melody" or "off".</param>
-/// <param name="Seed">Null for a random one.</param>
+/// <param name="Seed">Null for a random one; YuE2 takes 0 to 2^63 - 1 for every song of the batch.</param>
 /// <param name="Engines">"gpu" or "gpu+ane"; null leaves the worker's choice (Neural Engine for full quality).</param>
 /// <param name="DraftSteps">Synthesis steps of a draft, 1–32 (the worker defaults to 8).</param>
 /// <param name="MaxTokens">Upper limit of song tokens (25 per second of audio); null for the worker's 9000 (six minutes).
@@ -68,9 +68,14 @@ public sealed record GenerateRequest(
         {
             errors["cot"] = ["One of 'full', 'melody' or 'off'."];
         }
+        // YuE2 takes seeds below 2^63, and song n of a batch gets the seed + n - 1.
         if (Seed is < 0)
         {
             errors["seed"] = ["Not negative."];
+        }
+        else if (Seed > long.MaxValue - Math.Max(Batch - 1, 0))
+        {
+            errors["seed"] = [$"At most {long.MaxValue - Math.Max(Batch - 1, 0)} for {Batch} songs."];
         }
         if (Engines is not (null or "gpu" or "gpu+ane"))
         {
