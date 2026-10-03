@@ -43,7 +43,7 @@ public sealed record BackupStatus(
 /// <remarks>
 /// The songs are too large to zip every night over a home upload, so they go as files into folders of their own
 /// (<c>songs/&lt;run&gt;/songN/…</c>, <c>versions/</c>, <c>stems/</c>, <c>covers/</c>, <c>speech/voices/</c>,
-/// <c>speech/takes/</c>, <c>transcriptions/</c>) and only when new or changed since the last upload, by size and
+/// <c>speech/takes/</c>, <c>transcriptions/</c>, <c>loras/</c>) and only when new or changed since the last upload, by size and
 /// modification time remembered in <c>backup.json</c> next to the database. Nothing is deleted in the Nextcloud: a
 /// song deleted by mistake stays there. Left out on purpose: the streaming copies (made again from the FLAC), the
 /// speech lab's Python environment and models (downloaded again), and songs the worker is still on, or files written
@@ -425,6 +425,13 @@ public sealed class CloudBackup(
             yield return file;
         }
         foreach (var file in Below(Path.Combine(database.Directory, "speech", "takes"), "speech/takes"))
+        {
+            yield return file;
+        }
+        // Hours of training each; the trainer's latent cache (.lora-cache) and logs are left out.
+        var loras = Path.Combine(database.Directory, "loras");
+        foreach (var file in Below(loras, "loras").Where(f =>
+            f.File.EndsWith(".safetensors", StringComparison.Ordinal) && Path.GetDirectoryName(f.File) == loras))
         {
             yield return file;
         }

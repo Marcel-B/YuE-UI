@@ -5,6 +5,7 @@ using YueUI.Api.Data;
 using YueUI.Api.Export;
 using YueUI.Api.Library;
 using YueUI.Api.Logs;
+using YueUI.Api.Loras;
 using YueUI.Api.Logic;
 using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
@@ -23,6 +24,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // YuE Studio's installation and song folder; see YuePaths for the defaults.
 builder.Services.AddSingleton(YuePaths.FromConfiguration(builder.Configuration));
 builder.Services.AddSingleton<SongLibrary>();
+builder.Services.AddSingleton<LoraLibrary>();
 builder.Services.AddSingleton<TranscriptionLibrary>();
 builder.Services.AddSingleton<IWorkerLauncher, PythonWorkerLauncher>();
 builder.Services.AddSingleton<IStudioDetector, StudioDetector>();
@@ -133,6 +135,7 @@ var api = app.MapGroup("/api");
 // HEAD as well, since uptime monitors often probe with it.
 api.MapMethods("/health", ClientAppEndpoints.GetAndHead, () => Results.Text("ok"));
 api.MapWorkerEndpoints();
+api.MapLoraEndpoints();
 api.MapLibraryEndpoints();
 api.MapExportEndpoints();
 api.MapCoverEndpoints();

@@ -82,10 +82,11 @@ public sealed class JobQueue(
     /// <returns>The waiting job, or null when the song went to the worker.</returns>
     /// <exception cref="WorkerUnavailableException">The worker could not be started.</exception>
     /// <param name="voice">Sings each finished song again with this voice.</param>
-    public Task<QueuedJob?> GenerateAsync(GenerateRequest request, SongVoice? voice, CancellationToken cancellationToken)
+    /// <param name="loraPath">The file of the request's LoRA.</param>
+    public Task<QueuedJob?> GenerateAsync(GenerateRequest request, SongVoice? voice, string? loraPath, CancellationToken cancellationToken)
     {
         var job = new QueuedJob(NewId(), JobKind.Song, request.Title?.Trim() ?? "", time.GetUtcNow(), Batch: request.Batch, Quality: request.Quality, VoiceLabel: voice?.VoiceLabel);
-        var payload = request.ToWorkerCommand();
+        var payload = request.ToWorkerCommand(loraPath);
         if (voice is not null)
         {
             // Kept beside the worker's command, so that it survives a restart with it; taken off before sending.

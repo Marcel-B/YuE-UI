@@ -16,6 +16,8 @@ namespace YueUI.Api;
 /// <param name="AbcSampling">Overrides of how the score is sampled; needs the worker extension.</param>
 /// <param name="SemanticSampling">Overrides of how the song tokens are sampled; needs the worker extension.</param>
 /// <param name="Voice">Sings each finished song again with this reference voice (a version, see Voices/VoiceConverter.cs).</param>
+/// <param name="Lora">A LoRA from <c>loras/</c> (<see cref="Loras.LoraLibrary"/>) that changes the sound; needs the worker extension.</param>
+/// <param name="LoraStrength">How strongly the LoRA applies, 0–3; null for 1 (as trained).</param>
 public sealed record GenerateRequest(
     string Style,
     string Lyrics,
@@ -32,7 +34,9 @@ public sealed record GenerateRequest(
     int? FullSteps = null,
     SamplingOverrides? AbcSampling = null,
     SamplingOverrides? SemanticSampling = null,
-    Voices.VersionRequest? Voice = null)
+    Voices.VersionRequest? Voice = null,
+    string? Lora = null,
+    double? LoraStrength = null)
 {
     public const int MaxBatch = 8;
     // The worker's semantic sampling insists on at least 200 tokens (min_tokens). The worker caps at 9000; the
@@ -40,6 +44,7 @@ public sealed record GenerateRequest(
     public const int MinTokens = 200;
     public const int MaxTokensLimit = 15000;
     public const int MaxFullSteps = 64;
+    public const double MaxLoraStrength = 3;
 
     private bool HasAbc => !string.IsNullOrWhiteSpace(Abc);
 
@@ -93,6 +98,14 @@ public sealed record GenerateRequest(
         {
             errors["fullSteps"] = [$"Between 1 and {MaxFullSteps}."];
         }
+        if (Lora is not null && !Loras.LoraLibrary.ValidName(Lora))
+        {
+            errors["lora"] = ["Not a LoRA name."];
+        }
+        if (LoraStrength is < 0 or > MaxLoraStrength || LoraStrength is { } strength && !double.IsFinite(strength))
+        {
+            errors["loraStrength"] = [$"Between 0 and {MaxLoraStrength}."];
+        }
         AbcSampling?.Validate("abcSampling", errors);
         SemanticSampling?.Validate("semanticSampling", errors);
         foreach (var (key, messages) in Voice?.Validate() ?? [])
@@ -107,7 +120,8 @@ public sealed record GenerateRequest(
         return errors;
     }
 
-    public JsonObject ToWorkerCommand()
+    /// <param name="loraPath">The file of <see cref="Lora"/>, which the caller looked up.</param>
+    public JsonObject ToWorkerCommand(string? loraPath = null)
     {
         var command = new JsonObject
         {
@@ -155,6 +169,11 @@ public sealed record GenerateRequest(
         if (SemanticSampling?.ToWorker() is { Count: > 0 } semanticSampling)
         {
             command["semantic_sampling"] = semanticSampling;
+        }
+        if (loraPath is not null)
+        {
+            command["lora"] = loraPath;
+            command["lora_strength"] = LoraStrength ?? 1;
         }
         return command;
     }

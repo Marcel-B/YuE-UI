@@ -149,6 +149,20 @@ const messages = {
     enginesHint: 'Wo die Klangsynthese läuft. Automatisch: Entwurf auf der GPU, voll auf der Neural Engine.',
     enginesMore:
       '• Automatisch (Standard): Entwürfe auf der GPU, volle Qualität auf der Neural Engine – dort bei kurzen Songs etwa doppelt so schnell.\n• Nur GPU: lässt die rund 2,8 GB der Neural Engine frei, hilfreich bei knappem Speicher, z. B. wenn YuE Studio zugleich läuft.\n• GPU und Neural Engine: auch Entwürfe dürfen auf die Neural Engine.\n\nKann die Neural Engine einen Song nicht übernehmen (etwa einen sehr langen), läuft er auf der GPU.\n\nOriginal: engines, gpu oder gpu+ane; ohne Angabe gpu+ane bei voller Qualität und gpu beim Entwurf.',
+    lora: 'Klang-LoRA',
+    loraNone: 'keine',
+    loraMissing: '{name} (nicht mehr da)',
+    loraHint:
+      'Eine selbst trainierte Klangfarbe, z. B. für Dubstep. Sie ändert Instrumente und Mix, nicht die Komposition.',
+    loraNoneYet: 'Noch keine LoRA da. deploy/train-lora.sh trainiert eine aus eigenen Songs (siehe „Mehr dazu“).',
+    loraTrigger: 'Triggerwort „{word}“: gehört in den Stil.',
+    loraTrained: 'Trainiert auf {songs} Songs ({minutes} min), {steps} Schritte.',
+    loraMore:
+      'Eine LoRA ist eine kleine Zusatzdatei zu YuE2, trainiert auf eigene Songs. Sie lernt den Klang (Instrumente, Mix, Klangfarbe) und wirkt auf die Klangsynthese. Melodie, Akkorde und Form plant YuE2 wie immer aus Stil und Text; schreib den Stil also trotzdem dazu, samt Triggerwort.\n\nTrainieren auf dem Mac mini (über SSH, dauert je nach Songlänge ein bis zwei Stunden für 1500 Schritte):\ndeploy/train-lora.sh ~/dubstep dubstep\nDer Ordner enthält die Songs (MP3, WAV, FLAC, M4A …), 5 bis 30 im selben Stil reichen; eine gleichnamige .txt neben einem Song beschreibt ihn genauer. Das Ergebnis landet hier: {folder}\n\nFertige LoRAs von Hugging Face (YuE2, Format von ComfyUI) passen auch, wenn sie nur den Klangteil ändern; leg die .safetensors-Datei in den Ordner.\n\nNicht kommerziell: YuE2 und alles, was daraus trainiert wird, steht unter CC BY-NC 4.0.',
+    loraStrength: 'LoRA-Stärke',
+    loraStrengthHint: 'Wie stark die LoRA wirkt, 0–3 (Standard 1 = wie trainiert).',
+    loraStrengthMore:
+      'Trainiert wird ohne die Song-Tokens des Stücks (YuE2 gibt kein Werkzeug heraus, das sie aus fremder Musik gewinnt). Beim Generieren sieht die Klangsynthese sie aber, deshalb wirkt eine LoRA dort oft etwas schwächer als im Training. Werte um 1,5 gleichen das aus; ab etwa 2 kann der Klang verzerren.\n\nSongs mit verschiedenen LoRAs warten bei der Klangsynthese aufeinander, weil immer nur eine in den Gewichten stecken kann. Ein Song mit LoRA geht nicht aufs iPhone.',
     maxLength: 'Maximale Länge',
     maxLengthHint:
       'Obergrenze für die Songlänge; der Song endet sonst von selbst, wenn der Text gesungen ist. Über 6:00 ist Neuland für das Modell.',
@@ -823,6 +837,20 @@ const messages = {
     enginesHint: 'Where the sound synthesis runs. Automatic: drafts on the GPU, full quality on the Neural Engine.',
     enginesMore:
       '• Automatic (default): drafts on the GPU, full quality on the Neural Engine – about twice as fast there for short songs.\n• GPU only: leaves the Neural Engine’s roughly 2.8 GB unmapped, which helps when memory is tight, e.g. while YuE Studio is running too.\n• GPU and Neural Engine: drafts may use the Neural Engine as well.\n\nA song the Neural Engine cannot take (a very long one, say) runs on the GPU.\n\nOriginal: engines, gpu or gpu+ane; when not given, gpu+ane at full quality and gpu for drafts.',
+    lora: 'Sound LoRA',
+    loraNone: 'none',
+    loraMissing: '{name} (gone)',
+    loraHint:
+      'A sound trained on your own songs, e.g. for dubstep. It changes instruments and mix, not the composition.',
+    loraNoneYet: 'No LoRA yet. deploy/train-lora.sh trains one from your own songs (see “More”).',
+    loraTrigger: 'Trigger word “{word}”: put it in the style.',
+    loraTrained: 'Trained on {songs} songs ({minutes} min), {steps} steps.',
+    loraMore:
+      'A LoRA is a small add-on file for YuE2, trained on your own songs. It learns the sound (instruments, mix, timbre) and acts on the sound synthesis. Melody, chords and form are planned from style and lyrics as always, so still write the style, trigger word included.\n\nTraining on the Mac mini (over SSH, one to two hours for 1500 steps depending on song length):\ndeploy/train-lora.sh ~/dubstep dubstep\nThe folder holds the songs (MP3, WAV, FLAC, M4A …); 5 to 30 in the same style are enough, and a .txt of the same name beside a song describes it more closely. The result lands here: {folder}\n\nReady-made LoRAs from Hugging Face (YuE2, ComfyUI format) work too if they only change the sound part; put the .safetensors file into the folder.\n\nNon-commercial: YuE2 and everything trained from it is CC BY-NC 4.0.',
+    loraStrength: 'LoRA strength',
+    loraStrengthHint: 'How strongly the LoRA applies, 0–3 (default 1 = as trained).',
+    loraStrengthMore:
+      'Training cannot use the song tokens of the pieces (YuE2 releases no tool that gets them from other music). When generating, the sound synthesis does see them, so a LoRA often acts a little weaker there than in training. Values around 1.5 make up for it; from about 2 the sound may distort.\n\nSongs with different LoRAs wait for each other at the sound synthesis, since only one can be in the weights at a time. A song with a LoRA does not go to the iPhone.',
     maxLength: 'Maximum length',
     maxLengthHint:
       'Upper limit for the song length; otherwise the song ends by itself once the lyrics are sung. Beyond 6:00 is new ground for the model.',
