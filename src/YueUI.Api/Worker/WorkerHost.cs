@@ -556,6 +556,11 @@ public sealed class WorkerHost(
                     // YuE Studio's worker started without the extension says nothing about it.
                     _extensions = message["yueui_extensions"] is JsonValue flag && flag.TryGetValue(out bool active) && active;
                 }
+                // Why extensions or LoRAs are off, as a warning, so the log page's report for Claude carries it.
+                if (Text(message["yueui_problem"]) is { Length: > 0 } problem)
+                {
+                    AddLog("warning", problem);
+                }
                 PublishWorker();
                 break;
             case "log":
@@ -788,7 +793,12 @@ public sealed class WorkerHost(
         }
         Publish("log", entry);
         // Only the last few hundred lines stay in memory for the queue page; the log page keeps them for days.
-        logs.Add(Logs.LogSources.Worker, level == "error" ? Logs.LogLevels.Error : Logs.LogLevels.Info, text);
+        logs.Add(Logs.LogSources.Worker, level switch
+        {
+            "error" => Logs.LogLevels.Error,
+            "warning" => Logs.LogLevels.Warning,
+            _ => Logs.LogLevels.Info,
+        }, text);
     }
 
     private void PublishWorker()

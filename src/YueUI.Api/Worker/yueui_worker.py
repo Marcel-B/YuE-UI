@@ -342,7 +342,7 @@ class LoraSwitch:
             self.worker.log(f"Cannot write {marker}: {exc}")
 
 
-def announce(worker, active, lora):
+def announce(worker, active, lora, problem):
     """Adds the extension's state to the worker's ready event."""
     emit = worker.emit
 
@@ -350,6 +350,8 @@ def announce(worker, active, lora):
         if event.get("event") == "ready":
             event["yueui_extensions"] = active
             event["yueui_lora"] = lora
+            if problem:
+                event["yueui_problem"] = problem
         emit(**event)
 
     worker.emit = emit_announcing
@@ -366,11 +368,12 @@ def main():
             patch(worker, lora_problem)
         except Exception as exc:                  # patch() assigns only at its end, so nothing is half-patched
             problem = lora_problem = f"{type(exc).__name__}: {exc}"
-    announce(worker, problem is None, lora_problem is None)
+    active, lora = problem is None, lora_problem is None
     if problem is not None:
-        worker.log(f"YueUI extensions are off, the worker runs as YuE Studio ships it: {problem}")
+        problem = f"YueUI extensions are off, the worker runs as YuE Studio ships it: {problem}"
     elif lora_problem is not None:
-        worker.log(f"YueUI extensions are on, LoRAs are off: {lora_problem}")
+        problem = f"YueUI extensions are on, LoRAs are off: {lora_problem}"
+    announce(worker, active, lora, problem)    # the app logs the reason as a warning
     worker.main()
 
 
