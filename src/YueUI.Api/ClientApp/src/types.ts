@@ -277,6 +277,18 @@ export interface PlaylistInfo {
   songIds: string[]
 }
 
+/**
+ * A prompt template (TemplateEndpoints.cs): what a good song was made with, under a name. The settings are the form's
+ * own (form.ts `TemplateSettings`), which the server keeps without reading; they are checked when applied.
+ */
+export interface PromptTemplate {
+  id: number
+  name: string
+  settings: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
 /** What a lyrics draft is written in (Lyrics/LyricsLanguage.cs). */
 export type LyricsLanguage = 'english' | 'german'
 

@@ -168,13 +168,15 @@ function keepValid<T extends object>(defaults: T, stored: Partial<T> | undefined
   const result = { ...defaults }
   for (const key of Object.keys(defaults) as (keyof T)[]) {
     const value = stored?.[key]
-    const valid =
-      typeof value === typeof defaults[key] && value !== null && (typeof value !== 'number' || Number.isFinite(value))
-    if (valid) {
+    if (sameType(defaults[key], value)) {
       result[key] = value as T[keyof T]
     }
   }
   return result
+}
+
+function sameType(initial: unknown, value: unknown): boolean {
+  return typeof value === typeof initial && value !== null && (typeof value !== 'number' || Number.isFinite(value))
 }
 
 export function saveFormState(form: FormState): void {
@@ -278,3 +280,69 @@ V: Vocal
 "C"G2A2c2B2A2G2E4|"F"F2A2G2E2D2E2G4|"G"A2c2B2A2G2E2D4|"C"E2G2A2G2E2D2C4|
 V: Ins
 Z4|`
+
+/**
+ * What a prompt template can hold, in groups that are saved or left out as a whole. Never the title, lyrics or score:
+ * a template is how a song sounds, not what it says.
+ */
+export type TemplatePart = 'style' | 'seed' | 'parameters' | 'voice'
+
+export const templatePartKeys: Record<TemplatePart, readonly (keyof FormState)[]> = {
+  // Instrumental decides whether the style is sung, so it belongs to it.
+  style: ['style', 'instrumental'],
+  seed: ['seed'],
+  parameters: [
+    'quality',
+    'batch',
+    'cot',
+    'draftSteps',
+    'fullSteps',
+    'engines',
+    'maxSeconds',
+    'abcSampling',
+    'semanticSampling',
+  ],
+  voice: ['voiceId', 'voiceShift', 'voiceStrength', 'voiceSteps'],
+}
+
+export const templateParts = Object.keys(templatePartKeys) as TemplatePart[]
+
+/** The form's values of the chosen groups, as the server keeps them. */
+export type TemplateSettings = Partial<Pick<FormState, (typeof templatePartKeys)[TemplatePart][number]>>
+
+export function toTemplateSettings(form: FormState, parts: readonly TemplatePart[]): TemplateSettings {
+  const settings: Record<string, unknown> = {}
+  for (const part of parts) {
+    for (const key of templatePartKeys[part]) {
+      const value = form[key]
+      settings[key] = typeof value === 'object' ? { ...value } : value
+    }
+  }
+  return settings as TemplateSettings
+}
+
+/** The groups a template holds; a group counts when any of its values is there. */
+export function partsOf(settings: Record<string, unknown>): TemplatePart[] {
+  return templateParts.filter((part) => templatePartKeys[part].some((key) => key in settings))
+}
+
+/**
+ * The form with a template's values laid over it: what the template does not hold stays as it is, so a template with
+ * only a style keeps the seed and parameters. Values of the wrong type (a template saved by an older version, or
+ * edited elsewhere) are skipped like a stored form's. With a score in the form its planning stays, since the score
+ * needs it.
+ */
+export function applyTemplate(form: FormState, settings: Record<string, unknown>): FormState {
+  const defaults = defaultFormState()
+  const result: Record<string, unknown> = { ...form }
+  for (const key of templateParts.flatMap((part) => templatePartKeys[part])) {
+    const value = settings[key]
+    if (!sameType(defaults[key], value) || (key === 'cot' && hasScore(form))) {
+      continue
+    }
+    // Nested, so a template saved before a sampling value was added still gets it.
+    result[key] =
+      key === 'abcSampling' || key === 'semanticSampling' ? keepValid(defaults[key], value as Partial<Sampling>) : value
+  }
+  return result as unknown as FormState
+}

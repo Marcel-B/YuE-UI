@@ -10,6 +10,7 @@ import type {
   LyricsState,
   MidiScore,
   PlaylistInfo,
+  PromptTemplate,
   QueuedJob,
   RunInfo,
   SongRequest,
@@ -176,6 +177,28 @@ export async function putPlaylistSongs(id: number, songIds: string[]): Promise<P
 /** The server keeps the last playlist (409), so "add to playlist" always has somewhere to go. */
 export async function deletePlaylist(id: number): Promise<void> {
   await send(`/api/playlists/${id}`, { method: 'DELETE' })
+}
+
+/** Every prompt template, by name. */
+export async function getTemplates(): Promise<PromptTemplate[]> {
+  return (await send('/api/templates')).json() as Promise<PromptTemplate[]>
+}
+
+/** A name already taken (in any case) answers 409. */
+export async function createTemplate(name: string, settings: object): Promise<PromptTemplate> {
+  return (await send('/api/templates', json('POST', { name, settings }))).json() as Promise<PromptTemplate>
+}
+
+/** Renames the template, replaces its settings, or both. */
+export async function updateTemplate(
+  id: number,
+  change: { name?: string; settings?: object },
+): Promise<PromptTemplate> {
+  return (await send(`/api/templates/${id}`, json('PUT', change))).json() as Promise<PromptTemplate>
+}
+
+export async function deleteTemplate(id: number): Promise<void> {
+  await send(`/api/templates/${id}`, { method: 'DELETE' })
 }
 
 /** Free and total space of the volume the songs are written to. */

@@ -263,6 +263,16 @@ watch(
   { immediate: true },
 )
 
+// A template may name a voice deleted since it was saved.
+watch(
+  () => form.value.voiceId,
+  (id) => {
+    if (id && voiceList.value !== null && !voiceList.value.some((v) => v.id === id)) {
+      form.value.voiceId = ''
+    }
+  },
+)
+
 const voiceOptions = computed(() => [
   { value: '', label: t('voiceAfterNone') },
   ...(voiceList.value ?? []).map((v) => ({ value: v.id, label: v.label })),

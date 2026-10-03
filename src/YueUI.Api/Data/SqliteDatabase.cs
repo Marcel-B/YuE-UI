@@ -393,6 +393,24 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     PRAGMA user_version = 15;
                     """);
             }
+            if (current < 16)
+            {
+                // The settings are the browser's (a subset of its form); the server only keeps them under a name.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE prompt_templates (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        name_key TEXT NOT NULL UNIQUE,
+                        settings TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 16;
+                    """);
+            }
             _ready = true;
         }
     }
