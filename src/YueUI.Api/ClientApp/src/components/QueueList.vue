@@ -6,6 +6,7 @@ import {
   cancelTranscription,
   deleteSpeechTake,
   deleteStems,
+  deleteSwap,
   deleteVersion,
   moveQueued,
   shutdownWorker,
@@ -23,6 +24,7 @@ import type {
   SongState,
   SpeechTake,
   StemSetState,
+  SwapState,
   TranscriptionState,
   VersionState,
   WorkerInfo,
@@ -39,6 +41,8 @@ const props = defineProps<{
   versions: VersionState[]
   /** Songs being split into stems; they share the voices' queue and memory. */
   stems: StemSetState[]
+  /** Uploaded recordings being sung with another voice, in the same queue. */
+  swaps: SwapState[]
   /** Queue:BundleWindow; null for a server from before it was sent. */
   bundleWindowSeconds: number | null
   /** The speech lab's takes; those in the works wait for the same memory. */
@@ -100,7 +104,7 @@ const now = ref(Date.now())
 const timer = setInterval(() => (now.value = Date.now()), 15_000)
 onBeforeUnmount(() => clearInterval(timer))
 
-const voiceWork = computed(() => [...props.versions, ...props.stems])
+const voiceWork = computed(() => [...props.versions, ...props.stems, ...props.swaps])
 const holder = computed(() =>
   holderOf(props.worker, props.lyricsDraft, voiceWork.value, props.takes, props.transcriptions),
 )
@@ -135,7 +139,8 @@ function takeDetail(take: SpeechTake): string {
  */
 interface VoiceItem {
   key: string
-  songId: string
+  /** Null for an uploaded file, which has no song to link to. */
+  songId: string | null
   title: string
   detail: string
   stage: string
@@ -172,6 +177,19 @@ const voiceItems = computed<VoiceItem[]>(() =>
         createdAt: s.createdAt,
         icon: 'pi pi-sliders-v',
         remove: () => deleteStems(s.songId, s.id),
+      })),
+    ...props.swaps
+      .filter((s) => !s.finished)
+      .map((s) => ({
+        key: `swap:${s.id}`,
+        songId: null,
+        title: s.fileName,
+        detail: t('queueSwap', { voice: s.voiceLabel }),
+        stage: s.stage,
+        stageLabel: [t(`versionStage_${s.stage}`), versionProgress(s)].filter(Boolean).join(' '),
+        createdAt: s.createdAt,
+        icon: 'pi pi-user-edit',
+        remove: () => deleteSwap(s.id),
       })),
   ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
 )
@@ -324,7 +342,14 @@ watch(
           <i :class="[item.icon, 'text-muted-color']" />
           <div class="min-w-0 flex-1">
             <a
-              v-if="listed.has(item.songId)"
+              v-if="item.songId === null"
+              href="#/voices"
+              class="block truncate font-bold text-color no-underline hover:underline"
+              @click.prevent="navigate('voices')"
+              >{{ item.title }}</a
+            >
+            <a
+              v-else-if="listed.has(item.songId)"
               :href="songHref(item.songId)"
               class="block truncate font-bold text-color no-underline hover:underline"
               :title="t('showSong')"

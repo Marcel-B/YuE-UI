@@ -25,6 +25,7 @@ import type {
   ReferenceVoice,
   StemModel,
   StemSetState,
+  SwapState,
   VersionRequest,
   VersionState,
   VoiceInfo,
@@ -374,6 +375,46 @@ export async function addVoice(label: string, file: File, start?: number, end?: 
   return (await send('/api/voices', { method: 'POST', body: form })).json() as Promise<ReferenceVoice>
 }
 
+/** Every uploaded recording sung with another voice, newest first. */
+export async function listSwaps(): Promise<SwapState[]> {
+  return (await send('/api/swaps')).json() as Promise<SwapState[]>
+}
+
+export interface SwapRequest {
+  voiceId: string
+  semiToneShift: number
+  strength: number
+  diffusionSteps: number
+  /** The file is a whole song: separate it first and mix the new vocals back. */
+  separate: boolean
+  keepReverb: boolean
+}
+
+/** Uploads the recording and queues it; its progress arrives as `swap` events. */
+export async function addSwap(file: File, request: SwapRequest): Promise<SwapState> {
+  const form = new FormData()
+  form.append('file', file)
+  for (const [key, value] of Object.entries(request)) {
+    form.append(key, String(value))
+  }
+  return (await send('/api/swaps', { method: 'POST', body: form })).json() as Promise<SwapState>
+}
+
+/** Stops a swap in the works, or removes a finished one with its upload. */
+export async function deleteSwap(id: string): Promise<void> {
+  await send(`/api/swaps/${id}`, { method: 'DELETE' })
+}
+
+/** The result as FLAC; with `download`, under a name made of the file's and the voice's. */
+export function swapAudioUrl(id: string, download = false): string {
+  return `${apiBase}/api/swaps/${id}/audio${download ? '?download=true' : ''}`
+}
+
+/** The upload as it came, to compare. */
+export function swapSourceUrl(id: string): string {
+  return `${apiBase}/api/swaps/${id}/source`
+}
+
 /** Refused (409) while a job of the service still waits for the voice. */
 export async function deleteVoice(id: string): Promise<void> {
   await send(`/api/voices/${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -478,6 +519,8 @@ export interface EventHandlers {
   lyrics(lyrics: LyricsState): void
   version(version: VersionState): void
   stems(set: StemSetState): void
+  /** An uploaded recording being sung with another voice changed; a deleted one arrives as cancelled. */
+  swap(swap: SwapState): void
   /** A take of the speech lab changed; a deleted one arrives as cancelled. */
   speech(take: SpeechTake): void
   queue(queue: QueuedJob[]): void
@@ -504,6 +547,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on<QueuedJob[]>('queue', handlers.queue)
   on<VersionState>('version', handlers.version)
   on<StemSetState>('stems', handlers.stems)
+  on<SwapState>('swap', handlers.swap)
   on<SpeechTake>('speech', handlers.speech)
   source.onerror = () => handlers.connection(false)
   return () => source.close()

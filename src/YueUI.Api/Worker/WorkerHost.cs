@@ -52,6 +52,7 @@ public sealed class WorkerHost(
     private readonly Dictionary<string, TranscriptionState> _transcriptions = [];
     private readonly Dictionary<string, VersionState> _versions = [];
     private readonly Dictionary<string, StemSetState> _stems = [];
+    private readonly Dictionary<string, SwapState> _swaps = [];
     /// <summary>The speech lab's takes in the works, in the order they are spoken (a list, since several share a time).</summary>
     private readonly List<Speech.SpeechTake> _speech = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
@@ -355,6 +356,23 @@ public sealed class WorkerHost(
             _stems[set.Id] = set;
         }
         Publish("stems", set);
+    }
+
+    /// <summary>
+    /// Keeps an uploaded recording being sung with another voice (Voices/VoiceConverter.cs) for the snapshot and sends it
+    /// to the browsers; a finished one leaves the snapshot with the next, since the voices page lists it from then on.
+    /// </summary>
+    public void UpdateSwap(SwapState swap)
+    {
+        lock (_gate)
+        {
+            foreach (var old in _swaps.Values.Where(s => s.Finished).ToList())
+            {
+                _swaps.Remove(old.Id);
+            }
+            _swaps[swap.Id] = swap;
+        }
+        Publish("swap", swap);
     }
 
     /// <summary>
@@ -819,7 +837,8 @@ public sealed class WorkerHost(
         _queue,
         queueOptions.Value.BundleWindow.TotalSeconds,
         [.. _stems.Values.OrderBy(s => s.CreatedAt)],
-        [.. _speech]);
+        [.. _speech],
+        [.. _swaps.Values.OrderBy(s => s.CreatedAt)]);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);

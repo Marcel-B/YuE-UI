@@ -187,6 +187,8 @@ Soll ein neuer Song gleich mit einer Stimme gesungen werden, wählt man sie scho
 
 Die Seite **Stimmen** zeigt die Referenzstimmen: anhören, löschen und neue Aufnahmen hochladen. Am besten 10 bis 25 Sekunden trockener Gesang ohne Musik; Tonwerk behält höchstens 25 Sekunden ab dem gewählten Anfang, kürzer als 3 Sekunden nimmt es nicht. Die Stimmen liegen in `voices/` neben der Datenbank; die Sammlung von ChangeMyVoice übernimmt Tonwerk einmal mit ihren Kennungen, solange dort noch eine erreichbar ist (danach gelöschte bleiben gelöscht). Darunter stehen die Fassungen, die gerade entstehen.
 
+**Stimmenspur tauschen** singt eine eigene Aufnahme mit einer gespeicherten Stimme neu: Datei hochladen (WAV, MP3, FLAC, M4A, OGG, bis 300 MB), Stimme wählen, sagen, ob die Datei **nur Gesang** ist (Standard; geht direkt an Seed-VC) oder ein **ganzer Song** (dann wird der Gesang erst abgetrennt und die neue Stimme wieder unter das Instrumental gemischt, wahlweise mit dem Hall des Originals; braucht die Stem-Trennung), dazu Tonlage, Stärke und Qualität wie bei den Fassungen, **Stimme tauschen**. Das wartet wie eine Fassung auf den Speicher und meldet sich per Benachrichtigung. Danach lassen sich Ergebnis und Original abwechselnd anhören (die Zeit läuft beim Wechsel weiter) und das Ergebnis als FLAC herunterladen. Upload und Ergebnis liegen in `swaps/` neben der Datenbank und gehen mit ins Backup.
+
 Darunter trennt **Stems** einen Song in seine Spuren: Song und Modell wählen (die 27 Modelle aus dem Katalog von StemMyWav; jedes lädt beim ersten Mal herunter), auf Wunsch den Hall vom Gesang trennen, **Trennen**. Das wartet wie eine Fassung, bis YuE2 und das Textmodell den Speicher freigeben, und meldet sich per Benachrichtigung. Jede Spur lässt sich mit ihrer Wellenform anhören (ein Tipp in die Wellenform springt dorthin, beim Wechsel zu einer anderen Spur desselben Songs läuft die Zeit weiter) und als FLAC herunterladen. Die Dateien liegen in `stems/` neben der Datenbank, nicht im Songordner, und gehen mit dem Song. In der Bibliothek führt **In Stems trennen** beim Song direkt dorthin.
 
 Ein Song braucht grob 10 bis 20 Minuten. Der Mac hat nicht genug Speicher für YuE2, Stem-Trennung und Seed-VC zugleich, deshalb geht immer nur eine Fassung, und erst wenn YuE2 nichts rechnet und kein Textentwurf läuft; ein untätiger YuE-Worker wird vorher beendet. Solange eine Fassung entsteht, warten neue Songs, Neuberechnungen und Textentwürfe in der Warteschlange.
@@ -221,7 +223,7 @@ Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/speech/`
 Tonwerk sichert sich jede Nacht um 3 Uhr selbst in eine Nextcloud (über WebDAV, also auch in jeden anderen WebDAV-Speicher), nach dem Vorbild von module-o-mat. Hochgeladen werden:
 
 - `tonwerk-mon.zip` bis `tonwerk-sun.zip`: eine Kopie von `yueui.db` (Playlists, Titel, Bewertungen, Warteschlange, Instrumente, Klänge, …) und `push.json`, je Wochentag eine, die Nextcloud hat also die letzten sieben Tage. Die Datenbank wird mit SQLites eigener Sicherung kopiert, auch wenn Tonwerk gerade schreibt.
-- die Dateien daneben, jede nur einmal und danach nur, wenn sie sich ändert: die Songs (`songs/<Lauf>/songN/` mit FLAC, Partitur und `request.json`), Fassungen (`versions/`), Stems (`stems/`), Cover (`covers/`), die Stimmen und Ergebnisse des Sprachlabors (`speech/voices/`, `speech/takes/`) und Transkriptionen (`transcriptions/`). Was schon oben ist, merkt sich Tonwerk in `backup.json` neben `yueui.db`. Die erste Sicherung dauert deshalb lange, die folgenden nur so lange wie die neuen Songs.
+- die Dateien daneben, jede nur einmal und danach nur, wenn sie sich ändert: die Songs (`songs/<Lauf>/songN/` mit FLAC, Partitur und `request.json`), Fassungen (`versions/`), Stems (`stems/`), getauschte Stimmenspuren (`swaps/`), Cover (`covers/`), die Stimmen und Ergebnisse des Sprachlabors (`speech/voices/`, `speech/takes/`) und Transkriptionen (`transcriptions/`). Was schon oben ist, merkt sich Tonwerk in `backup.json` neben `yueui.db`. Die erste Sicherung dauert deshalb lange, die folgenden nur so lange wie die neuen Songs.
 
 In der Nextcloud wird nichts gelöscht: Ein versehentlich gelöschter Song liegt dort weiter. Nicht gesichert werden die Streaming-Kopien (entstehen neu aus der FLAC), Python und Modelle des Sprachlabors (lassen sich neu laden) und Songs, an denen der Worker gerade rechnet; die nimmt die nächste Sicherung mit.
 
@@ -239,7 +241,7 @@ Der Ordner `Tonwerk` entsteht von selbst, der darüber muss existieren. Eine Adr
 
 Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die Nextcloud sichern** startet eine Sicherung sofort. Schlägt eine fehl, kommt eine Benachrichtigung; der Eintrag im Menü sagt dann warum. Eine fehlgeschlagene nächtliche Sicherung versucht es nach 30 Minuten noch einmal. Hält die Nextcloud eine Datei noch gesperrt (HTTP 423, etwa nach einem Upload, den ein Neustart abgebrochen hat; die Sperre fällt nach spätestens einer Stunde), lässt Tonwerk nur diese Datei für die nächste Sicherung liegen und sichert den Rest weiter.
 
-**Zurückholen.** Tonwerk stoppen (`launchctl bootout gui/$(id -u)/de.bvelop.yueui` oder `deploy/uninstall.sh`), `yueui.db` und `push.json` aus dem ZIP nach `~/Library/Application Support/YuE UI/` legen, die Ordner `versions`, `stems`, `covers` und `speech` ebenfalls dorthin, den Inhalt von `songs/` und `transcriptions/` nach `~/Music/YuE Studio/`, dann wieder starten (`deploy/install.sh`).
+**Zurückholen.** Tonwerk stoppen (`launchctl bootout gui/$(id -u)/de.bvelop.yueui` oder `deploy/uninstall.sh`), `yueui.db` und `push.json` aus dem ZIP nach `~/Library/Application Support/YuE UI/` legen, die Ordner `versions`, `stems`, `swaps`, `covers` und `speech` ebenfalls dorthin, den Inhalt von `songs/` und `transcriptions/` nach `~/Music/YuE Studio/`, dann wieder starten (`deploy/install.sh`).
 
 ## Protokoll
 
@@ -356,6 +358,10 @@ Die Zeilen liegen als JSON, eine Datei pro Tag (`tonwerk-JJJJ-MM-TT.jsonl`), unt
 | `GET` | `/api/songs/{run}/{song}/versions/{id}/audio` | fertige Fassung als FLAC (Range-fähig; `?download=true` als getaggter Download wie beim Song) |
 | `GET` | `/api/songs/{run}/{song}/versions/{id}/stream` | fertige Fassung als AAC-Kopie für den Player, wie beim Song |
 | `DELETE` | `/api/songs/{run}/{song}/versions/{id}` | Fassung abbrechen oder löschen |
+| `GET` | `/api/swaps` | getauschte Stimmenspuren, neueste zuerst |
+| `POST` | `/api/swaps` | Stimmenspur tauschen: Formular mit `file` (bis 300 MB), `voiceId`, `semiToneShift?`, `strength?`, `diffusionSteps?`, `separate?` (ganzer Song: erst trennen, dann zurückmischen) und `keepReverb?`; antwortet `202`, der Fortschritt kommt als `swap`-Event wie bei einer Fassung; `501` ohne Seed-VC (oder mit `separate` ohne Trennung) |
+| `GET` | `/api/swaps/{id}/audio` / `source` | Ergebnis als FLAC (`?download=true` mit Dateinamen) bzw. der Upload, beide Range-fähig |
+| `DELETE` | `/api/swaps/{id}` | Tausch abbrechen oder löschen |
 | `GET` | `/api/speech` | Sprachlabor: `{ installed, python, ffmpegInstalled, models, voices, takes }` (Modelle mit `downloaded`, Ergebnisse neueste zuerst) |
 | `POST` | `/api/speech/voices` | Stimme aufnehmen: Formular mit `label`, `transcript` (Wortlaut) und `file` (jedes Format, das ffmpeg liest, bis 50 MB); `400` bei weniger als 2 Sekunden Sprache |
 | `GET` / `DELETE` | `/api/speech/voices/{id}[/audio]` | Aufnahme als WAV (24 kHz mono) bzw. löschen |

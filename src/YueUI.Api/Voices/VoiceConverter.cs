@@ -11,7 +11,8 @@ namespace YueUI.Api.Voices;
 /// Sings songs with another voice, one at a time: StemMyWav separates the vocals, ChangeMyVoice (Seed-VC) converts
 /// them to a reference voice, ffmpeg mixes them back under the instrumental. The result is a version of the song
 /// (<see cref="SqliteVersionStore"/>); the song itself is not touched. It also splits songs into their stems for the
-/// voices page (<see cref="SqliteStemStore"/>), in the same queue, since that needs the same memory.
+/// voices page (<see cref="SqliteStemStore"/>) and sings uploaded recordings with a voice (<see cref="SqliteSwapStore"/>),
+/// in the same queue, since that needs the same memory.
 /// </summary>
 /// <remarks>
 /// YuE2 does not know voices: no reference audio, no speaker embedding, and the same seed does not give the same
@@ -24,6 +25,7 @@ namespace YueUI.Api.Voices;
 public sealed class VoiceConverter(
     SqliteVersionStore store,
     SqliteStemStore stemStore,
+    SqliteSwapStore swapStore,
     SongLibrary library,
     WorkerHost host,
     LyricsWriter lyrics,
@@ -37,6 +39,9 @@ public sealed class VoiceConverter(
 {
     /// <summary>Stem sets share the queue with versions; their entries carry this before the id.</summary>
     private const string StemsKey = "stems:";
+
+    /// <summary>Swaps of uploaded recordings share it too, with this before the id.</summary>
+    private const string SwapKey = "swap:";
 
     /// <summary>Slices of a stem's waveform: a few per pixel of a phone, a bar each on a wide screen.</summary>
     private const int PeakCount = 400;
@@ -97,6 +102,31 @@ public sealed class VoiceConverter(
         host.UpdateStems(set with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
     }
 
+    /// <summary>
+    /// Queues a swap whose upload already lies in its folder (<see cref="SqliteSwapStore.Folder"/>, as <c>source.*</c>).
+    /// </summary>
+    public SwapState EnqueueSwap(SwapState swap)
+    {
+        swapStore.Add(swap);
+        host.UpdateSwap(swap);
+        _queue.Writer.TryWrite(SwapKey + swap.Id);
+        return swap;
+    }
+
+    /// <summary>Stops the swap if it runs, and removes it with its files.</summary>
+    public void DeleteSwap(SwapState swap)
+    {
+        lock (_gate)
+        {
+            if (_running == SwapKey + swap.Id)
+            {
+                _cancel?.Cancel();
+            }
+        }
+        swapStore.Remove(swap.Id);
+        host.UpdateSwap(swap with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+    }
+
     public VersionState Enqueue(string songId, string title, ReferenceVoice voice, VersionRequest request)
     {
         var now = time.GetUtcNow();
@@ -147,7 +177,9 @@ public sealed class VoiceConverter(
                 Update(v, u => u with { Stage = "failed", Message = "The server restarted while the version was being made." }))));
             var sets = stemStore.Unfinished().Select(s => (s.CreatedAt, Key: StemsKey + s.Id, Resume: s.Stage == "queued", Fail: (Action)(() =>
                 UpdateStems(s, u => u with { Stage = "failed", Message = "The server restarted while the stems were being separated." }))));
-            foreach (var (_, key, resume, fail) in versions.Concat(sets).OrderBy(e => e.CreatedAt))
+            var swaps = swapStore.Unfinished().Select(s => (s.CreatedAt, Key: SwapKey + s.Id, Resume: s.Stage == "queued", Fail: (Action)(() =>
+                UpdateSwap(s, u => u with { Stage = "failed", Message = "The server restarted while the voice was being swapped." }))));
+            foreach (var (_, key, resume, fail) in versions.Concat(sets).Concat(swaps).OrderBy(e => e.CreatedAt))
             {
                 if (resume)
                 {
@@ -171,6 +203,10 @@ public sealed class VoiceConverter(
                 if (key.StartsWith(StemsKey, StringComparison.Ordinal))
                 {
                     await SeparateAsync(key[StemsKey.Length..], stoppingToken);
+                }
+                else if (key.StartsWith(SwapKey, StringComparison.Ordinal))
+                {
+                    await SwapAsync(key[SwapKey.Length..], stoppingToken);
                 }
                 else
                 {
@@ -221,7 +257,7 @@ public sealed class VoiceConverter(
             version = Update(version, v => v with { Stage = "converting", Fraction = 0 });
             var converted = Path.Combine(work, "converted.wav");
             // Reaching 1 means the estimate ran out; the browser says so instead of a percentage stuck at the end.
-            await voices.ConvertAsync(version, separated.Vocals, converted, (fraction, estimated) =>
+            await voices.ConvertAsync(version.Conversion, separated.Vocals, converted, (fraction, estimated) =>
                 version = Update(version, v => v with { Fraction = Math.Round(Math.Clamp(fraction, 0, 1), 3), EstimatedSeconds = estimated }), cancel.Token);
 
             version = Update(version, v => v with { Stage = "mixing", Fraction = 0 });
@@ -376,6 +412,120 @@ public sealed class VoiceConverter(
             }
             DeleteFolder(work);
         }
+    }
+
+    /// <summary>
+    /// Sings an uploaded recording with a voice: a bare vocal track straight through Seed-VC, a whole song separated
+    /// first and mixed back as a version is.
+    /// </summary>
+    private async Task SwapAsync(string id, CancellationToken stoppingToken)
+    {
+        if (swapStore.Get(id) is not { Finished: false } swap)
+        {
+            return;
+        }
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        lock (_gate)
+        {
+            _running = SwapKey + id;
+            _cancel = cancel;
+        }
+        var work = Path.Combine(Path.GetTempPath(), $"yueui-swap-{id}");
+        try
+        {
+            Interlocked.Exchange(ref _waitingTicks, swap.CreatedAt.UtcTicks);
+            try
+            {
+                await WaitForMemoryAsync(cancel.Token);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _waitingTicks, 0);
+            }
+            if (swapStore.SourcePath(id) is not { } source)
+            {
+                throw new VoiceServiceException("The uploaded file is gone.");
+            }
+            await host.ShutdownWorkerAsync();
+            Directory.CreateDirectory(work);
+            var converted = Path.Combine(work, "converted.wav");
+            void Progress(double fraction, double estimated) =>
+                swap = UpdateSwap(swap, s => s with { Fraction = Math.Round(Math.Clamp(fraction, 0, 1), 3), EstimatedSeconds = estimated });
+            var result = Path.Combine(work, SqliteSwapStore.ResultFile);
+
+            if (swap.Separate)
+            {
+                // FLAC, since the stem service takes it as such; the local separator reads anything.
+                var song = Path.Combine(work, "song.flac");
+                await mixer.DecodeAsync(source, song, cancel.Token);
+                swap = UpdateSwap(swap, s => s with { Stage = "separating" });
+                var separated = await stems.SeparateAsync(song, swap.StemModel, Path.Combine(work, "stems"), cancel.Token);
+
+                swap = UpdateSwap(swap, s => s with { Stage = "converting", Fraction = 0 });
+                await voices.ConvertAsync(swap.Conversion, separated.Vocals, converted, Progress, cancel.Token);
+
+                swap = UpdateSwap(swap, s => s with { Stage = "mixing", Fraction = 0 });
+                await mixer.MixAsync(new MixInput(separated.Instrumental, converted, separated.Vocals, swap.KeepReverb ? separated.Reverb : null), result, cancel.Token);
+            }
+            else
+            {
+                var vocals = Path.Combine(work, "vocals.wav");
+                await mixer.DecodeAsync(source, vocals, cancel.Token);
+                swap = UpdateSwap(swap, s => s with { Stage = "converting", Fraction = 0 });
+                await voices.ConvertAsync(swap.Conversion, vocals, converted, Progress, cancel.Token);
+                _converting = false;
+                await mixer.EncodeFlacAsync(converted, result, cancel.Token);
+            }
+
+            if (swapStore.Get(id) is null)
+            {
+                // Deleted meanwhile, with its folder.
+                return;
+            }
+            File.Move(result, swapStore.ResultPath(id), overwrite: true);
+            UpdateSwap(swap, s => s with { Stage = "done", Fraction = 1 });
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            if (!stoppingToken.IsCancellationRequested)
+            {
+                UpdateSwap(swap, s => s with { Stage = "cancelled" });
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "The voice swap {Id} of {File} failed", id, swap.FileName);
+            UpdateSwap(swap, s => s with { Stage = "failed", Message = exception.Message });
+        }
+        finally
+        {
+            _converting = false;
+            lock (_gate)
+            {
+                _running = null;
+                _cancel = null;
+            }
+            DeleteFolder(work);
+        }
+    }
+
+    /// <summary>Stores the change (a swap deleted meanwhile stays deleted) and tells the browsers.</summary>
+    private SwapState UpdateSwap(SwapState swap, Func<SwapState, SwapState> change)
+    {
+        var updated = change(swap) with { UpdatedAt = time.GetUtcNow() };
+        try
+        {
+            if (!swapStore.Update(updated))
+            {
+                return updated;
+            }
+        }
+        catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or IOException)
+        {
+            logger.LogWarning(exception, "Could not store the voice swap {Id}", swap.Id);
+        }
+        host.UpdateSwap(updated);
+        return updated;
     }
 
     private void DeleteFolder(string folder)

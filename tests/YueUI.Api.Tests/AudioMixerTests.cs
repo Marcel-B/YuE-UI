@@ -37,6 +37,33 @@ public sealed class AudioMixerTests : IDisposable
     }
 
     [Fact]
+    public async Task An_upload_is_decoded_at_48_kHz_as_WAV_or_FLAC_and_anything_else_is_refused()
+    {
+        if (AacEncoder.FindFfmpeg() is not { } ffmpeg)
+        {
+            return;
+        }
+        var upload = Path.Combine(_directory, "upload.m4a");
+        await Run(ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2", "-c:a", "aac", upload);
+        var mixer = new FfmpegMixer(NullLogger<FfmpegMixer>.Instance);
+        var probe = ffmpeg.Replace("ffmpeg", "ffprobe");
+
+        foreach (var (name, codec) in new[] { ("vocals.wav", "pcm_s16le"), ("song.flac", "flac") })
+        {
+            var output = Path.Combine(_directory, name);
+            await mixer.DecodeAsync(upload, output, CancellationToken.None);
+            var streams = await Run(probe, "-v", "error", "-show_entries", "stream=codec_name,sample_rate", "-of", "default=nw=1", output);
+            Assert.Contains($"codec_name={codec}", streams);
+            Assert.Contains("sample_rate=48000", streams);
+        }
+
+        var text = Path.Combine(_directory, "notes.txt");
+        await File.WriteAllTextAsync(text, "no audio here");
+        var refused = await Assert.ThrowsAsync<VoiceServiceException>(() => mixer.DecodeAsync(text, Path.Combine(_directory, "x.wav"), CancellationToken.None));
+        Assert.Equal(System.Net.HttpStatusCode.UnprocessableEntity, refused.Status);
+    }
+
+    [Fact]
     public async Task Converted_vocals_stay_silent_where_the_original_did_not_sing()
     {
         if (AacEncoder.FindFfmpeg() is not { } ffmpeg)

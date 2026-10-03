@@ -27,6 +27,7 @@ namespace YueUI.Api.Data;
 /// Version 12: songs' covers (<see cref="SqliteCoverStore"/>).
 /// Version 13: reference voices of this app's own (<see cref="SqliteReferenceVoiceStore"/>).
 /// Version 14: notes written to songs (<see cref="SqliteSongNoteStore"/>).
+/// Version 15: uploaded recordings sung with another voice (<see cref="SqliteSwapStore"/>).
 /// </remarks>
 public sealed class SqliteDatabase(IOptions<DataOptions> options)
 {
@@ -364,6 +365,32 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                         updated_at TEXT NOT NULL
                     );
                     PRAGMA user_version = 14;
+                    """);
+            }
+            if (current < 15)
+            {
+                // Keeps the voice's label, like a version: a swap stays worth hearing after its voice is deleted.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE voice_swaps (
+                        id TEXT PRIMARY KEY,
+                        file_name TEXT NOT NULL,
+                        voice_id TEXT NOT NULL,
+                        voice_label TEXT NOT NULL,
+                        semi_tone_shift INTEGER NOT NULL,
+                        strength REAL NOT NULL,
+                        diffusion_steps INTEGER NOT NULL,
+                        separate INTEGER NOT NULL,
+                        keep_reverb INTEGER NOT NULL,
+                        stem_model TEXT NULL,
+                        stage TEXT NOT NULL,
+                        message TEXT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    PRAGMA user_version = 15;
                     """);
             }
             _ready = true;

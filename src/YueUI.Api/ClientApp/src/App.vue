@@ -11,6 +11,7 @@ import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
 import VoicesPanel from './components/VoicesPanel.vue'
 import StemsPanel from './components/StemsPanel.vue'
+import VoiceSwapPanel from './components/VoiceSwapPanel.vue'
 import Message from 'primevue/message'
 import { fromSongRequest, loadFormState, planningFor, saveFormState } from './form'
 import { formatBytes, t, workerLabel, type MessageKey } from './i18n'
@@ -34,6 +35,7 @@ import type {
   StorageInfo,
   TranscriptionState,
   StemSetState,
+  SwapState,
   VersionState,
   QueuedJob,
   VoiceInfo,
@@ -86,6 +88,8 @@ const lyricsDraft = ref<LyricsState | null>(null)
 const versions = ref<VersionState[]>([])
 /** Stems in the works, and those finished while the page was open. */
 const stemSets = ref<StemSetState[]>([])
+/** Uploaded recordings being sung with another voice, and those finished while the page was open. */
+const swaps = ref<SwapState[]>([])
 /**
  * The speech lab's takes: those in the works from the snapshot, then as the event stream reports them, by id. The queue
  * shows the unfinished ones; the lab lays them all over what it loaded.
@@ -146,6 +150,15 @@ function upsertStems(set: StemSetState): void {
   }
 }
 
+function upsertSwap(swap: SwapState): void {
+  const index = swaps.value.findIndex((s) => s.id === swap.id)
+  if (index >= 0) {
+    swaps.value[index] = swap
+  } else {
+    swaps.value.push(swap)
+  }
+}
+
 function hideFinished(): void {
   hidden.value = new Set([...hidden.value, ...songs.value.filter((s) => s.finished).map((s) => s.id)])
 }
@@ -159,6 +172,7 @@ const unsubscribe = subscribe({
     lyricsDraft.value = snapshot.lyrics
     versions.value = snapshot.versions
     stemSets.value = snapshot.stems ?? []
+    swaps.value = snapshot.swaps ?? []
     speechTakes.value = snapshot.speech ?? []
     jobs.value = snapshot.queue ?? []
     bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
@@ -193,6 +207,7 @@ const unsubscribe = subscribe({
   },
   version: upsertVersion,
   stems: upsertStems,
+  swap: upsertSwap,
   speech(take) {
     const index = speechTakes.value.findIndex((other) => other.id === take.id)
     if (index >= 0) {
@@ -243,6 +258,7 @@ const queueCount = computed(
     jobs.value.length +
     versions.value.filter((v) => !v.finished).length +
     stemSets.value.filter((s) => !s.finished).length +
+    swaps.value.filter((s) => !s.finished).length +
     speechTakes.value.filter((take) => !take.finished).length +
     transcriptions.value.filter((tr) => !tr.finished).length,
 )
@@ -258,7 +274,10 @@ const badges = computed<Partial<Record<View, number>>>(() => ({
   songs: reviewCount(runs.value, ratings.value, reviewDays.value),
   transcribe: transcriptions.value.filter((tr) => !tr.finished).length + waitingTranscriptions.value.length,
   playlist: playlistIds.value.length,
-  voices: versions.value.filter((v) => !v.finished).length + stemSets.value.filter((s) => !s.finished).length,
+  voices:
+    versions.value.filter((v) => !v.finished).length +
+    stemSets.value.filter((s) => !s.finished).length +
+    swaps.value.filter((s) => !s.finished).length,
   lab: speechTakes.value.filter((take) => !take.finished).length,
 }))
 
@@ -594,7 +613,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :jobs="jobs"
           :worker="worker"
           :lyrics-draft="lyricsDraft"
-          :versions="[...versions, ...stemSets]"
+          :versions="[...versions, ...stemSets, ...swaps]"
           :takes="speechTakes"
           :transcriptions="transcriptions"
         />
@@ -626,6 +645,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :lyrics-draft="lyricsDraft"
           :versions="versions"
           :stems="stemSets"
+          :swaps="swaps"
           :bundle-window-seconds="bundleWindowSeconds"
           :takes="speechTakes"
           :transcriptions="transcriptions"
@@ -707,6 +727,20 @@ async function useAsNewSong(songId: string): Promise<void> {
       </template>
       <template #content>
         <VoicesPanel :active="view === 'voices'" :versions="versions" @error="show($event, true)" />
+      </template>
+    </Card>
+    <Card v-if="voiceInfo.voicesConfigured">
+      <template #title>
+        <h2>{{ t('swap') }}</h2>
+      </template>
+      <template #content>
+        <VoiceSwapPanel
+          :active="view === 'voices'"
+          :live="swaps"
+          :can-separate="voiceInfo.conversionConfigured"
+          @notice="show($event)"
+          @error="show($event, true)"
+        />
       </template>
     </Card>
     <Card v-if="voiceInfo.stemsConfigured">

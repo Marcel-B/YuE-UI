@@ -726,6 +726,16 @@ public sealed class FakeMixer : IAudioMixer
 
     public HashSet<string> Unencodable { get; } = [];
 
+    /// <summary>What <see cref="DecodeAsync"/> wrote, by file name; it copies instead of decoding.</summary>
+    public List<string> Decoded { get; } = [];
+
+    public Task DecodeAsync(string input, string output, CancellationToken cancellationToken)
+    {
+        Decoded.Add(Path.GetFileName(output));
+        File.Copy(input, output, overwrite: true);
+        return Task.CompletedTask;
+    }
+
     public Task EncodeFlacAsync(string input, string output, CancellationToken cancellationToken)
     {
         var name = Path.GetFileName(input);

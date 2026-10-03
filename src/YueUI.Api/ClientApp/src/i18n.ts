@@ -592,6 +592,27 @@ const messages = {
     versionOverdue: 'länger als geschätzt (≈ {minutes} min)',
     deleteVersion: 'Fassung löschen',
     confirmDeleteVersion: 'Die Fassung mit {voice} von „{title}“, {song}, löschen?',
+    swap: 'Stimmenspur tauschen',
+    swapIntro:
+      'Lade eine Aufnahme hoch und wähle eine Stimme: Der Gesang wird mit ihr neu gesungen. Ist die Datei ein ganzer Song, wird der Gesang erst abgetrennt und danach wieder unter das Instrumental gemischt. Wartet wie die Fassungen, bis YuE2 und das Textmodell den Speicher freigeben.',
+    swapFile: 'Aufnahme',
+    swapKind: 'Die Datei ist',
+    swapKindVocals: 'Nur Gesang',
+    swapKindSong: 'Ganzer Song',
+    swapNoSeparator: 'Für ganze Songs fehlt die Stem-Trennung auf dem Server.',
+    swapStart: 'Stimme tauschen',
+    swapQueued: '{file} wird mit {voice} gesungen.',
+    swapEmpty: 'Noch nichts getauscht.',
+    swapError: 'Die getauschten Spuren konnten nicht geladen werden: {message}',
+    swapResult: 'Ergebnis',
+    swapOriginal: 'Original',
+    swapListen: '{which} anhören',
+    swapDownload: 'Ergebnis herunterladen',
+    swapDelete: 'Löschen',
+    swapCancel: 'Abbrechen',
+    swapDeleteConfirm: '„{file}“ mit {voice} löschen?',
+    swapCancelConfirm: 'Den Tausch von „{file}“ abbrechen?',
+    queueSwap: 'Stimme tauschen · {voice}',
     stems: 'Stems',
     splitStems: 'In Stems trennen',
     stemsIntro:
@@ -1243,6 +1264,27 @@ const messages = {
     versionOverdue: 'longer than estimated (≈ {minutes} min)',
     deleteVersion: 'Delete version',
     confirmDeleteVersion: 'Delete the version with {voice} of “{title}”, {song}?',
+    swap: 'Swap a vocal track',
+    swapIntro:
+      'Upload a recording and pick a voice: the singing is sung again with it. If the file is a whole song, the vocals are separated first and mixed back under the instrumental afterwards. Waits like the versions until YuE2 and the lyrics model free the memory.',
+    swapFile: 'Recording',
+    swapKind: 'The file is',
+    swapKindVocals: 'Vocals only',
+    swapKindSong: 'A whole song',
+    swapNoSeparator: 'Whole songs need stem separation, which this server lacks.',
+    swapStart: 'Swap voice',
+    swapQueued: '{file} is being sung with {voice}.',
+    swapEmpty: 'Nothing swapped yet.',
+    swapError: 'The swapped tracks could not be loaded: {message}',
+    swapResult: 'Result',
+    swapOriginal: 'Original',
+    swapListen: 'Listen to {which}',
+    swapDownload: 'Download the result',
+    swapDelete: 'Delete',
+    swapCancel: 'Cancel',
+    swapDeleteConfirm: 'Delete “{file}” with {voice}?',
+    swapCancelConfirm: 'Cancel swapping “{file}”?',
+    queueSwap: 'Voice swap · {voice}',
     stems: 'Stems',
     splitStems: 'Split into stems',
     stemsIntro:
@@ -1366,7 +1408,7 @@ export function stepLabel(stage: Stage): string {
  * duration, so the fraction is the time since the start against it; once that has run out, a percentage would
  * stand still at the end, so it says the estimate was exceeded instead.
  */
-export function versionProgress(version: VersionState): string {
+export function versionProgress(version: Pick<VersionState, 'stage' | 'fraction' | 'estimatedSeconds'>): string {
   if (version.stage !== 'converting' || version.fraction <= 0) {
     return ''
   }

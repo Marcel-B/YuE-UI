@@ -25,8 +25,8 @@ public interface IVoiceBackend
 
     Task DeleteVoiceAsync(string id, CancellationToken cancellationToken);
 
-    /// <summary>Sings <paramref name="vocals"/> with the version's voice and writes the result as a 48 kHz WAV to <paramref name="output"/>.</summary>
-    Task ConvertAsync(VersionState version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken);
+    /// <summary>Sings <paramref name="vocals"/> with the conversion's voice and writes the result as a 48 kHz WAV to <paramref name="output"/>.</summary>
+    Task ConvertAsync(VoiceConversion version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -61,7 +61,7 @@ public sealed class VoiceEngine(
 
     public Task DeleteVoiceAsync(string id, CancellationToken cancellationToken) => Backend.DeleteVoiceAsync(id, cancellationToken);
 
-    public async Task ConvertAsync(VersionState version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken)
+    public async Task ConvertAsync(VoiceConversion version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken)
     {
         if (options.Value.LocalVoices)
         {
@@ -200,7 +200,7 @@ public sealed class SeedVcVoices(
         return Task.CompletedTask;
     }
 
-    public async Task ConvertAsync(VersionState version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken)
+    public async Task ConvertAsync(VoiceConversion version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken)
     {
         var settings = options.Value;
         var reference = store.FilePath(version.VoiceId);
@@ -231,7 +231,7 @@ public sealed class SeedVcVoices(
         var started = time.GetUtcNow();
         using var ticking = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var ticker = TickAsync();
-        logger.LogInformation("Converting {Song} with the voice {Voice}, expected {Seconds:0} s", version.SongId, version.VoiceLabel, estimate);
+        logger.LogInformation("Converting {Subject} with the voice {Voice}, expected {Seconds:0} s", version.Subject, version.VoiceLabel, estimate);
         ToolResult result;
         try
         {
