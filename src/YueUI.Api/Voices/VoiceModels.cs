@@ -129,4 +129,64 @@ public sealed record VersionState
 
     [JsonIgnore]
     public string Run => SongId[..SongId.IndexOf('/')];
+
+    [JsonIgnore]
+    public VoiceConversion Conversion => new(VoiceId, VoiceLabel, SemiToneShift, Strength, DiffusionSteps, SongId);
+}
+
+/// <summary>What Seed-VC needs to sing a track with a reference voice, whether a song's version or an uploaded file.</summary>
+/// <param name="Subject">What is converted, for the log: a song id or a file name.</param>
+public sealed record VoiceConversion(string VoiceId, string VoiceLabel, int SemiToneShift, double Strength, int DiffusionSteps, string Subject);
+
+/// <summary>
+/// An uploaded recording sung again with a reference voice, on the voices page: a bare vocal track goes straight to
+/// Seed-VC, a whole song is separated first and the new vocals mixed back under its instrumental, as for a version.
+/// The upload and the result are this app's own files, in <c>swaps/&lt;id&gt;/</c> next to its database.
+/// <see cref="Stage"/>: queued, separating, converting, mixing, done, failed or cancelled.
+/// </summary>
+public sealed record SwapState
+{
+    public required string Id { get; init; }
+
+    /// <summary>The uploaded file's name, to tell swaps apart and to name the download.</summary>
+    public required string FileName { get; init; }
+
+    public required string VoiceId { get; init; }
+
+    public required string VoiceLabel { get; init; }
+
+    public int SemiToneShift { get; init; }
+
+    public double Strength { get; init; }
+
+    public int DiffusionSteps { get; init; }
+
+    /// <summary>The upload is a whole song: its vocals are separated, converted and mixed back under the rest.</summary>
+    public bool Separate { get; init; }
+
+    /// <summary>Only with <see cref="Separate"/>: the original's reverb goes back into the mix.</summary>
+    public bool KeepReverb { get; init; }
+
+    /// <summary>The separation model, taken from <see cref="VoiceOptions.StemModel"/> when asked for; null for a bare vocal track.</summary>
+    public string? StemModel { get; init; }
+
+    public string Stage { get; init; } = "queued";
+
+    /// <inheritdoc cref="VersionState.Fraction"/>
+    public double Fraction { get; init; }
+
+    /// <inheritdoc cref="VersionState.EstimatedSeconds"/>
+    public double EstimatedSeconds { get; init; }
+
+    /// <summary>Why it failed.</summary>
+    public string? Message { get; init; }
+
+    public DateTimeOffset CreatedAt { get; init; }
+
+    public DateTimeOffset UpdatedAt { get; init; }
+
+    public bool Finished => Stage is "done" or "failed" or "cancelled";
+
+    [JsonIgnore]
+    public VoiceConversion Conversion => new(VoiceId, VoiceLabel, SemiToneShift, Strength, DiffusionSteps, FileName);
 }

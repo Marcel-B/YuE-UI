@@ -411,6 +411,10 @@ public sealed class CloudBackup(
         {
             yield return file;
         }
+        foreach (var file in Below(Path.Combine(database.Directory, "swaps"), "swaps"))
+        {
+            yield return file;
+        }
         foreach (var file in Below(covers.Folder, "covers"))
         {
             yield return file;

@@ -19,6 +19,12 @@ public interface IAudioMixer
 
     /// <summary>Writes <paramref name="input"/> (a WAV) as FLAC to <paramref name="output"/>, keeping its sample rate.</summary>
     Task EncodeFlacAsync(string input, string output, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reads any audio file ffmpeg knows (an upload: MP3, M4A, a phone's recording) and writes its first audio stream at
+    /// 48 kHz to <paramref name="output"/>, as 16-bit WAV or FLAC by the output's ending.
+    /// </summary>
+    Task DecodeAsync(string input, string output, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -95,6 +101,20 @@ public sealed partial class FfmpegMixer(ILogger<FfmpegMixer> logger) : IAudioMix
     {
         var ffmpeg = AacEncoder.FindFfmpeg() ?? throw new VoiceServiceException("ffmpeg is not installed.", System.Net.HttpStatusCode.NotImplemented);
         await RunAsync(ffmpeg, ["-nostdin", "-loglevel", "error", "-y", "-i", input, "-map", "0:a", "-sample_fmt", "s32", "-bits_per_raw_sample", "24", "-c:a", "flac", output], cancellationToken);
+    }
+
+    public async Task DecodeAsync(string input, string output, CancellationToken cancellationToken)
+    {
+        var ffmpeg = AacEncoder.FindFfmpeg() ?? throw new VoiceServiceException("ffmpeg is not installed.", System.Net.HttpStatusCode.NotImplemented);
+        var codec = output.EndsWith(".flac", StringComparison.OrdinalIgnoreCase) ? "flac" : "pcm_s16le";
+        try
+        {
+            await RunAsync(ffmpeg, ["-nostdin", "-loglevel", "error", "-y", "-i", input, "-map", "0:a:0", "-vn", "-ar", "48000", "-sample_fmt", "s16", "-c:a", codec, output], cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new VoiceServiceException($"The file could not be read as audio: {exception.Message}", System.Net.HttpStatusCode.UnprocessableEntity);
+        }
     }
 
     /// <summary>ffmpeg's volumedetect in dBFS.</summary>

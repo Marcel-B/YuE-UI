@@ -44,6 +44,15 @@ public static class PushTexts
             : (de ? "Stems fehlgeschlagen" : "Stems failed", WithMessage(which, set.Message));
     }
 
+    public static (string Title, string Body) Swap(SwapState swap, string language)
+    {
+        var de = IsGerman(language);
+        var which = $"{swap.FileName} · {swap.VoiceLabel}";
+        return swap.Stage == "done"
+            ? (de ? "Stimme getauscht" : "Voice swapped", which)
+            : (de ? "Stimmentausch fehlgeschlagen" : "Voice swap failed", WithMessage(which, swap.Message));
+    }
+
     public static (string Title, string Body) Lyrics(LyricsState lyrics, string language)
     {
         var de = IsGerman(language);

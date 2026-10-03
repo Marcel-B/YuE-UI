@@ -71,7 +71,7 @@ public sealed class VoiceClient(IHttpClientFactory clients, IOptions<VoiceOption
     /// Hands the vocals to a job, follows it until it is done (ChangeMyVoice says how long it expects; the fraction is
     /// the time since the start against that) and fetches the result; the job's files go at once afterwards.
     /// </summary>
-    public async Task ConvertAsync(VersionState version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken)
+    public async Task ConvertAsync(VoiceConversion version, string vocals, string output, VoiceProgress progress, CancellationToken cancellationToken)
     {
         var job = await StartJobAsync(version, vocals, cancellationToken);
         try
@@ -101,7 +101,7 @@ public sealed class VoiceClient(IHttpClientFactory clients, IOptions<VoiceOption
     }
 
     /// <summary>Hands the vocals over; the singing path (F0 conditioning) is ChangeMyVoice's default.</summary>
-    private async Task<VoiceJob> StartJobAsync(VersionState version, string vocals, CancellationToken cancellationToken)
+    private async Task<VoiceJob> StartJobAsync(VoiceConversion version, string vocals, CancellationToken cancellationToken)
     {
         await using var source = File.OpenRead(vocals);
         var audio = new StreamContent(source);

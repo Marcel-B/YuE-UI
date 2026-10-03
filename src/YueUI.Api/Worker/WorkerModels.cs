@@ -100,6 +100,7 @@ public sealed record WorkerInfo(WorkerStatus Status, bool Busy, bool StudioRunni
 /// version.
 /// </param>
 /// <param name="Stems">Songs being split into stems, and the last set that finished.</param>
+/// <param name="Swaps">Uploaded recordings being sung with another voice, and the last one that finished.</param>
 public sealed record StatusSnapshot(
     WorkerInfo Worker,
     IReadOnlyList<SongState> Songs,
@@ -110,7 +111,8 @@ public sealed record StatusSnapshot(
     IReadOnlyList<QueuedJob>? Queue = null,
     double? BundleWindowSeconds = null,
     IReadOnlyList<Voices.StemSetState>? Stems = null,
-    IReadOnlyList<Speech.SpeechTake>? Speech = null);
+    IReadOnlyList<Speech.SpeechTake>? Speech = null,
+    IReadOnlyList<Voices.SwapState>? Swaps = null);
 
 /// <summary>Whether a restart would cut work off (<c>GET /api/busy</c>).</summary>
 /// <param name="Reasons">songs, transcription, lyrics, voices (a version or stems) or speech.</param>

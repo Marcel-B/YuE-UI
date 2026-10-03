@@ -103,6 +103,8 @@ export interface StatusSnapshot {
   stems: StemSetState[] | null
   /** The speech lab's takes in the works, in the order they are spoken, and the last one that finished. */
   speech: SpeechTake[] | null
+  /** Uploaded recordings being sung with another voice, and the last one that finished. */
+  swaps: SwapState[] | null
 }
 
 export type JobKind = 'song' | 'render' | 'lyrics' | 'transcription'
@@ -404,6 +406,30 @@ export interface ReferenceVoice {
 }
 
 export type VersionStage = 'queued' | 'separating' | 'converting' | 'mixing' | 'done' | 'failed' | 'cancelled'
+
+/**
+ * An uploaded recording sung with another voice (Voices/VoiceModels.cs): a vocal track straight through Seed-VC, or a
+ * whole song (`separate`) separated first and mixed back. Live changes arrive as `swap` events.
+ */
+export interface SwapState {
+  id: string
+  fileName: string
+  voiceId: string
+  voiceLabel: string
+  semiToneShift: number
+  strength: number
+  diffusionSteps: number
+  separate: boolean
+  keepReverb: boolean
+  stemModel: string | null
+  stage: VersionStage
+  fraction: number
+  estimatedSeconds: number
+  message: string | null
+  createdAt: string
+  updatedAt: string
+  finished: boolean
+}
 
 /** A song sung with another voice (Voices/VoiceModels.cs); live changes arrive as `version` events. */
 export interface VersionState {
