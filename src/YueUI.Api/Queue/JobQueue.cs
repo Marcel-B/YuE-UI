@@ -423,7 +423,7 @@ public sealed class JobQueue(
 
         // Announced before looking: the lyrics writer and the voice converter claim the memory first and then look at
         // the worker, so one of the two always sees the other.
-        host.ExpectSongs(voice);
+        host.ExpectSongs(voice, command);
         if (lyrics.IsWriting || voices.IsConverting || speech.IsSpeaking || VersionOverdue())
         {
             host.ExpectNoSongs();

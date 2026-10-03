@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using YueUI.Api.Library;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Tests;
@@ -267,6 +268,45 @@ public sealed class WorkerEndpointTests : IDisposable
         Assert.Equal("draft", song.Quality);
         Assert.Equal(1, song.Fraction);
         Assert.False(status.Worker.Busy);
+    }
+
+    [Fact]
+    public async Task A_finished_song_keeps_the_parameters_it_was_asked_for()
+    {
+        var response = await _client.PostAsJsonAsync("/api/generate", new
+        {
+            title = "Neon Night",
+            style = "English, piano pop",
+            lyrics = "[verse]\nNeon lights",
+            quality = "full",
+            batch = 2,
+            seed = 7,
+            maxTokens = 3000,
+            semanticSampling = new { topK = 120 },
+        });
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        await _app.Worker.NextCommand();
+        _app.Worker.Emit(new { @event = "ready" });
+        _app.Worker.Emit(new
+        {
+            @event = "started",
+            job = Run,
+            title = "Neon Night",
+            songs = new[] { new { index = 1, seed = 7, path = _app.AudioPath(Run, "song1"), priority = 1 } },
+        });
+        await _app.WaitForStatus(_client, s => s.Songs.Count == 1);
+        var directory = _app.AddSong(Run, "song1");
+        _app.Worker.Emit(new { @event = "song", index = 1, path = _app.AudioPath(Run, "song1"), seconds = 120.0, quality = "full", seed = 7 });
+
+        var file = Path.Combine(directory, SongLibrary.AppRequestFile);
+        await TestApp.WaitUntil(() => File.Exists(file));
+        var saved = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+        Assert.Equal("""{"top_k":120}""", saved["semantic_sampling"]!.ToJsonString());
+        Assert.Equal(3000, (int?)saved["max_tokens"]);
+        Assert.Equal("full", (string?)saved["quality"]);
+        // Batch and seed concern the whole command; the song's own seed is in YuE Studio's request.json.
+        Assert.Null(saved["batch"]);
+        Assert.Null(saved["seed"]);
     }
 
     [Fact]

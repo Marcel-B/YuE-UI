@@ -281,12 +281,56 @@ public sealed partial class SongLibrary(
             ? title
             : TitleFromName(run);
 
+    /// <summary>The generate command a song was made with, beside YuE Studio's own files.</summary>
+    public const string AppRequestFile = "yueui-request.json";
+
+    /// <summary>
+    /// Keeps the generate command a song was made with in its folder, without the parts that only concern the whole
+    /// command (batch, seed choice) or this machine (the LoRA's path; its name is in <c>yueui.json</c>).
+    /// </summary>
+    public void SaveAppRequest(string songDirectory, JsonObject command)
+    {
+        if (!Directory.Exists(songDirectory))
+        {
+            return;
+        }
+        var saved = command.DeepClone().AsObject();
+        foreach (var key in (string[])["cmd", "batch", "seed", "random_seed", "lora", "lora_strength"])
+        {
+            saved.Remove(key);
+        }
+        File.WriteAllText(Path.Combine(songDirectory, AppRequestFile), saved.ToJsonString());
+    }
+
     /// <summary>The song's <c>request.json</c>, or null for an unknown song or one without (readable) request.</summary>
     public SongRequest? ReadRequest(string run, string song)
     {
-        if (SongDirectory(run, song) is not { } directory || ReadJson(Path.Combine(directory, "request.json")) is not { } request)
+        if (SongDirectory(run, song) is not { } directory || ReadJson(Path.Combine(directory, "request.json")) is not { } worker)
         {
             return null;
+        }
+        // YuE Studio's request.json keeps only style, lyrics, planning, seed and score; what the form sent is beside it
+        // for songs made since this app saves it, and wins (the worker turns an instrumental's planning to "full").
+        // The seed is the song's own from request.json, the command only names the first of its batch.
+        var request = ReadJson(Path.Combine(directory, AppRequestFile)) ?? new JsonObject();
+        request.Remove("seed");
+        foreach (var (key, value) in worker)
+        {
+            if (!request.ContainsKey(key))
+            {
+                request[key] = value?.DeepClone();
+            }
+        }
+        // Older songs: quality and its steps at least are in the worker's result.
+        if (Text(request["quality"]) is null
+            && (ReadJson(Path.Combine(directory, "result.json")) ?? ReadJson(Path.Combine(directory, "tokens.json"))) is { } result
+            && Text(result["quality"]) is { } quality)
+        {
+            request["quality"] = quality;
+            if (Number(result["ode_steps"] ?? result["steps"]) is { } steps)
+            {
+                request[quality == "full" ? "full_steps" : "draft_steps"] = steps;
+            }
         }
         // The worker extension notes a song's LoRA beside it when its synthesis starts.
         var extension = ReadJson(Path.Combine(directory, "yueui.json"));
