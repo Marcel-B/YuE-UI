@@ -304,6 +304,40 @@ public sealed class LibraryEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_songs_request_takes_what_the_app_saved_beside_yue_studios()
+    {
+        // YuE Studio's own request.json (AddSong) has only style, lyrics, planning, seed and score.
+        var directory = _app.AddSong("20260921-165850-Neon-Night", "song2");
+        File.WriteAllText(Path.Combine(directory, SongLibrary.AppRequestFile), """
+            {"style": "Dark synthwave", "lyrics": "[verse]\nLa la", "title": "Neon Night", "quality": "full", "cot": "off",
+             "instrumental": true, "max_tokens": 3000, "full_steps": 48, "semantic_sampling": {"top_k": 120}}
+            """);
+
+        var request = (await _client.GetFromJsonAsync<SongRequest>("/api/songs/20260921-165850-Neon-Night/song2/request", TestApp.Json))!;
+
+        Assert.Equal(new SamplingOverrides(TopK: 120), request.SemanticSampling);
+        Assert.Equal(3000, request.MaxTokens);
+        Assert.Equal(48, request.FullSteps);
+        Assert.Equal("full", request.Quality);
+        Assert.True(request.Instrumental);
+        Assert.Equal("off", request.Cot);
+        Assert.Equal(42, request.Seed);
+    }
+
+    [Fact]
+    public async Task An_older_songs_request_takes_quality_and_steps_from_its_result()
+    {
+        var directory = _app.AddSong("20260921-165850-Neon-Night", "song2");
+        File.WriteAllText(Path.Combine(directory, "result.json"), """{"quality": "draft", "ode_steps": 12, "title": "Neon Night"}""");
+
+        var request = (await _client.GetFromJsonAsync<SongRequest>("/api/songs/20260921-165850-Neon-Night/song2/request", TestApp.Json))!;
+
+        Assert.Equal("draft", request.Quality);
+        Assert.Equal(12, request.DraftSteps);
+        Assert.Null(request.SemanticSampling);
+    }
+
+    [Fact]
     public async Task A_songs_request_carries_the_lora_the_worker_noted()
     {
         var directory = _app.AddSong("20260921-165850-Neon-Night", "song1");
@@ -328,7 +362,8 @@ public sealed class LibraryEndpointTests : IDisposable
         Assert.Equal("Neon Night", request.Title);
         Assert.Equal("Dark synthwave", request.Style);
         Assert.Equal(42, request.Seed);
-        Assert.Null(request.Quality);
+        // The quality YuE Studio wrote into result.json.
+        Assert.Equal("draft", request.Quality);
         Assert.Null(request.Abc);
         Assert.Null(request.MaxTokens);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/songs/20260921-165850-Neon-Night/song9/request")).StatusCode);

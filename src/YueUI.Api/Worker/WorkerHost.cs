@@ -61,9 +61,15 @@ public sealed class WorkerHost(
     /// <summary>
     /// Songs announced (<see cref="ExpectSongs"/>) whose started event has not come yet, oldest first, with the voice
     /// they are to be sung with afterwards. The worker answers its commands in the order it reads them, so the next
-    /// started event belongs to the oldest entry.
+    /// started event belongs to the oldest entry. The command goes along for <see cref="_requests"/>.
     /// </summary>
-    private readonly List<(DateTimeOffset At, SongVoice? Voice)> _expected = [];
+    private readonly List<(DateTimeOffset At, SongVoice? Voice, JsonObject? Command)> _expected = [];
+    /// <summary>
+    /// The generate command of each started song until it is saved: YuE Studio's <c>request.json</c> keeps only style,
+    /// lyrics, planning, seed and score, so the rest (title, quality, length, sampling, …) is written beside it
+    /// (<see cref="SongLibrary.SaveAppRequest"/>) once the song's folder holds a song.
+    /// </summary>
+    private readonly Dictionary<string, JsonObject> _requests = [];
     private readonly LinkedList<LogEntry> _log = [];
     private readonly List<Channel<ServerEvent>> _subscribers = [];
     private IWorkerConnection? _connection;
@@ -146,11 +152,12 @@ public sealed class WorkerHost(
     /// Announce before checking whether the memory is free, as they check the worker after claiming it.
     /// </summary>
     /// <param name="voice">The voice the songs of this command are sung with once they are ready.</param>
-    public void ExpectSongs(SongVoice? voice = null)
+    /// <param name="command">The generate command about to be sent, kept with its songs; null for a render.</param>
+    public void ExpectSongs(SongVoice? voice = null, JsonObject? command = null)
     {
         lock (_gate)
         {
-            _expected.Add((time.GetUtcNow(), voice));
+            _expected.Add((time.GetUtcNow(), voice, command));
         }
     }
 
@@ -500,6 +507,7 @@ public sealed class WorkerHost(
             _status = WorkerStatus.Stopped;
             _renders.Clear();
             _expected.Clear();
+            _requests.Clear();
             foreach (var song in _songs.Values.Where(s => !s.Finished).ToList())
             {
                 var now = time.GetUtcNow();
@@ -597,6 +605,7 @@ public sealed class WorkerHost(
                 }, throttle: true);
                 break;
             case "song":
+                SaveRequest(message);
                 Update(message, song => song with
                 {
                     Seconds = Number(message["seconds"]),
@@ -606,6 +615,10 @@ public sealed class WorkerHost(
                 Publish("library", new { });
                 break;
             case "failed":
+                lock (_gate)
+                {
+                    _requests.Remove(library.IdFor(Text(message["path"]) ?? ""));
+                }
                 Update(message, song => song.Entering("failed", time.GetUtcNow()) with { Message = Text(message["message"]) });
                 AddLog("error", $"{library.IdFor(Text(message["path"]) ?? "")}: {Text(message["message"])}");
                 break;
@@ -685,6 +698,28 @@ public sealed class WorkerHost(
         }
     }
 
+    /// <summary>Writes the finished song's generate command beside it, before the library event makes browsers read it.</summary>
+    private void SaveRequest(JsonObject message)
+    {
+        var path = Text(message["path"]) ?? "";
+        JsonObject? command;
+        lock (_gate)
+        {
+            if (!_requests.Remove(library.IdFor(path), out command))
+            {
+                return;
+            }
+        }
+        try
+        {
+            library.SaveAppRequest(Path.GetDirectoryName(path) ?? "", command);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Could not save the parameters of {Path}", path);
+        }
+    }
+
     private void Started(JsonObject message)
     {
         var run = Text(message["job"]) ?? "";
@@ -714,9 +749,10 @@ public sealed class WorkerHost(
         lock (_gate)
         {
             SongVoice? voice = null;
+            JsonObject? command = null;
             if (_expected.Count > 0)
             {
-                voice = _expected[0].Voice;
+                (_, voice, command) = _expected[0];
                 _expected.RemoveAt(0);
             }
             for (var i = 0; i < started.Count; i++)
@@ -725,9 +761,16 @@ public sealed class WorkerHost(
                 {
                     started[i] = started[i] with { Render = true };
                 }
-                else if (voice is not null)
+                else
                 {
-                    started[i] = started[i] with { Voice = voice };
+                    if (voice is not null)
+                    {
+                        started[i] = started[i] with { Voice = voice };
+                    }
+                    if (command is not null)
+                    {
+                        _requests[started[i].Id] = command;
+                    }
                 }
                 _songs[started[i].Id] = started[i];
             }
