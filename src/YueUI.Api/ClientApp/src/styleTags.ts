@@ -207,7 +207,13 @@ export const styleCategories: CategoryDefinition[] = [
   },
   {
     key: 'arrangement',
-    tags: ['lyrical memorable melody', 'unhurried phrasing', 'clear diction', 'spacious modern harmony'],
+    tags: [
+      'lyrical memorable melody',
+      'unhurried phrasing',
+      'clear diction',
+      'spacious modern harmony',
+      'half-time beat',
+    ],
   },
   {
     key: 'tempo',

@@ -59,7 +59,7 @@ const messages = {
     styleBlocks_moodHint: 'Die Stimmung färbt Melodie, Harmonie und Gesang.',
     styleBlocks_arrangement: 'Gestaltung',
     styleBlocks_arrangementHint:
-      'Melodie, Phrasierung, Aussprache und Harmonik, Wendungen aus YuE2s eigenen Beispielen.',
+      'Melodie, Phrasierung, Aussprache und Harmonik, Wendungen aus YuE2s eigenen Beispielen; dazu „half-time beat“, das sich hier bewährt hat (Schlagzeug im halben Tempo, der Song wirkt getragener).',
     styleBlocks_tempo: 'Tempo',
     styleBlocks_tempoHint:
       'Eines pro Song, es steht hinten wie in den YuE2-Beispielen und ersetzt ein von Hand geschriebenes. Mit eigener Partitur sollte es zu deren Q: passen, sagt YuE2s Anleitung. Ballade etwa 60–80, Pop 100–120, Dance 120–130 BPM.',
@@ -777,7 +777,8 @@ const messages = {
     styleBlocks_mood: 'Mood',
     styleBlocks_moodHint: 'The mood colours melody, harmony and singing.',
     styleBlocks_arrangement: 'Arrangement',
-    styleBlocks_arrangementHint: 'Melody, phrasing, diction and harmony, in phrases from YuE2’s own examples.',
+    styleBlocks_arrangementHint:
+      'Melody, phrasing, diction and harmony, in phrases from YuE2’s own examples; plus “half-time beat”, which has worked well here (drums at half the tempo, the song feels broader).',
     styleBlocks_tempo: 'Tempo',
     styleBlocks_tempoHint:
       'One per song; it goes last as in the YuE2 examples and replaces one typed by hand. With your own score it should match its Q:, as YuE2’s guide says. Ballad about 60–80, pop 100–120, dance 120–130 BPM.',
