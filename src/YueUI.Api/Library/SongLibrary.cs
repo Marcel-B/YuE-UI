@@ -70,7 +70,9 @@ public sealed record SongRequest(
     string? Abc,
     int? FullSteps,
     SamplingOverrides? AbcSampling,
-    SamplingOverrides? SemanticSampling);
+    SamplingOverrides? SemanticSampling,
+    string? Lora = null,
+    double? LoraStrength = null);
 
 /// <summary>
 /// Reads the songs the worker (this server's or YuE Studio's) wrote to <see cref="YuePaths.OutputDir"/>:
@@ -286,6 +288,9 @@ public sealed partial class SongLibrary(
         {
             return null;
         }
+        // The worker extension notes a song's LoRA beside it when its synthesis starts.
+        var extension = ReadJson(Path.Combine(directory, "yueui.json"));
+        var lora = Text(extension?["lora_name"]) is { Length: > 0 } name ? name : null;
         // The worker's own names; the extension's fields (full_steps, the sampling) are there when the app sent them.
         return new SongRequest(
             // A title given in this app wins over the one the song was made with.
@@ -302,7 +307,9 @@ public sealed partial class SongLibrary(
             Text(request["abc"]) is { Length: > 0 } abc ? abc : null,
             (int?)Number(request["full_steps"]),
             Sampling(request["abc_sampling"]),
-            Sampling(request["semantic_sampling"]));
+            Sampling(request["semantic_sampling"]),
+            lora,
+            lora is null ? null : Number(extension!["lora_strength"]));
     }
 
     private static SamplingOverrides? Sampling(JsonNode? node) =>

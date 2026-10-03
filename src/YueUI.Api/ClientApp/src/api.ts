@@ -5,6 +5,7 @@ import type {
   LogLevel,
   LogPage,
   LogSource,
+  LoraList,
   LyricsLanguage,
   LyricsModels,
   LyricsState,
@@ -90,6 +91,11 @@ export async function reviseLyrics(
 /** The models LM Studio has downloaded, for the picker; starts LM Studio's server if needed (503 if it cannot). */
 export async function getLyricsModels(): Promise<LyricsModels> {
   return (await send('/api/lyrics/models')).json() as Promise<LyricsModels>
+}
+
+/** The LoRAs a song can be made with. */
+export async function listLoras(): Promise<LoraList> {
+  return (await send('/api/loras')).json() as Promise<LoraList>
 }
 
 /** Synthesizes a finished song again from its saved tokens, normally a draft at full quality. */

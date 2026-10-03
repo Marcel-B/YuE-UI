@@ -46,6 +46,10 @@ public sealed class BackupEndpointTests : IDisposable
         File.WriteAllText(Path.Combine(_app.Root, "speech", "env", "bin", "python"), "");
         Directory.CreateDirectory(Path.Combine(_app.Root, "stream", Run));
         File.WriteAllText(Path.Combine(_app.Root, "stream", Run, "song1.m4a"), "");
+        Directory.CreateDirectory(Path.Combine(_app.Root, "loras", ".lora-cache"));
+        File.WriteAllText(Path.Combine(_app.Root, "loras", "dubstep.safetensors"), "lora");
+        File.WriteAllText(Path.Combine(_app.Root, "loras", "dubstep.log"), "log");
+        File.WriteAllText(Path.Combine(_app.Root, "loras", ".lora-cache", "song-abc.npy"), "latents");
         // Something in the database to find in the copy.
         await client.PutAsJsonAsync($"/api/runs/{Run}/title", new { title = "Neon Nacht" });
         await client.PostAsJsonAsync("/api/push/subscriptions", new
@@ -74,6 +78,7 @@ public sealed class BackupEndpointTests : IDisposable
         var uploaded = _app.Nextcloud.PutPaths().Select(p => p[(Base.Length + 1)..]).Where(p => !p.EndsWith(".zip")).Order().ToArray();
         Assert.Equal(
         [
+            "loras/dubstep.safetensors",
             $"songs/{Run}/song1/audio.flac",
             $"songs/{Run}/song1/request.json",
             $"songs/{Run}/song1/result.json",
@@ -82,7 +87,7 @@ public sealed class BackupEndpointTests : IDisposable
             "stems/s1/bass drum.flac",
             "versions/v1.flac",
         ], uploaded);
-        Assert.Equal(7, status.Last.Files);
+        Assert.Equal(8, status.Last.Files);
     }
 
     [Fact]

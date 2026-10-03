@@ -185,6 +185,33 @@ public sealed class WorkerEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_lora_reaches_the_worker_as_its_file()
+    {
+        var path = LoraEndpointTests.WriteLora(_app, "dubstep");
+
+        var response = await _client.PostAsJsonAsync("/api/generate", new { style = "dubstep", lyrics = "x", lora = "dubstep", loraStrength = 1.5 });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var command = await _app.Worker.NextCommand();
+        Assert.Equal(path, (string?)command["lora"]);
+        Assert.Equal(1.5, (double?)command["lora_strength"]);
+    }
+
+    [Fact]
+    public async Task An_unknown_lora_or_strength_is_refused()
+    {
+        var unknown = await _client.PostAsJsonAsync("/api/generate", new { style = "dubstep", lyrics = "x", lora = "dubstep" });
+        var traversal = await _client.PostAsJsonAsync("/api/generate", new { style = "dubstep", lyrics = "x", lora = "../yueui" });
+        var strong = await _client.PostAsJsonAsync("/api/generate", new { style = "dubstep", lyrics = "x", loraStrength = 4 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        Assert.Equal(["lora"], (await unknown.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject().Select(e => e.Key));
+        Assert.Equal(["lora"], (await traversal.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject().Select(e => e.Key));
+        Assert.Equal(["loraStrength"], (await strong.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject().Select(e => e.Key));
+        Assert.Equal(0, _app.Launcher.Launches);
+    }
+
+    [Fact]
     public async Task Invalid_requests_are_refused_without_starting_a_worker()
     {
         var response = await _client.PostAsJsonAsync("/api/generate", new { style = "", lyrics = "x", batch = 0, quality = "best", cot = "maybe" });

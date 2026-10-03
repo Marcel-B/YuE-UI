@@ -89,12 +89,18 @@ public static class WorkerEndpoints
         JobQueue queue,
         VoiceEngine voices,
         IOptions<VoiceOptions> options,
+        Loras.LoraLibrary loras,
         CancellationToken cancellationToken)
     {
         var errors = request.Validate();
         if (errors.Count > 0)
         {
             return Results.ValidationProblem(errors);
+        }
+        string? loraPath = null;
+        if (request.Lora is { } lora && (loraPath = loras.PathFor(lora)) is null)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["lora"] = [$"No LoRA {lora} in {loras.Folder}."] });
         }
         SongVoice? voice = null;
         if (request.Voice is { } choice)
@@ -117,7 +123,7 @@ public static class WorkerEndpoints
                 return Results.Problem(title: exception.Message, statusCode: (int)exception.Status);
             }
         }
-        return await Send(() => queue.GenerateAsync(request, voice, cancellationToken));
+        return await Send(() => queue.GenerateAsync(request, voice, loraPath, cancellationToken));
     }
 
     private static async Task<IResult> Render(

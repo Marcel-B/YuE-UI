@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import Panel from 'primevue/panel'
+import { listLoras } from '../api'
 import {
   advancedChanged,
   defaultSampling,
   lengthChoices,
+  maxLoraStrength,
   maxSongSeconds,
   resetAdvanced,
   type FormState,
   type SamplingPhase,
 } from '../form'
 import { formatDuration, t } from '../i18n'
+import type { LoraList } from '../types'
 import FieldHelp from './FieldHelp.vue'
 import NumberField from './NumberField.vue'
 import SamplingFields from './SamplingFields.vue'
@@ -29,7 +32,7 @@ const fieldErrors = defineModel<Record<string, string[]>>('errors', { required: 
 const changed = computed(() => advancedChanged(form.value))
 
 /** The request fields shown here; the sampling ones come as `abcSampling.temperature` and so on. */
-const ownFields = new Set(['cot', 'seed', 'draftSteps', 'fullSteps', 'engines', 'maxTokens'])
+const ownFields = new Set(['cot', 'seed', 'draftSteps', 'fullSteps', 'engines', 'maxTokens', 'lora', 'loraStrength'])
 const collapsed = ref(true)
 // A refusal about one of these fields would go unseen while the panel is shut.
 watch(fieldErrors, (errors) => {
@@ -81,6 +84,45 @@ const engineOptions = [
   { value: 'gpu+ane', label: t('enginesAne') },
 ]
 const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x) }))
+
+// Read when the page opens and each time the panel opens, so a LoRA trained meanwhile shows up.
+const loras = ref<LoraList | null>(null)
+async function loadLoras(): Promise<void> {
+  try {
+    loras.value = await listLoras()
+  } catch {
+    loras.value = null
+  }
+}
+onMounted(loadLoras)
+watch(collapsed, (shut) => {
+  if (!shut) {
+    void loadLoras()
+  }
+})
+const chosenLora = computed(() => loras.value?.loras.find((l) => l.name === form.value.lora) ?? null)
+const loraOptions = computed(() => {
+  const options = [{ value: '', label: t('defaultValue', { value: t('loraNone') }) }]
+  for (const lora of loras.value?.loras ?? []) {
+    options.push({ value: lora.name, label: lora.name })
+  }
+  // A LoRA taken over from a song, or deleted since it was chosen, stays visible, so the form does not hide it.
+  if (form.value.lora !== '' && loras.value !== null && chosenLora.value === null) {
+    options.push({ value: form.value.lora, label: t('loraMissing', { name: form.value.lora }) })
+  }
+  return options
+})
+const loraHint = computed(() => {
+  const lora = chosenLora.value
+  if (lora === null) {
+    return loras.value !== null && loras.value.loras.length === 0 ? t('loraNoneYet') : t('loraHint')
+  }
+  const parts = [lora.triggerWord ? t('loraTrigger', { word: lora.triggerWord }) : null]
+  if (lora.songs !== null && lora.minutes !== null) {
+    parts.push(t('loraTrained', { songs: lora.songs, minutes: Math.round(lora.minutes), steps: lora.steps ?? '?' }))
+  }
+  return parts.filter(Boolean).join(' ') || t('loraHint')
+})
 </script>
 
 <template>
@@ -200,6 +242,40 @@ const lengthOptions = lengthChoices.map((x) => ({ value: x, label: lengthLabel(x
         </FloatLabel>
         <FieldHelp id="gen-length-help" :hint="t('maxLengthHint')" :more="t('maxLengthMore')" />
         <small v-if="fieldErrors.maxTokens" class="danger">{{ fieldErrors.maxTokens.join(' ') }}</small>
+      </div>
+
+      <div>
+        <FloatLabel variant="on" class="mt-6 w-full">
+          <Select
+            id="gen-lora"
+            v-model="form.lora"
+            class="w-full"
+            :options="loraOptions"
+            option-value="value"
+            option-label="label"
+            aria-describedby="gen-lora-help"
+          />
+          <label for="gen-lora">{{ t('lora') }}</label>
+        </FloatLabel>
+        <FieldHelp id="gen-lora-help" :hint="loraHint" :more="t('loraMore', { folder: loras?.folder ?? 'loras/' })" />
+        <small v-if="fieldErrors.lora" class="danger">{{ fieldErrors.lora.join(' ') }}</small>
+      </div>
+
+      <div>
+        <FloatLabel variant="on" class="mt-6">
+          <NumberField
+            id="gen-lora-strength"
+            v-model="form.loraStrength"
+            :min="0"
+            :max="maxLoraStrength"
+            :fraction-digits="2"
+            :disabled="form.lora === ''"
+            aria-describedby="gen-lora-strength-help"
+          />
+          <label for="gen-lora-strength">{{ t('loraStrength') }}</label>
+        </FloatLabel>
+        <FieldHelp id="gen-lora-strength-help" :hint="t('loraStrengthHint')" :more="t('loraStrengthMore')" />
+        <small v-if="fieldErrors.loraStrength" class="danger">{{ fieldErrors.loraStrength.join(' ') }}</small>
       </div>
 
       <Panel class="col-span-2" toggleable>

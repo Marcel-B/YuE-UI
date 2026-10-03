@@ -201,6 +201,29 @@ export interface GenerateRequest {
   semanticSampling: SamplingOverrides | null
   /** Sings each finished song again with this voice. */
   voice: VersionRequest | null
+  /** A LoRA from the server's `loras/` folder that changes the sound; null for none. */
+  lora: string | null
+  /** How strongly the LoRA applies, 0–3; null for 1 (as trained). */
+  loraStrength: number | null
+}
+
+/** A LoRA for YuE2's acoustic path (Loras/LoraLibrary.cs). */
+export interface LoraInfo {
+  /** The file name without `.safetensors`. */
+  name: string
+  sizeBytes: number
+  modifiedAt: string
+  /** The word its trainer put in every caption; it belongs in the style. */
+  triggerWord: string | null
+  steps: number | null
+  songs: number | null
+  minutes: number | null
+}
+
+export interface LoraList {
+  /** Where the server looks for them, so a file can be put there by hand. */
+  folder: string
+  loras: LoraInfo[]
 }
 
 /** Changes to one of the model's sampling settings; a missing value keeps the model's. */
@@ -253,6 +276,9 @@ export interface SongRequest {
   fullSteps: number | null
   abcSampling: SamplingOverrides | null
   semanticSampling: SamplingOverrides | null
+  /** The LoRA the song was made with, as the worker noted it beside the song. */
+  lora: string | null
+  loraStrength: number | null
 }
 
 export interface RunInfo {

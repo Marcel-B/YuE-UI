@@ -300,6 +300,21 @@ public sealed class LibraryEndpointTests : IDisposable
         Assert.Equal(48, request.FullSteps);
         Assert.Equal(new SamplingOverrides(Temperature: 0.9, TopK: 50), request.AbcSampling);
         Assert.Null(request.SemanticSampling);
+        Assert.Null(request.Lora);
+    }
+
+    [Fact]
+    public async Task A_songs_request_carries_the_lora_the_worker_noted()
+    {
+        var directory = _app.AddSong("20260921-165850-Neon-Night", "song1");
+        File.WriteAllText(Path.Combine(directory, "yueui.json"), """
+            {"lora": "/data/loras/dubstep.safetensors", "lora_name": "dubstep", "lora_strength": 1.5}
+            """);
+
+        var request = (await _client.GetFromJsonAsync<SongRequest>("/api/songs/20260921-165850-Neon-Night/song1/request", TestApp.Json))!;
+
+        Assert.Equal("dubstep", request.Lora);
+        Assert.Equal(1.5, request.LoraStrength);
     }
 
     [Fact]

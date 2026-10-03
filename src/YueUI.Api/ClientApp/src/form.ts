@@ -28,6 +28,9 @@ export interface FormState {
   abcSampling: Sampling
   /** How the song tokens are sampled. */
   semanticSampling: Sampling
+  /** A LoRA from the server's folder; empty for none. */
+  lora: string
+  loraStrength: number
   /** The reference voice each finished song is sung with afterwards; empty for none. */
   voiceId: string
   /** Whole octaves, as in the library's voice dialog. */
@@ -59,11 +62,22 @@ export const tokensPerSecond = 25
 export const maxSongSeconds = 360
 export const lengthChoices = [30, 60, 90, 120, 150, 180, 240, 300, maxSongSeconds, 420, 480, 540, 600]
 export const defaultFullSteps = 32
+export const maxLoraStrength = 3
 
 const storageKey = 'yue-ui.form'
 
 type AdvancedKey =
-  'cot' | 'seed' | 'draftSteps' | 'fullSteps' | 'engines' | 'maxSeconds' | 'abc' | 'abcSampling' | 'semanticSampling'
+  | 'cot'
+  | 'seed'
+  | 'draftSteps'
+  | 'fullSteps'
+  | 'engines'
+  | 'maxSeconds'
+  | 'abc'
+  | 'abcSampling'
+  | 'semanticSampling'
+  | 'lora'
+  | 'loraStrength'
 
 /** The advanced section, set to what the worker would do without them. */
 export function defaultAdvanced(): Pick<FormState, AdvancedKey> {
@@ -77,6 +91,8 @@ export function defaultAdvanced(): Pick<FormState, AdvancedKey> {
     fullSteps: defaultFullSteps,
     abcSampling: { ...defaultSampling.abcSampling },
     semanticSampling: { ...defaultSampling.semanticSampling },
+    lora: '',
+    loraStrength: 1,
   }
 }
 
@@ -216,6 +232,8 @@ export function toGenerateRequest(form: FormState): GenerateRequest {
             diffusionSteps: form.voiceSteps,
             keepReverb: true,
           },
+    lora: form.lora === '' ? null : form.lora,
+    loraStrength: form.lora === '' || form.loraStrength === 1 ? null : form.loraStrength,
   }
 }
 
@@ -245,6 +263,8 @@ export function fromSongRequest(form: FormState, request: SongRequest): FormStat
     fullSteps: request.fullSteps ?? defaults.fullSteps,
     abcSampling: { ...defaultSampling.abcSampling, ...definedOnly(request.abcSampling) },
     semanticSampling: { ...defaultSampling.semanticSampling, ...definedOnly(request.semanticSampling) },
+    lora: request.lora ?? '',
+    loraStrength: request.loraStrength ?? defaults.loraStrength,
   }
 }
 
