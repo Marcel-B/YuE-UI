@@ -7,7 +7,8 @@
 #   deploy/setup-mac.sh --transcription    plus SheetSage2 for transcriptions (about 2 GB more)
 #   deploy/setup-mac.sh --voices           plus stem separation and Seed-VC for other voices (about 3 GB more)
 #   deploy/setup-mac.sh --speech           plus the speech lab's environment (deploy/install-speech.sh)
-#   deploy/setup-mac.sh --all              all three
+#   deploy/setup-mac.sh --images           plus FLUX.2 Klein for painted covers (deploy/install-images.sh)
+#   deploy/setup-mac.sh --all              all four
 #   deploy/setup-mac.sh --engine-from-source
 #                                          replace an engine the YuE Studio app installed by a git checkout
 #   deploy/setup-mac.sh --update           again with the options of the last run, without asking (deploy/update.sh)
@@ -49,6 +50,7 @@ OPTIONS_FILE="$DATA/setup-options"
 TRANSCRIPTION=false
 VOICES=false
 SPEECH=false
+IMAGES=false
 FROM_SOURCE=false
 UPDATE=false
 AUTO_UPDATE=true
@@ -64,11 +66,12 @@ for argument in "$@"; do
     --transcription) TRANSCRIPTION=true ;;
     --voices) VOICES=true ;;
     --speech) SPEECH=true ;;
-    --all) TRANSCRIPTION=true; VOICES=true; SPEECH=true ;;
+    --images) IMAGES=true ;;
+    --all) TRANSCRIPTION=true; VOICES=true; SPEECH=true; IMAGES=true ;;
     --engine-from-source) FROM_SOURCE=true ;;
     --no-auto-update) AUTO_UPDATE=false ;;
     --update) echo "--update comes first." >&2; exit 2 ;;
-    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown argument: $argument" >&2; exit 2 ;;
   esac
 done
@@ -299,6 +302,19 @@ if [ "$SPEECH" = true ]; then
     "$REPO/deploy/install-speech.sh"
     mkdir -p "$DATA/speech"
     echo "$SPEECH_RECIPE" > "$DATA/speech/recipe"
+  fi
+fi
+
+if [ "$IMAGES" = true ]; then
+  step "Painted covers"
+  # install-images.sh pins mflux; an update runs it only when the script (and with it the pin) changed.
+  IMAGES_RECIPE="$(cksum < "$REPO/deploy/install-images.sh")"
+  if [ "$UPDATE" = true ] && [ "$(cat "$DATA/images/recipe" 2>/dev/null)" = "$IMAGES_RECIPE" ]; then
+    echo "Unchanged."
+  else
+    "$REPO/deploy/install-images.sh"
+    mkdir -p "$DATA/images"
+    echo "$IMAGES_RECIPE" > "$DATA/images/recipe"
   fi
 fi
 

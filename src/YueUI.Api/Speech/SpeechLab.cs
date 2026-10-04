@@ -41,6 +41,7 @@ public sealed class SpeechLab(
     WorkerHost host,
     LyricsWriter lyrics,
     VoiceConverter voices,
+    Images.ImageActivity images,
     IOptions<SpeechOptions> options,
     TimeProvider time,
     ILogger<SpeechLab> logger) : BackgroundService
@@ -226,7 +227,7 @@ public sealed class SpeechLab(
             await Task.Delay(options.Value.WaitInterval, time, cancellationToken);
         }
 
-        bool Occupied() => host.InUse || lyrics.IsWriting || voices.IsConverting;
+        bool Occupied() => host.InUse || lyrics.IsWriting || voices.IsConverting || images.IsPainting;
     }
 
     /// <summary>Stores the change (a take deleted meanwhile stays deleted) and tells the browsers.</summary>

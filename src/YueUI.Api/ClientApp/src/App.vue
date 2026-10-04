@@ -21,6 +21,7 @@ import { ratings, setRatings } from './ratings'
 import { reviewCount, reviewDays } from './review'
 import { exportTarget, registerExportLookup } from './export'
 import { videoTarget } from './video'
+import { imageTarget } from './images'
 import { checkForUpdate, reload, updateAvailable } from './update'
 import { visuals } from './spectrum'
 import QueueOverview from './components/QueueOverview.vue'
@@ -41,6 +42,7 @@ import type {
   StemSetState,
   SwapState,
   VideoState,
+  ImageState,
   VersionState,
   QueuedJob,
   VoiceInfo,
@@ -52,6 +54,7 @@ import type {
 const LibraryList = defineAsyncComponent(() => import('./components/LibraryList.vue'))
 const ExportDialog = defineAsyncComponent(() => import('./components/ExportDialog.vue'))
 const VideoDialog = defineAsyncComponent(() => import('./components/VideoDialog.vue'))
+const ImageDialog = defineAsyncComponent(() => import('./components/ImageDialog.vue'))
 // The Logic page brings the options form, the piano roll and the MIDI preview; loaded only once it is opened.
 const LogicPage = defineAsyncComponent(() => import('./components/LogicPage.vue'))
 // Backing vocals share the Logic page's preview; loaded only once opened as well.
@@ -99,6 +102,8 @@ const stemSets = ref<StemSetState[]>([])
 const swaps = ref<SwapState[]>([])
 /** Music videos in the works, and those finished while the page was open. */
 const videos = ref<VideoState[]>([])
+/** Painted covers in the works, and those finished while the page was open. */
+const images = ref<ImageState[]>([])
 /**
  * The speech lab's takes: those in the works from the snapshot, then as the event stream reports them, by id. The queue
  * shows the unfinished ones; the lab lays them all over what it loaded.
@@ -177,6 +182,15 @@ function upsertVideo(video: VideoState): void {
   }
 }
 
+function upsertImage(image: ImageState): void {
+  const index = images.value.findIndex((i) => i.id === image.id)
+  if (index >= 0) {
+    images.value[index] = image
+  } else {
+    images.value.push(image)
+  }
+}
+
 function hideFinished(): void {
   hidden.value = new Set([...hidden.value, ...songs.value.filter((s) => s.finished).map((s) => s.id)])
 }
@@ -192,6 +206,7 @@ const unsubscribe = subscribe({
     stemSets.value = snapshot.stems ?? []
     swaps.value = snapshot.swaps ?? []
     videos.value = snapshot.videos ?? []
+    images.value = snapshot.images ?? []
     speechTakes.value = snapshot.speech ?? []
     jobs.value = snapshot.queue ?? []
     bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
@@ -228,6 +243,7 @@ const unsubscribe = subscribe({
   stems: upsertStems,
   swap: upsertSwap,
   video: upsertVideo,
+  image: upsertImage,
   speech(take) {
     const index = speechTakes.value.findIndex((other) => other.id === take.id)
     if (index >= 0) {
@@ -270,8 +286,8 @@ const tools: Page[] = [
 ]
 
 /**
- * Everything the queue page shows as in the works or waiting: songs, queued jobs, voice versions, stems and the speech
- * lab's takes.
+ * Everything the queue page shows as in the works or waiting: songs, queued jobs, voice versions, stems, the speech
+ * lab's takes, videos and painted covers.
  */
 const queueCount = computed(
   () =>
@@ -281,6 +297,7 @@ const queueCount = computed(
     stemSets.value.filter((s) => !s.finished).length +
     swaps.value.filter((s) => !s.finished).length +
     videos.value.filter((v) => !v.finished).length +
+    images.value.filter((i) => !i.finished).length +
     speechTakes.value.filter((take) => !take.finished).length +
     transcriptions.value.filter((tr) => !tr.finished).length,
 )
@@ -540,6 +557,7 @@ async function useAsNewSong(songId: string): Promise<void> {
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
   <ExportDialog v-if="exportTarget" />
   <VideoDialog v-if="videoTarget" :live="videos" @error="show($event, true)" />
+  <ImageDialog v-if="imageTarget" :live="images" @error="show($event, true)" @notice="show($event)" />
   <!--
     Header and player frame the page like the rollers of a scroll: both as wide as the page including its padding,
     flush at the top and the bottom, and the pages run between them.
@@ -695,6 +713,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :stems="stemSets"
           :swaps="swaps"
           :videos="videos"
+          :images="images"
           :bundle-window-seconds="bundleWindowSeconds"
           :takes="speechTakes"
           :transcriptions="transcriptions"

@@ -27,10 +27,10 @@ Auf einem Mac, auf dem außer macOS nichts installiert ist, richtet ein Skript a
 ```sh
 xcode-select --install                 # Command Line Tools (git, clang), einmal
 git clone https://github.com/Marcel-B/YuE-UI.git ~/repos/YueUI
-~/repos/YueUI/deploy/setup-mac.sh      # --transcription, --voices, --speech oder --all für mehr
+~/repos/YueUI/deploy/setup-mac.sh      # --transcription, --voices, --speech, --images oder --all für mehr
 ```
 
-Es prüft den Mac (Apple Silicon, macOS 14+, Speicher, rund 20 GB frei) und installiert, was fehlt: Homebrew, uv, ffmpeg, Node.js und das .NET 10 SDK. Danach holt es YuE2 ohne die App, nämlich als Git-Checkout von [YuE Studio](https://github.com/tonywestonuk/YuE-Studio) in der Version, gegen die Tonwerks Erweiterung des Workers geprüft ist (`ENGINE_REF`, derzeit v0.4.0). Es baut die Brücke zur Neural Engine, legt die Python-Umgebung an und lädt die Modelle (etwa 7 GB). Am Ende veröffentlicht es Tonwerk mit `deploy/install.sh` und startet den Worker einmal zur Probe. Mit `--transcription` kommt SheetSage2 dazu (etwa 2 GB), mit `--speech` das Sprachlabor.
+Es prüft den Mac (Apple Silicon, macOS 14+, Speicher, rund 20 GB frei) und installiert, was fehlt: Homebrew, uv, ffmpeg, Node.js und das .NET 10 SDK. Danach holt es YuE2 ohne die App, nämlich als Git-Checkout von [YuE Studio](https://github.com/tonywestonuk/YuE-Studio) in der Version, gegen die Tonwerks Erweiterung des Workers geprüft ist (`ENGINE_REF`, derzeit v0.4.0). Es baut die Brücke zur Neural Engine, legt die Python-Umgebung an und lädt die Modelle (etwa 7 GB). Am Ende veröffentlicht es Tonwerk mit `deploy/install.sh` und startet den Worker einmal zur Probe. Mit `--transcription` kommt SheetSage2 dazu (etwa 2 GB), mit `--speech` das Sprachlabor, mit `--images` FLUX.2 Klein für gemalte Cover.
 
 Die Schritte entsprechen denen des Installers der App und landen in denselben Ordnern (`~/Library/Application Support/YuE Studio`, Songs in `~/Music/YuE Studio`). Tonwerk braucht deshalb keine andere Konfiguration, und eine später installierte App findet die Modelle. Öffnet man die App, installiert sie ihre eigene Kopie über den Checkout; das funktioniert, nur die Git-Historie ist dann weg. Umgekehrt lässt das Skript eine Installation der App unangetastet, solange es nicht mit `--engine-from-source` läuft.
 
@@ -274,6 +274,31 @@ Danach zeigt das Zahnrad-Menü, wann zuletzt gesichert wurde, und **Jetzt in die
 
 Die Zeilen liegen als JSON, eine Datei pro Tag (`tonwerk-JJJJ-MM-TT.jsonl`), unter `~/Library/Application Support/YuE UI/logs` und werden nach 14 Tagen gelöscht. Wird eine Tagesdatei größer als 50 MB, kommen nur noch Warnungen und Fehler hinein. Das Update-Log bleibt, wo `update.sh` es schreibt, und wird mitgelesen. `yueui.log` (die Konsole des LaunchAgents) gibt es weiterhin.
 
+## Cover malen mit FLUX.2 Klein
+
+In den Songs malt **Cover malen** (im „…“-Menü des Songs) ein Cover mit [FLUX.2 Klein](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) auf dem Mac, ohne ComfyUI, über [mflux](https://github.com/filipstrand/mflux) (MLX):
+
+1. Die Bildbeschreibung ist aus Titel und Stil vorgeschlagen und frei änderbar, am besten auf Englisch. **Titel ins Bild schreiben** bittet das Modell, den Titel einmal ins Bild zu setzen; sonst steht „no text“ im Vorschlag.
+2. Modell wählen und **Malen**. Jedes Bild ist ein Vorschlag mit eigenem Seed, quadratisch mit 1024 Pixeln, und steht darunter.
+3. **Als Cover** macht einen Vorschlag zum Cover des Songs, wie ein gewähltes Foto: in der Bibliothek, im Player, in jedem Export und im Musikvideo. Die Vorschläge bleiben, bis man sie löscht, so lässt sich zurückwechseln.
+
+| Modell | Lizenz | Download | Speicher beim Malen |
+|---|---|---|---|
+| Klein 4B (Standard, 8 Bit) | Apache 2.0, auch für veröffentlichte Songs | etwa 15 GB | etwa 9 GB |
+| Klein 9B (4 Bit) | FLUX Non-Commercial, nur privat | etwa 32 GB | etwa 10 GB |
+
+Die Speicherwerte sind geschätzt, nicht gemessen. Ein Bild wartet wie ein Sprachtest, bis YuE2, das Textmodell, Stimmumwandlungen und das Sprachlabor den Speicher freigeben, und so lange warten diese. Die **Warteschlange** listet Bilder in Arbeit unter **Cover**. Das Modell wird für jedes Bild geladen und danach freigegeben; beim ersten Bild lädt es sich herunter.
+
+**Einrichtung.** Einmal auf dem Mac im Repository, nach `deploy/install.sh`:
+
+```sh
+deploy/install-images.sh   # eigene Python-Umgebung mit mflux (Version fest im Skript)
+```
+
+Oder mit den bisherigen Optionen über das Einrichtungsskript, damit Updates die Umgebung mitpflegen: `deploy/setup-mac.sh $(cat "$HOME/Library/Application Support/YuE UI/setup-options") --images`. Umgebung und Modelle liegen unter `~/Library/Application Support/YuE UI/images/`, die Vorschläge neben der Datenbank in `images/` (nicht in der Sicherung, das übernommene Cover schon).
+
+Klein 9B liegt auf Hugging Face hinter seiner Lizenz: auf [huggingface.co/black-forest-labs/FLUX.2-klein-9B](https://huggingface.co/black-forest-labs/FLUX.2-klein-9B) annehmen, ein Lese-Token für das Konto anlegen und auf dem Mac in `~/.config/tonwerk/huggingface.token` speichern. Klein 4B braucht das nicht. Die Gewichte, die ComfyUI schon geladen hat, nutzt mflux nicht; es lädt sie im Format von Hugging Face neu.
+
 ## Konfiguration
 
 `appsettings.json` bzw. Umgebungsvariablen:
@@ -309,6 +334,11 @@ Die Zeilen liegen als JSON, eine Datei pro Tag (`tonwerk-JJJJ-MM-TT.jsonl`), unt
 | `Speech:Python` (`Speech__Python`) | `<Root>/env/bin/python` | Python mit mlx-audio |
 | `Speech:ModelCache` (`Speech__ModelCache`) | `<Root>/models` | Hugging-Face-Cache der Sprachmodelle (`HF_HOME`) |
 | `Speech:Timeout` (`Speech__Timeout`) | `01:00:00` | so lange darf ein Ergebnis samt erstem Download dauern |
+| `Images:Root` (`Images__Root`) | `~/Library/Application Support/YuE UI/images` | Ordner für gemalte Cover (Python-Umgebung und Modelle) |
+| `Images:Python` (`Images__Python`) | `<Root>/env/bin/python` | Python mit mflux |
+| `Images:ModelCache` (`Images__ModelCache`) | `<Root>/models` | Hugging-Face-Cache der Bildmodelle (`HF_HOME`) |
+| `Images:TokenFile` (`Images__TokenFile`) | `~/.config/tonwerk/huggingface.token` | Hugging-Face-Token, nur für Klein 9B |
+| `Images:Timeout` (`Images__Timeout`) | `01:30:00` | so lange darf ein Bild samt erstem Download dauern |
 | `Push:DataPath` (`Push__DataPath`) | `~/Library/Application Support/YuE UI/push.json` | VAPID-Schlüssel und Abonnements für Benachrichtigungen |
 | `Data:Path` (`Data__Path`) | `~/Library/Application Support/YuE UI/yueui.db` | SQLite-Datenbank von Tonwerk (Playlists, geänderte Titel, Bewertungen) |
 | `Logs:Directory` (`Logs__Directory`) | `~/Library/Application Support/YuE UI/logs` | Tagesdateien des Protokolls |
@@ -400,6 +430,10 @@ Die Zeilen liegen als JSON, eine Datei pro Tag (`tonwerk-JJJJ-MM-TT.jsonl`), unt
 | `POST` | `/api/speech/takes` | `{ text, voiceId?, models }`: ein Ergebnis je Modell, antwortet `202` mit ihnen; der Fortschritt kommt als `speech`-Event (`queued`, `loading`, `speaking`, dann `done` oder `failed` mit `message`); `501` ohne mlx-audio |
 | `GET` | `/api/speech/takes/{id}/audio` | fertiges Ergebnis als WAV (`?download=true` als Download) |
 | `DELETE` | `/api/speech/takes/{id}` | Ergebnis abbrechen oder löschen |
+| `GET` | `/api/images` | Gemalte Cover: `{ installed, python, models }` (Modelle mit Lizenz, `commercial`, `downloaded`, `tokenFound`) |
+| `GET` / `POST` | `/api/songs/{run}/{song}/images` | Vorschläge des Songs, neueste zuerst, bzw. `{ prompt, model?, seed? }` malen; antwortet `202`, der Fortschritt kommt als `image`-Event (`queued`, `loading`, `painting` mit `fraction`, dann `done` oder `failed`); `501` ohne mflux |
+| `GET` / `DELETE` | `/api/images/{id}` | Vorschlag als JPEG bzw. abbrechen oder löschen |
+| `PUT` | `/api/images/{id}/cover` | Vorschlag als Cover des Songs übernehmen |
 | `GET` | `/api/playlists` | `[{ id, name, songIds }]`: alle Playlists, älteste zuerst, Songs in Reihenfolge (`run/songN`), gelöschte weggelassen |
 | `POST` | `/api/playlists` | `{ name }`: neue, leere Playlist (`201`) |
 | `PUT` | `/api/playlists/{id}/name` | `{ name }`: umbenennen (1 bis 100 Zeichen) |

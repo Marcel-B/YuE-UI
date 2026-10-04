@@ -63,6 +63,7 @@ export const logSources = [
   'lyrics',
   'voices',
   'speech',
+  'images',
   'video',
   'export',
   'logic',
@@ -108,6 +109,8 @@ export interface StatusSnapshot {
   swaps: SwapState[] | null
   /** Music videos being rendered or waiting for it, and the last one that finished. */
   videos: VideoState[] | null
+  /** Painted covers in the works (and the last finished one); null from a server before them. */
+  images?: ImageState[] | null
 }
 
 export type JobKind = 'song' | 'render' | 'lyrics' | 'transcription'
@@ -609,4 +612,46 @@ export interface SpeechInfo {
   voices: SpeechVoice[]
   /** Newest first. */
   takes: SpeechTake[]
+}
+
+/** A cover painted by FLUX.2 Klein (Images/ImageModels.cs `ImageState`): a candidate until it is taken. */
+export interface ImageState {
+  id: string
+  /** `run/songN` */
+  songId: string
+  title: string | null
+  modelId: string
+  modelLabel: string
+  prompt: string
+  seed: number
+  stage: 'queued' | 'loading' | 'painting' | 'done' | 'failed' | 'cancelled'
+  message: string | null
+  /** Of the painting steps. */
+  fraction: number
+  loadSeconds: number | null
+  paintSeconds: number | null
+  peakMemoryGb: number | null
+  createdAt: string
+  updatedAt: string
+  finished: boolean
+}
+
+export interface ImageModelInfo {
+  id: string
+  label: string
+  downloadGb: number
+  memoryGb: number
+  license: string
+  /** Whether its pictures may go on a released song. */
+  commercial: boolean
+  /** Its repository needs a Hugging Face token of an account that accepted the licence. */
+  gated: boolean
+  downloaded: boolean
+  tokenFound: boolean
+}
+
+export interface ImageInfo {
+  installed: boolean
+  python: string
+  models: ImageModelInfo[]
 }

@@ -69,6 +69,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
     public FakeVideoRenderer Videos { get; } = new();
 
+    public FakeImages Images { get; } = new();
+
     public FakeNextcloud Nextcloud { get; } = new();
 
     /// <summary>The backup folder in the fake Nextcloud; null (the default) leaves the backup off.</summary>
@@ -177,6 +179,12 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
             services.AddSingleton<ISpeechEngine>(Speech);
             services.AddSingleton<Video.IVideoRenderer>(Videos);
+            services.AddSingleton<Images.IImageEngine>(Images);
+            services.Configure<Images.ImageOptions>(options =>
+            {
+                options.Root = Path.Combine(Root, "images");
+                options.WaitInterval = TimeSpan.FromMilliseconds(10);
+            });
             services.Configure<SpeechOptions>(options =>
             {
                 options.Root = Path.Combine(Root, "speech");
@@ -964,5 +972,49 @@ public sealed class FakeVideoRenderer : Video.IVideoRenderer
             throw new Video.VideoException(failure);
         }
         await File.WriteAllBytesAsync(output, Mp4, cancellationToken);
+    }
+}
+
+/// <summary>mflux: records what it was asked to paint and writes a few JPEG bytes; can be held back to see one in the works.</summary>
+public sealed class FakeImages : Images.IImageEngine
+{
+    public static readonly byte[] Jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 0xFF, 0xD9];
+
+    public bool Installed { get; set; } = true;
+
+    public bool TokenFound { get; set; }
+
+    /// <summary>Held open to keep a picture painting; completed by default.</summary>
+    public TaskCompletionSource Gate { get; set; } = CompletedGate();
+
+    /// <summary>Set to make the next pictures fail with it.</summary>
+    public string? Failure { get; set; }
+
+    public List<Images.ImageJob> Jobs { get; } = [];
+
+    public bool Downloaded(Images.ImageModel model) => model.Id == "klein-4b";
+
+    public async Task<Images.ImageResult> PaintAsync(Images.ImageJob job, Action<string, double> progress, CancellationToken cancellationToken)
+    {
+        lock (Jobs)
+        {
+            Jobs.Add(job);
+        }
+        progress("loading", 0);
+        progress("painting", 0.5);
+        await Gate.Task.WaitAsync(cancellationToken);
+        if (Failure is { } failure)
+        {
+            throw new Images.ImageException(failure);
+        }
+        await File.WriteAllBytesAsync(job.Output, Jpeg, cancellationToken);
+        return new Images.ImageResult(20.5, 31.25, 8.9);
+    }
+
+    private static TaskCompletionSource CompletedGate()
+    {
+        var gate = new TaskCompletionSource();
+        gate.SetResult();
+        return gate;
     }
 }
