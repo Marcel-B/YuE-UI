@@ -63,6 +63,7 @@ export const logSources = [
   'lyrics',
   'voices',
   'speech',
+  'video',
   'export',
   'logic',
   'backup',
@@ -105,6 +106,8 @@ export interface StatusSnapshot {
   speech: SpeechTake[] | null
   /** Uploaded recordings being sung with another voice, and the last one that finished. */
   swaps: SwapState[] | null
+  /** Music videos being rendered or waiting for it, and the last one that finished. */
+  videos: VideoState[] | null
 }
 
 export type JobKind = 'song' | 'render' | 'lyrics' | 'transcription'
@@ -441,6 +444,36 @@ export interface ReferenceVoice {
   /** How long the stored recording is; the service keeps at most 25 seconds. */
   seconds: number
   createdAt: string | null
+}
+
+/** 1920×1080 for YouTube, or 1080×1920 for Shorts, Reels and TikTok. */
+export type VideoFormat = 'landscape' | 'portrait'
+
+/** A spectrum analyzer, the waveform, or only the still picture. */
+export type VideoEffect = 'bars' | 'wave' | 'none'
+
+/** What moves behind the cover: drifting particles, a plasma ball's lightning, or nothing. */
+export type VideoMotion = 'none' | 'particles' | 'plasma'
+
+/** A music video of a song (Video/VideoModels.cs); live changes arrive as `video` events. */
+export interface VideoState {
+  id: string
+  /** `run/songN` */
+  songId: string
+  title: string
+  format: VideoFormat
+  effect: VideoEffect
+  motion: VideoMotion
+  showCover: boolean
+  showTitle: boolean
+  stage: 'queued' | 'rendering' | 'done' | 'failed' | 'cancelled'
+  /** How much is rendered, 0 to 1. */
+  fraction: number
+  message: string | null
+  bytes: number | null
+  createdAt: string
+  updatedAt: string
+  finished: boolean
 }
 
 export type VersionStage = 'queued' | 'separating' | 'converting' | 'mixing' | 'done' | 'failed' | 'cancelled'

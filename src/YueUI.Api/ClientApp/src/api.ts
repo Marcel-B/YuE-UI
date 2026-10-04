@@ -30,6 +30,10 @@ import type {
   SwapState,
   VersionRequest,
   VersionState,
+  VideoEffect,
+  VideoFormat,
+  VideoMotion,
+  VideoState,
   VoiceInfo,
   WorkerInfo,
 } from './types'
@@ -444,6 +448,65 @@ export function swapSourceUrl(id: string): string {
   return `${apiBase}/api/swaps/${id}/source`
 }
 
+/** The song's music videos, newest first. */
+export async function listVideos(songId: string): Promise<VideoState[]> {
+  return (await send(`/api/songs/${songId}/videos`)).json() as Promise<VideoState[]>
+}
+
+export interface VideoRequest {
+  format: VideoFormat
+  effect: VideoEffect
+  motion: VideoMotion
+  showCover: boolean
+  showTitle: boolean
+}
+
+/**
+ * The still layers drawn in `video.ts`, as PNGs of the frame's size (the plasma ball's frames of its area); all but
+ * the background only when asked for. Each goes under its name, the moving one under the motion's.
+ */
+export interface VideoLayerImages {
+  background: Blob
+  cover: Blob | null
+  title: Blob | null
+  particles?: Blob
+  /** The plasma ball's frames, sent as `plasma0`, `plasma1`, … */
+  plasma?: Blob[]
+}
+
+/** Sends the layers and queues the video; its progress arrives as `video` events. */
+export async function addVideo(songId: string, request: VideoRequest, layers: VideoLayerImages): Promise<VideoState> {
+  const form = new FormData()
+  for (const [key, value] of Object.entries(request)) {
+    form.append(key, String(value))
+  }
+  for (const [name, layer] of Object.entries(layers) as [string, Blob | Blob[] | null | undefined][]) {
+    if (Array.isArray(layer)) {
+      layer.forEach((blob, index) => form.append(`${name}${index}`, blob, `${name}${index}.png`))
+    } else if (layer) {
+      form.append(name, layer, `${name}.png`)
+    }
+  }
+  return (await send(`/api/songs/${songId}/videos`, { method: 'POST', body: form })).json() as Promise<VideoState>
+}
+
+/** Stops a video in the works, or removes a finished one. */
+export async function deleteVideo(id: string): Promise<void> {
+  await send(`/api/videos/${id}`, { method: 'DELETE' })
+}
+
+/** The MP4; with `download`, under a name made of the title, the song and where it is meant to go. */
+export function videoUrl(id: string, download = false): string {
+  return `${apiBase}/api/videos/${id}/file${download ? '?download=true' : ''}`
+}
+
+/** The MP4 as a file for the share sheet, fetched first since Safari wants the file within the tap. */
+export async function fetchVideoFile(id: string): Promise<File> {
+  const response = await send(`/api/videos/${id}/file?download=true`)
+  const name = fileName(response.headers.get('Content-Disposition')) ?? 'Tonwerk.mp4'
+  return new File([await response.blob()], name, { type: 'video/mp4' })
+}
+
 /** Refused (409) while a job of the service still waits for the voice. */
 export async function deleteVoice(id: string): Promise<void> {
   await send(`/api/voices/${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -552,6 +615,8 @@ export interface EventHandlers {
   swap(swap: SwapState): void
   /** A take of the speech lab changed; a deleted one arrives as cancelled. */
   speech(take: SpeechTake): void
+  /** A music video changed; a deleted one arrives as cancelled. */
+  video(video: VideoState): void
   queue(queue: QueuedJob[]): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */
   connection(open: boolean): void
@@ -578,6 +643,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on<StemSetState>('stems', handlers.stems)
   on<SwapState>('swap', handlers.swap)
   on<SpeechTake>('speech', handlers.speech)
+  on<VideoState>('video', handlers.video)
   source.onerror = () => handlers.connection(false)
   return () => source.close()
 }

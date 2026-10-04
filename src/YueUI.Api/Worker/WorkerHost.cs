@@ -53,6 +53,7 @@ public sealed class WorkerHost(
     private readonly Dictionary<string, VersionState> _versions = [];
     private readonly Dictionary<string, StemSetState> _stems = [];
     private readonly Dictionary<string, SwapState> _swaps = [];
+    private readonly Dictionary<string, Video.VideoState> _videos = [];
     /// <summary>The speech lab's takes in the works, in the order they are spoken (a list, since several share a time).</summary>
     private readonly List<Speech.SpeechTake> _speech = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
@@ -380,6 +381,23 @@ public sealed class WorkerHost(
             _swaps[swap.Id] = swap;
         }
         Publish("swap", swap);
+    }
+
+    /// <summary>
+    /// Keeps a music video (Video/VideoMaker.cs) for the snapshot, so the queue page shows it after a reload, and sends
+    /// it to the browsers; a finished one leaves the snapshot with the next, since the song's video dialog lists it.
+    /// </summary>
+    public void UpdateVideo(Video.VideoState video)
+    {
+        lock (_gate)
+        {
+            foreach (var old in _videos.Values.Where(v => v.Finished).ToList())
+            {
+                _videos.Remove(old.Id);
+            }
+            _videos[video.Id] = video;
+        }
+        Publish("video", video);
     }
 
     /// <summary>
@@ -891,7 +909,8 @@ public sealed class WorkerHost(
         queueOptions.Value.BundleWindow.TotalSeconds,
         [.. _stems.Values.OrderBy(s => s.CreatedAt)],
         [.. _speech],
-        [.. _swaps.Values.OrderBy(s => s.CreatedAt)]);
+        [.. _swaps.Values.OrderBy(s => s.CreatedAt)],
+        [.. _videos.Values.OrderBy(v => v.CreatedAt)]);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);

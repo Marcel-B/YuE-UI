@@ -22,6 +22,7 @@ const sourceLabels: Record<LogSource, MessageKey> = {
   lyrics: 'logsSourceLyrics',
   voices: 'logsSourceVoices',
   speech: 'logsSourceSpeech',
+  video: 'logsSourceVideo',
   export: 'logsSourceExport',
   logic: 'logsSourceLogic',
   backup: 'logsSourceBackup',

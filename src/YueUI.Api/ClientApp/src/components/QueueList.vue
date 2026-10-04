@@ -8,6 +8,7 @@ import {
   deleteStems,
   deleteSwap,
   deleteVersion,
+  deleteVideo,
   moveQueued,
   shutdownWorker,
   stopAll,
@@ -27,6 +28,7 @@ import type {
   SwapState,
   TranscriptionState,
   VersionState,
+  VideoState,
   WorkerInfo,
 } from '../types'
 
@@ -43,6 +45,8 @@ const props = defineProps<{
   stems: StemSetState[]
   /** Uploaded recordings being sung with another voice, in the same queue. */
   swaps: SwapState[]
+  /** Music videos; ffmpeg renders them one at a time beside everything else, they wait only for each other. */
+  videos: VideoState[]
   /** Queue:BundleWindow; null for a server from before it was sent. */
   bundleWindowSeconds: number | null
   /** The speech lab's takes; those in the works wait for the same memory. */
@@ -193,6 +197,16 @@ const voiceItems = computed<VoiceItem[]>(() =>
       })),
   ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
 )
+
+const videosInWork = computed(() =>
+  props.videos.filter((v) => !v.finished).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+)
+
+function videoDetail(video: VideoState): string {
+  return [t(`videoFormat_${video.format}`), video.effect === 'none' ? null : t(`videoEffect_${video.effect}`)]
+    .filter(Boolean)
+    .join(' · ')
+}
 
 /** A waiting one waits for whoever holds the memory, or for the one before it in the voices' queue. */
 function voiceReason(item: VoiceItem): string {
@@ -380,6 +394,45 @@ watch(
       </ul>
     </div>
 
+    <div v-if="videosInWork.length > 0" class="mb-4">
+      <h3 class="m-0 text-sm font-medium text-muted-color">{{ t('queueVideo') }}</h3>
+      <ul class="m-0 p-0 list-none flex flex-col gap-1">
+        <li v-for="video in videosInWork" :key="video.id" class="flex gap-2 items-center">
+          <i class="pi pi-video text-muted-color" />
+          <div class="min-w-0 flex-1">
+            <a
+              v-if="listed.has(video.songId)"
+              :href="songHref(video.songId)"
+              class="block truncate font-bold text-color no-underline hover:underline"
+              :title="t('showSong')"
+              @click.prevent="showSong(video.songId)"
+              >{{ video.title || t('untitled') }} · {{ songNumber(video.songId) }}</a
+            >
+            <strong v-else class="block truncate"
+              >{{ video.title || t('untitled') }} · {{ songNumber(video.songId) }}</strong
+            >
+            <span class="block text-sm text-muted-color truncate">{{ videoDetail(video) }}</span>
+          </div>
+          <Tag :severity="video.stage === 'queued' ? 'secondary' : undefined" class="shrink-0">
+            <i v-if="video.stage === 'rendering'" class="pi pi-spin pi-spinner text-xs" />
+            {{
+              video.stage === 'queued'
+                ? t('videoStage_queued')
+                : t('videoStage_rendering', { percent: Math.round(video.fraction * 100) })
+            }}
+          </Tag>
+          <Button
+            icon="pi pi-times"
+            text
+            rounded
+            severity="danger"
+            :aria-label="t('queueCancel')"
+            @click="run(() => deleteVideo(video.id))"
+          />
+        </li>
+      </ul>
+    </div>
+
     <div v-if="takesInWork.length > 0" class="mb-4">
       <h3 class="m-0 text-sm font-medium text-muted-color">{{ t('menuLab') }}</h3>
       <ul class="m-0 p-0 list-none flex flex-col gap-1">
@@ -478,6 +531,7 @@ watch(
         jobs.length === 0 &&
         voiceItems.length === 0 &&
         takesInWork.length === 0 &&
+        videosInWork.length === 0 &&
         !runningTranscription
       "
       class="muted empty"

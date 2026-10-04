@@ -67,7 +67,7 @@ public static class LogSources
     public const string Update = "update";
 
     public static readonly IReadOnlyList<string> All =
-        [Server, Worker, "queue", "lyrics", "voices", "speech", "export", "logic", "backup", "push", Update];
+        [Server, Worker, "queue", "lyrics", "voices", "speech", "video", "export", "logic", "backup", "push", Update];
 
     private static readonly (string Prefix, string Source)[] Categories =
     [
@@ -76,6 +76,7 @@ public static class LogSources
         ("YueUI.Api.Lyrics.", "lyrics"),
         ("YueUI.Api.Voices.", "voices"),
         ("YueUI.Api.Speech.", "speech"),
+        ("YueUI.Api.Video.", "video"),
         ("YueUI.Api.Share.", "export"),
         ("YueUI.Api.Export.", "export"),
         ("YueUI.Api.Logic.", "logic"),

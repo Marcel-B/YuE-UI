@@ -1,0 +1,122 @@
+using System.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
+using YueUI.Api.Share;
+using YueUI.Api.Video;
+
+namespace YueUI.Api.Tests;
+
+/// <summary>Against the real ffmpeg, where there is one: the filter graph is what could break.</summary>
+public sealed class VideoRendererTests : IDisposable
+{
+    private readonly string _directory = Directory.CreateTempSubdirectory("yueui-video-").FullName;
+
+    public void Dispose() => Directory.Delete(_directory, recursive: true);
+
+    public static TheoryData<string, string, bool, string, bool> Settings => new()
+    {
+        { VideoFormats.Landscape, VideoEffects.Bars, true, VideoMotions.Particles, true },
+        { VideoFormats.Portrait, VideoEffects.Wave, false, VideoMotions.Particles, true },
+        { VideoFormats.Landscape, VideoEffects.None, true, VideoMotions.None, true },
+        { VideoFormats.Portrait, VideoEffects.Bars, false, VideoMotions.None, true },
+        { VideoFormats.Landscape, VideoEffects.Bars, true, VideoMotions.Plasma, false },
+        { VideoFormats.Portrait, VideoEffects.None, false, VideoMotions.Plasma, true },
+    };
+
+    [Theory]
+    [MemberData(nameof(Settings))]
+    public async Task A_song_becomes_an_H264_video_of_the_frame_size_and_the_song_length(string format, string effect, bool title, string motion, bool cover)
+    {
+        if (AacEncoder.FindFfmpeg() is not { } ffmpeg)
+        {
+            return; // Nothing to run against on a machine without ffmpeg; the Mac and CI's runner have it.
+        }
+        var layout = VideoLayout.For(format);
+        var size = $"{layout.Width}x{layout.Height}";
+        var flac = Path.Combine(_directory, "audio.flac");
+        await Run(ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=110:sample_rate=48000:duration=3", "-ac", "2", flac);
+        var layers = new VideoLayers(
+            await Picture(ffmpeg, "background.png", $"color=0x1e1b4b:s={size}"),
+            cover ? await Picture(ffmpeg, "cover.png", $"color=black@0:s={size},format=rgba,drawbox=x=100:y=100:w=400:h=400:color=0x10b981@1:t=fill") : null,
+            title ? await Picture(ffmpeg, "title.png", $"color=black@0:s={size},format=rgba,drawbox=x=100:y=600:w=800:h=60:color=white@1:t=fill") : null,
+            motion switch
+            {
+                VideoMotions.Particles => [await Picture(ffmpeg, "particles.png", $"color=black@0:s={size},format=rgba,drawbox=x=300:y=50:w=6:h=6:color=white@0.8:t=fill")],
+                VideoMotions.Plasma => await PlasmaFrames(ffmpeg, layout.PlasmaArea(cover)),
+                _ => [],
+            });
+        var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "Neon Night", Format = format, Effect = effect, Motion = motion, ShowCover = cover, ShowTitle = title };
+        var output = Path.Combine(_directory, "video.mp4");
+        var progress = new List<double>();
+
+        await new FfmpegVideoRenderer(NullLogger<FfmpegVideoRenderer>.Instance)
+            .RenderAsync(video, flac, seconds: null, layers, output, progress.Add, CancellationToken.None);
+
+        var probe = await Run(
+            ffmpeg.Replace("ffmpeg", "ffprobe"),
+            "-v", "error", "-show_entries", "stream=codec_name,width,height,pix_fmt,sample_rate:format=duration", "-of", "default=nw=1", output);
+        Assert.Contains("codec_name=h264", probe);
+        Assert.Contains($"width={layout.Width}", probe);
+        Assert.Contains($"height={layout.Height}", probe);
+        Assert.Contains("pix_fmt=yuv420p", probe);
+        Assert.Contains("codec_name=aac", probe);
+        Assert.Contains("sample_rate=48000", probe);
+        Assert.Matches(@"duration=(2\.9|3\.0)", probe);
+        Assert.False(File.Exists(output + ".part.mp4"));
+        Assert.NotEmpty(progress);
+        Assert.True(progress[^1] > 0.9, $"Last progress {progress[^1]}");
+    }
+
+    [Fact]
+    public async Task A_failing_ffmpeg_says_why()
+    {
+        if (AacEncoder.FindFfmpeg() is null)
+        {
+            return;
+        }
+        var flac = Path.Combine(_directory, "audio.flac");
+        await File.WriteAllTextAsync(flac, "not audio");
+        var missing = Path.Combine(_directory, "missing.png");
+        var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "", Format = VideoFormats.Landscape, Effect = VideoEffects.Bars };
+
+        var failure = await Assert.ThrowsAsync<VideoException>(() => new FfmpegVideoRenderer(NullLogger<FfmpegVideoRenderer>.Instance)
+            .RenderAsync(video, flac, 3, new VideoLayers(missing, missing, null, []), Path.Combine(_directory, "video.mp4"), _ => { }, CancellationToken.None));
+
+        Assert.NotEmpty(failure.Message);
+        Assert.False(File.Exists(Path.Combine(_directory, "video.mp4")));
+    }
+
+    private async Task<string[]> PlasmaFrames(string ffmpeg, (int X, int Y, int Width, int Height) area)
+    {
+        var frames = new string[VideoLayout.PlasmaFrames];
+        for (var i = 0; i < frames.Length; i++)
+        {
+            frames[i] = await Picture(
+                ffmpeg,
+                $"plasma{i}.png",
+                $"color=black@0:s={area.Width}x{area.Height},format=rgba,drawbox=x={100 + i * 10}:y=100:w=6:h=300:color=0xe879f9@1:t=fill");
+        }
+        return frames;
+    }
+
+    private async Task<string> Picture(string ffmpeg, string name, string source)
+    {
+        var path = Path.Combine(_directory, name);
+        await Run(ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", source, "-frames:v", "1", path);
+        return path;
+    }
+
+    private static async Task<string> Run(string tool, params string[] arguments)
+    {
+        var start = new ProcessStartInfo(tool) { RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+        using var process = Process.Start(start)!;
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        Assert.True(process.ExitCode == 0, error);
+        return output;
+    }
+}

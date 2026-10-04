@@ -20,6 +20,7 @@ import { loadPlaylists, playlistIds } from './playlist'
 import { ratings, setRatings } from './ratings'
 import { reviewCount, reviewDays } from './review'
 import { exportTarget, registerExportLookup } from './export'
+import { videoTarget } from './video'
 import { checkForUpdate, reload, updateAvailable } from './update'
 import { visuals } from './spectrum'
 import QueueOverview from './components/QueueOverview.vue'
@@ -39,6 +40,7 @@ import type {
   TranscriptionState,
   StemSetState,
   SwapState,
+  VideoState,
   VersionState,
   QueuedJob,
   VoiceInfo,
@@ -49,6 +51,7 @@ import type {
 // Dialog, a good part of PrimeVue that the create page does not need; sharing needs its dialog only when used.
 const LibraryList = defineAsyncComponent(() => import('./components/LibraryList.vue'))
 const ExportDialog = defineAsyncComponent(() => import('./components/ExportDialog.vue'))
+const VideoDialog = defineAsyncComponent(() => import('./components/VideoDialog.vue'))
 // The Logic page brings the options form, the piano roll and the MIDI preview; loaded only once it is opened.
 const LogicPage = defineAsyncComponent(() => import('./components/LogicPage.vue'))
 // Backing vocals share the Logic page's preview; loaded only once opened as well.
@@ -94,6 +97,8 @@ const versions = ref<VersionState[]>([])
 const stemSets = ref<StemSetState[]>([])
 /** Uploaded recordings being sung with another voice, and those finished while the page was open. */
 const swaps = ref<SwapState[]>([])
+/** Music videos in the works, and those finished while the page was open. */
+const videos = ref<VideoState[]>([])
 /**
  * The speech lab's takes: those in the works from the snapshot, then as the event stream reports them, by id. The queue
  * shows the unfinished ones; the lab lays them all over what it loaded.
@@ -163,6 +168,15 @@ function upsertSwap(swap: SwapState): void {
   }
 }
 
+function upsertVideo(video: VideoState): void {
+  const index = videos.value.findIndex((v) => v.id === video.id)
+  if (index >= 0) {
+    videos.value[index] = video
+  } else {
+    videos.value.push(video)
+  }
+}
+
 function hideFinished(): void {
   hidden.value = new Set([...hidden.value, ...songs.value.filter((s) => s.finished).map((s) => s.id)])
 }
@@ -177,6 +191,7 @@ const unsubscribe = subscribe({
     versions.value = snapshot.versions
     stemSets.value = snapshot.stems ?? []
     swaps.value = snapshot.swaps ?? []
+    videos.value = snapshot.videos ?? []
     speechTakes.value = snapshot.speech ?? []
     jobs.value = snapshot.queue ?? []
     bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
@@ -212,6 +227,7 @@ const unsubscribe = subscribe({
   version: upsertVersion,
   stems: upsertStems,
   swap: upsertSwap,
+  video: upsertVideo,
   speech(take) {
     const index = speechTakes.value.findIndex((other) => other.id === take.id)
     if (index >= 0) {
@@ -264,6 +280,7 @@ const queueCount = computed(
     versions.value.filter((v) => !v.finished).length +
     stemSets.value.filter((s) => !s.finished).length +
     swaps.value.filter((s) => !s.finished).length +
+    videos.value.filter((v) => !v.finished).length +
     speechTakes.value.filter((take) => !take.finished).length +
     transcriptions.value.filter((tr) => !tr.finished).length,
 )
@@ -522,6 +539,7 @@ async function useAsNewSong(songId: string): Promise<void> {
   <AudioBackground v-if="visuals.background" />
   <ConfirmDialog :style="{ width: 'min(28rem, calc(100vw - 2rem))' }" />
   <ExportDialog v-if="exportTarget" />
+  <VideoDialog v-if="videoTarget" :live="videos" @error="show($event, true)" />
   <!--
     Header and player frame the page like the rollers of a scroll: both as wide as the page including its padding,
     flush at the top and the bottom, and the pages run between them.
@@ -676,6 +694,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :versions="versions"
           :stems="stemSets"
           :swaps="swaps"
+          :videos="videos"
           :bundle-window-seconds="bundleWindowSeconds"
           :takes="speechTakes"
           :transcriptions="transcriptions"

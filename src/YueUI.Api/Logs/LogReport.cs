@@ -22,6 +22,7 @@ public sealed class LogReport(
     LyricsWriter lyrics,
     VoiceConverter voices,
     SpeechActivity speech,
+    Video.VideoMaker videos,
     YuePaths paths,
     IOptions<VoiceOptions> voiceOptions,
     IOptions<SpeechOptions> speechOptions,
@@ -59,7 +60,7 @@ public sealed class LogReport(
         text.AppendLine($"Engines: separator {Engine(voice.LocalStems, voice.StemServiceConfigured)}, Seed-VC {Engine(voice.LocalVoices, voice.VoiceServiceConfigured)}, "
             + $"speech lab {(File.Exists(speechOptions.Value.ResolvedPython) ? "installed" : "missing")}, "
             + $"SheetSage2 {(paths.SheetSageInstalled ? "installed" : "missing")}, YuE2 worker {(File.Exists(paths.WorkerScript) ? "installed" : "missing")}");
-        var busy = WorkerEndpoints.Busy(worker, lyrics, voices, speech);
+        var busy = WorkerEndpoints.Busy(worker, lyrics, voices, speech, videos);
         text.AppendLine($"Busy: {(busy.Busy ? string.Join(", ", busy.Reasons) : "no")}");
         text.AppendLine();
 

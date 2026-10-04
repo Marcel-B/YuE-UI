@@ -12,6 +12,7 @@ using YueUI.Api.Push;
 using YueUI.Api.Queue;
 using YueUI.Api.Share;
 using YueUI.Api.Speech;
+using YueUI.Api.Video;
 using YueUI.Api.Voices;
 using YueUI.Api.Worker;
 
@@ -67,6 +68,7 @@ builder.Services.AddSingleton<SqlitePromptTemplateStore>();
 builder.Services.AddSingleton<SqliteVersionStore>();
 builder.Services.AddSingleton<SqliteStemStore>();
 builder.Services.AddSingleton<SqliteSwapStore>();
+builder.Services.AddSingleton<SqliteVideoStore>();
 builder.Services.AddSingleton<SqliteCoverStore>();
 builder.Services.AddSingleton<SqliteInstrumentStore>();
 builder.Services.AddSingleton<SqliteLogicPresetStore>();
@@ -88,6 +90,11 @@ builder.Services.AddHttpClient(StemClient.HttpClientName, client => client.Timeo
 builder.Services.AddSingleton<VoiceConverter>();
 builder.Services.AddHostedService(services => services.GetRequiredService<VoiceConverter>());
 builder.Services.AddHostedService<AutoVersions>();
+
+// Music videos: the browser draws the still layers, ffmpeg animates and encodes them, one at a time.
+builder.Services.AddSingleton<IVideoRenderer, FfmpegVideoRenderer>();
+builder.Services.AddSingleton<VideoMaker>();
+builder.Services.AddHostedService(services => services.GetRequiredService<VideoMaker>());
 
 // The speech lab: text spoken by local models (mlx-audio in its own Python environment), one take at a time.
 builder.Services.Configure<SpeechOptions>(builder.Configuration.GetSection(SpeechOptions.Section));
@@ -151,6 +158,7 @@ api.MapTemplateEndpoints();
 api.MapVoiceEndpoints();
 api.MapStemEndpoints();
 api.MapSwapEndpoints();
+api.MapVideoEndpoints();
 api.MapQueueEndpoints();
 api.MapSpeechEndpoints();
 api.MapBackupEndpoints();

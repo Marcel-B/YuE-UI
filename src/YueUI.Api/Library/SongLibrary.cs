@@ -88,6 +88,7 @@ public sealed partial class SongLibrary(
     SqliteStemStore stems,
     SqliteCoverStore covers,
     SqliteSongNoteStore notes,
+    SqliteVideoStore videos,
     StreamCopies streams)
 {
     public string OutputDir => paths.OutputDir;
@@ -156,6 +157,7 @@ public sealed partial class SongLibrary(
             stems.RemoveSong($"{run}/{song}");
             covers.Remove($"{run}/{song}");
             notes.Remove($"{run}/{song}");
+            videos.RemoveSong($"{run}/{song}");
         });
         streams.ForgetSong(run, song);
         var runDirectory = new DirectoryInfo(Path.Combine(paths.OutputDir, run));
@@ -391,6 +393,7 @@ public sealed partial class SongLibrary(
         stems.RemoveRun(run);
         covers.RemoveRun(run);
         notes.RemoveRun(run);
+        videos.RemoveRun(run);
         streams.ForgetRun(run);
     });
 
@@ -486,6 +489,9 @@ public sealed partial class SongLibrary(
             : null;
 
     /// <summary>Null when missing or half written (the worker may be writing it right now).</summary>
+    /// <summary>The song's length as its <c>result.json</c> says, null while it has none.</summary>
+    public static double? SecondsOf(string songDirectory) => Number(ReadJson(Path.Combine(songDirectory, "result.json"))?["audio_seconds"]);
+
     private static JsonObject? ReadJson(string path)
     {
         try
