@@ -416,7 +416,8 @@ const messages = {
     imageNotInstalled:
       'Zum Malen braucht der Mac mflux mit FLUX.2 Klein. Auf dem Mac einmal ausführen: deploy/install-images.sh (oder setup-mac.sh mit --images).',
     imagePrompt: 'Bildbeschreibung',
-    imagePromptHint: 'Am besten auf Englisch. Vorgeschlagen aus Titel und Stil, frei änderbar.',
+    imagePromptHint:
+      'Am besten auf Englisch. Nur beschreiben, was zu sehen sein soll: „no text“ oder „no logo“ bringen Text und Logos eher ins Bild, einen Negativ-Prompt kennt FLUX Klein nicht.',
     imagePromptReset: 'Vorschlag',
     imageWithTitle: 'Titel ins Bild schreiben',
     imageModel: 'Modell',
@@ -1192,7 +1193,8 @@ const messages = {
     imageNotInstalled:
       'Painting needs mflux with FLUX.2 Klein on the Mac. Run once on the Mac: deploy/install-images.sh (or setup-mac.sh with --images).',
     imagePrompt: 'Description',
-    imagePromptHint: 'Best in English. Suggested from title and style, change it freely.',
+    imagePromptHint:
+      'Best in English. Describe only what should be seen: "no text" or "no logo" rather bring text and logos in, and FLUX Klein has no negative prompt.',
     imagePromptReset: 'Suggestion',
     imageWithTitle: 'Write the title into the picture',
     imageModel: 'Model',

@@ -13,17 +13,23 @@ export function openImages(target: ExportTarget): void {
 
 /**
  * A description for a cover from the song's title and style. In English, since Klein reads it through Qwen3, which
- * follows English best. Without the title in the picture it asks for none: Klein writes text readily, often wrongly.
+ * follows English best.
+ *
+ * Only what should be seen: distilled Klein has no negative prompt (mflux encodes one only for the base models with
+ * guidance above 1), and "no text, no logos" in the prompt itself put text and logos in, since a diffusion model draws
+ * what a prompt names. For the same reason it says painting, not album cover (covers carry type), leaves the title out
+ * unless it is wanted in the picture, and drops the style's tempo and vocal parts, which have nothing to show.
  */
 export function suggestPrompt(title: string, style: string, withTitle: boolean): string {
-  const mood = style.trim().replace(/\s+/g, ' ')
+  const mood = style
+    .split(',')
+    .map((part) => part.trim().replace(/\s+/g, ' '))
+    .filter((part) => part !== '' && !/\d|bpm|tempo|vocal|voice|singer|sung|lyrics|language/i.test(part))
+    .join(', ')
   return [
-    `Square album cover art for a song${title ? ` called "${title}"` : ''}.`,
-    mood ? `It sounds like: ${mood}.` : null,
-    'One striking image with a strong central motif, rich colour and dramatic light, painterly, high detail.',
-    withTitle && title
-      ? `The title "${title}" is written once in elegant, legible lettering.`
-      : 'No text, no letters, no logos.',
+    'A square painting, one striking scene with a strong central motif, rich colour and dramatic light, painterly, high detail.',
+    mood ? `Its mood and colours evoke ${mood} music.` : null,
+    withTitle && title ? `The words "${title}" are written once in elegant, legible lettering.` : null,
   ]
     .filter(Boolean)
     .join(' ')

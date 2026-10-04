@@ -278,7 +278,7 @@ Die Zeilen liegen als JSON, eine Datei pro Tag (`tonwerk-JJJJ-MM-TT.jsonl`), unt
 
 In den Songs malt **Cover malen** (im „…“-Menü des Songs) ein Cover mit [FLUX.2 Klein](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) auf dem Mac, ohne ComfyUI, über [mflux](https://github.com/filipstrand/mflux) (MLX):
 
-1. Die Bildbeschreibung ist aus Titel und Stil vorgeschlagen und frei änderbar, am besten auf Englisch. **Titel ins Bild schreiben** bittet das Modell, den Titel einmal ins Bild zu setzen; sonst steht „no text“ im Vorschlag.
+1. Die Bildbeschreibung ist aus Titel und Stil vorgeschlagen und frei änderbar, am besten auf Englisch. **Titel ins Bild schreiben** bittet das Modell, den Titel einmal ins Bild zu setzen; sonst kommt der Titel im Vorschlag gar nicht vor. Einen Negativ-Prompt kennt FLUX Klein nicht, und „no text“ oder „no logo“ in der Beschreibung bringen Text und Logos eher hinein, weil das Modell malt, was genannt wird. Deshalb beschreibt der Vorschlag nur, was zu sehen sein soll (ein Gemälde statt „Albumcover“), ohne Tempo- und Gesangsangaben aus dem Stil.
 2. Modell wählen und **Malen**. Jedes Bild ist ein Vorschlag mit eigenem Seed, quadratisch mit 1024 Pixeln, und steht darunter.
 3. **Als Cover** macht einen Vorschlag zum Cover des Songs, wie ein gewähltes Foto: in der Bibliothek, im Player, in jedem Export und im Musikvideo. Die Vorschläge bleiben, bis man sie löscht, so lässt sich zurückwechseln.
 
