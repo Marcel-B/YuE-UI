@@ -18,9 +18,9 @@ public sealed class SqliteVideoStore(SqliteDatabase database)
 
     public VideoLayers Layers(VideoState video) => new(
         Path.Combine(Folder(video.Id), "background.png"),
-        Path.Combine(Folder(video.Id), "cover.png"),
+        video.ShowCover ? Path.Combine(Folder(video.Id), "cover.png") : null,
         video.ShowTitle ? Path.Combine(Folder(video.Id), "title.png") : null,
-        video.Particles ? Path.Combine(Folder(video.Id), "particles.png") : null);
+        video.Motion == VideoMotions.None ? null : Path.Combine(Folder(video.Id), $"{video.Motion}.png"));
 
     /// <summary>The song's videos, newest first, as the dialog lists them.</summary>
     public IReadOnlyList<VideoState> ForSong(string songId) =>
@@ -38,15 +38,16 @@ public sealed class SqliteVideoStore(SqliteDatabase database)
             connection,
             null,
             """
-            INSERT INTO song_videos (id, song_id, title, format, effect, particles, show_title, stage, message, bytes, created_at, updated_at)
-            VALUES ($id, $song, $title, $format, $effect, $particles, $showTitle, $stage, $message, $bytes, $created, $updated)
+            INSERT INTO song_videos (id, song_id, title, format, effect, motion, show_cover, show_title, stage, message, bytes, created_at, updated_at)
+            VALUES ($id, $song, $title, $format, $effect, $motion, $showCover, $showTitle, $stage, $message, $bytes, $created, $updated)
             """,
             ("$id", video.Id),
             ("$song", video.SongId),
             ("$title", video.Title),
             ("$format", video.Format),
             ("$effect", video.Effect),
-            ("$particles", video.Particles ? 1 : 0),
+            ("$motion", video.Motion),
+            ("$showCover", video.ShowCover ? 1 : 0),
             ("$showTitle", video.ShowTitle ? 1 : 0),
             ("$stage", video.Stage),
             ("$message", (object?)video.Message ?? DBNull.Value),
@@ -138,7 +139,8 @@ public sealed class SqliteVideoStore(SqliteDatabase database)
         Title = reader.GetString(reader.GetOrdinal("title")),
         Format = reader.GetString(reader.GetOrdinal("format")),
         Effect = reader.GetString(reader.GetOrdinal("effect")),
-        Particles = reader.GetInt64(reader.GetOrdinal("particles")) != 0,
+        Motion = reader.GetString(reader.GetOrdinal("motion")),
+        ShowCover = reader.GetInt64(reader.GetOrdinal("show_cover")) != 0,
         ShowTitle = reader.GetInt64(reader.GetOrdinal("show_title")) != 0,
         Stage = reader.GetString(reader.GetOrdinal("stage")),
         Message = reader.IsDBNull(reader.GetOrdinal("message")) ? null : reader.GetString(reader.GetOrdinal("message")),

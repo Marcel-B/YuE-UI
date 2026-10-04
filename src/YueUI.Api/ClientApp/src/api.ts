@@ -32,6 +32,7 @@ import type {
   VersionState,
   VideoEffect,
   VideoFormat,
+  VideoMotion,
   VideoState,
   VoiceInfo,
   WorkerInfo,
@@ -455,16 +456,21 @@ export async function listVideos(songId: string): Promise<VideoState[]> {
 export interface VideoRequest {
   format: VideoFormat
   effect: VideoEffect
-  particles: boolean
+  motion: VideoMotion
+  showCover: boolean
   showTitle: boolean
 }
 
-/** The still layers drawn in `video.ts`, as PNGs of the frame's size; title and particles only when asked for. */
+/**
+ * The still layers drawn in `video.ts`, as PNGs of the frame's size (the plasma ball as its stacked frames); all but
+ * the background only when asked for. Each goes under its name, the moving one under the motion's.
+ */
 export interface VideoLayerImages {
   background: Blob
-  cover: Blob
+  cover: Blob | null
   title: Blob | null
-  particles: Blob | null
+  particles?: Blob
+  plasma?: Blob
 }
 
 /** Sends the layers and queues the video; its progress arrives as `video` events. */

@@ -12,17 +12,19 @@ public sealed class VideoRendererTests : IDisposable
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 
-    public static TheoryData<string, string, bool, bool> Settings => new()
+    public static TheoryData<string, string, bool, string, bool> Settings => new()
     {
-        { VideoFormats.Landscape, VideoEffects.Bars, true, true },
-        { VideoFormats.Portrait, VideoEffects.Wave, false, true },
-        { VideoFormats.Landscape, VideoEffects.None, true, false },
-        { VideoFormats.Portrait, VideoEffects.Bars, false, false },
+        { VideoFormats.Landscape, VideoEffects.Bars, true, VideoMotions.Particles, true },
+        { VideoFormats.Portrait, VideoEffects.Wave, false, VideoMotions.Particles, true },
+        { VideoFormats.Landscape, VideoEffects.None, true, VideoMotions.None, true },
+        { VideoFormats.Portrait, VideoEffects.Bars, false, VideoMotions.None, true },
+        { VideoFormats.Landscape, VideoEffects.Bars, true, VideoMotions.Plasma, false },
+        { VideoFormats.Portrait, VideoEffects.None, false, VideoMotions.Plasma, true },
     };
 
     [Theory]
     [MemberData(nameof(Settings))]
-    public async Task A_song_becomes_an_H264_video_of_the_frame_size_and_the_song_length(string format, string effect, bool title, bool particles)
+    public async Task A_song_becomes_an_H264_video_of_the_frame_size_and_the_song_length(string format, string effect, bool title, string motion, bool cover)
     {
         if (AacEncoder.FindFfmpeg() is not { } ffmpeg)
         {
@@ -34,10 +36,18 @@ public sealed class VideoRendererTests : IDisposable
         await Run(ffmpeg, "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=110:sample_rate=48000:duration=3", "-ac", "2", flac);
         var layers = new VideoLayers(
             await Picture(ffmpeg, "background.png", $"color=0x1e1b4b:s={size}"),
-            await Picture(ffmpeg, "cover.png", $"color=black@0:s={size},format=rgba,drawbox=x=100:y=100:w=400:h=400:color=0x10b981@1:t=fill"),
+            cover ? await Picture(ffmpeg, "cover.png", $"color=black@0:s={size},format=rgba,drawbox=x=100:y=100:w=400:h=400:color=0x10b981@1:t=fill") : null,
             title ? await Picture(ffmpeg, "title.png", $"color=black@0:s={size},format=rgba,drawbox=x=100:y=600:w=800:h=60:color=white@1:t=fill") : null,
-            particles ? await Picture(ffmpeg, "particles.png", $"color=black@0:s={size},format=rgba,drawbox=x=300:y=50:w=6:h=6:color=white@0.8:t=fill") : null);
-        var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "Neon Night", Format = format, Effect = effect, Particles = particles, ShowTitle = title };
+            motion switch
+            {
+                VideoMotions.Particles => await Picture(ffmpeg, "particles.png", $"color=black@0:s={size},format=rgba,drawbox=x=300:y=50:w=6:h=6:color=white@0.8:t=fill"),
+                VideoMotions.Plasma => await Picture(
+                    ffmpeg,
+                    "plasma.png",
+                    $"color=black@0:s={layout.PlasmaSize}x{layout.PlasmaSize * VideoLayout.PlasmaFrames},format=rgba,drawbox=x=100:y=100:w=6:h=300:color=0xe879f9@1:t=fill"),
+                _ => null,
+            });
+        var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "Neon Night", Format = format, Effect = effect, Motion = motion, ShowCover = cover, ShowTitle = title };
         var output = Path.Combine(_directory, "video.mp4");
         var progress = new List<double>();
 

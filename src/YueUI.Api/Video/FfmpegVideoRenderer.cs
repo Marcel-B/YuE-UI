@@ -22,6 +22,9 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
     /// <summary>How fast the particles drift up, in pixels a second.</summary>
     public const int ParticleSpeed = 40;
 
+    /// <summary>How often a second the plasma ball's lightning changes its shape.</summary>
+    public const int PlasmaFlicker = 12;
+
     public bool Available => AacEncoder.FindFfmpeg() is not null;
 
     public async Task RenderAsync(
@@ -78,16 +81,14 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
         // Each picture is read once; the graph repeats its frame (loop), so a PNG is not decoded thirty times a second.
         arguments.AddRange(["-framerate", rate, "-i", layers.Background]);
         arguments.AddRange(["-i", flac]);
-        arguments.AddRange(["-framerate", rate, "-i", layers.Cover]);
-        if (layers.Title is { } title)
+        foreach (var layer in new[] { layers.Cover, layers.Title, layers.Motion })
         {
-            arguments.AddRange(["-framerate", rate, "-i", title]);
+            if (layer is not null)
+            {
+                arguments.AddRange(["-framerate", rate, "-i", layer]);
+            }
         }
-        if (layers.Particles is { } particles)
-        {
-            arguments.AddRange(["-framerate", rate, "-i", particles]);
-        }
-        arguments.AddRange(["-filter_complex", Graph(video, seconds, layers.Title is not null, layers.Particles is not null)]);
+        arguments.AddRange(["-filter_complex", Graph(video, seconds, layers.Cover is not null, layers.Title is not null, layers.Motion is not null)]);
         arguments.AddRange(["-map", "[v]", "-map", "[a]"]);
         if (seconds is > 0)
         {
@@ -105,17 +106,20 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
     }
 
     /// <summary>
-    /// Background, then particles, then the analyzer or waveform in its band, then the cover, then the title fading
-    /// in; the whole fades in from and out to black. Inputs: 0 background, 1 audio, 2 cover, then title and particles
-    /// when there are.
+    /// Background, then particles or the plasma ball, then the analyzer or waveform in its band, then the cover, then
+    /// the title fading in; the whole fades in from and out to black. Inputs: 0 background, 1 audio, then cover, title
+    /// and the moving layer, each when there is one.
     /// </summary>
-    public static string Graph(VideoState video, double? seconds, bool title, bool particles)
+    public static string Graph(VideoState video, double? seconds, bool cover, bool title, bool motion)
     {
         var layout = VideoLayout.For(video.Format);
         var (w, h, bandY, bandH) = (layout.Width, layout.Height, layout.BandY, layout.BandHeight);
         var rate = VideoLayout.FrameRate;
-        var titleInput = 3;
-        var particleInput = title ? 4 : 3;
+        var coverInput = 2;
+        var titleInput = cover ? 3 : 2;
+        var motionInput = titleInput + (title ? 1 : 0);
+        var particles = motion && video.Motion == VideoMotions.Particles;
+        var plasma = motion && video.Motion == VideoMotions.Plasma;
         var effect = video.Effect is VideoEffects.Bars or VideoEffects.Wave;
 
         List<string> chains = [];
@@ -124,7 +128,7 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
         {
             audio.Add("ae");
         }
-        if (particles)
+        if (particles || plasma)
         {
             audio.Add("ap");
         }
@@ -136,7 +140,7 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
         {
             // Two copies stacked and a window moving up through them: the browser drew the picture so that its top
             // and bottom edges meet.
-            chains.Add($"[{particleInput}:v]format=rgba,loop=loop=-1:size=1,split[p1][p2]");
+            chains.Add($"[{motionInput}:v]format=rgba,loop=loop=-1:size=1,split[p1][p2]");
             chains.Add($"[p1][p2]vstack,crop={w}:{h}:0:'{h}-mod(t*{ParticleSpeed},{h})',split[pc][pt]");
             chains.Add("[pt]alphaextract[pa]");
             // The bass (30 to 250 Hz) as one brightness a frame: the share of the constant-Q bars that light up,
@@ -149,6 +153,28 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
             chains.Add("[pc][pm]alphamerge[particles]");
             chains.Add($"[{current}][particles]overlay=0:0:format=auto[withparticles]");
             current = "withparticles";
+        }
+
+        if (plasma)
+        {
+            // The browser drew the ball's lightning PlasmaFrames times, stacked; a window jumps between them twelve
+            // times a second in an order that only repeats after PlasmaFrames² steps, so the eye sees no cycle.
+            var size = layout.PlasmaSize;
+            var frames = VideoLayout.PlasmaFrames;
+            chains.Add(
+                $"[{motionInput}:v]format=rgba,loop=loop=-1:size=1,"
+                + $"crop={size}:{size}:0:'{size}*mod(floor(t*{PlasmaFlicker})*3+floor(t*{PlasmaFlicker}/{frames})*5,{frames})',split[lc][lt]");
+            chains.Add("[lt]alphaextract[la]");
+            // Like the particles' pulse, but steeper: the lightning glows at 40 per cent without bass and flares to
+            // full strength once a third of the bass band sounds, as on a kick.
+            chains.Add(
+                $"[ap]showcqt=s=192x32:fps={rate}:sono_h=0:bar_h=32:axis=0:basefreq=30:endfreq=250,format=gray,"
+                + "lut=y='if(gt(val,6),255,0)',scale=1:1:flags=area,lut=y='100+val*2',"
+                + $"scale={size}:{size}:flags=neighbor[pulse]");
+            chains.Add("[la][pulse]blend=all_mode=multiply[lm]");
+            chains.Add("[lc][lm]alphamerge[plasma]");
+            chains.Add($"[{current}][plasma]overlay={layout.PlasmaX}:{layout.PlasmaY}:format=auto[withplasma]");
+            current = "withplasma";
         }
 
         if (effect)
@@ -178,9 +204,12 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
             current = "withband";
         }
 
-        chains.Add("[2:v]format=rgba,loop=loop=-1:size=1[cover]");
-        chains.Add($"[{current}][cover]overlay=0:0:format=auto[withcover]");
-        current = "withcover";
+        if (cover)
+        {
+            chains.Add($"[{coverInput}:v]format=rgba,loop=loop=-1:size=1[cover]");
+            chains.Add($"[{current}][cover]overlay=0:0:format=auto[withcover]");
+            current = "withcover";
+        }
 
         if (title)
         {

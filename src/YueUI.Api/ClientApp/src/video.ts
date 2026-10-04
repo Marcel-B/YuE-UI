@@ -1,11 +1,11 @@
 import { ref } from 'vue'
 import { drawCover, type ExportTarget } from './export'
 import type { VideoLayerImages } from './api'
-import type { VideoEffect, VideoFormat } from './types'
+import type { VideoEffect, VideoFormat, VideoMotion } from './types'
 
 /**
- * A music video of a song: the browser draws the still layers (blurred background, cover, title, a field of particles)
- * as PNGs of the frame's size, the server animates them with ffmpeg (Video/FfmpegVideoRenderer.cs) and encodes the
+ * A music video of a song: the browser draws the still layers (blurred background, cover, title, a field of particles
+ * or the frames of a plasma ball) as PNGs, the server animates them with ffmpeg (Video/FfmpegVideoRenderer.cs) and encodes the
  * MP4. `VideoDialog.vue` (one, in App.vue) asks for the settings; the library and the song menu open it.
  */
 export const videoTarget = ref<ExportTarget | null>(null)
@@ -16,6 +16,10 @@ export function openVideo(target: ExportTarget): void {
 
 export const videoFormats: VideoFormat[] = ['landscape', 'portrait']
 export const videoEffects: VideoEffect[] = ['bars', 'wave', 'none']
+export const videoMotions: VideoMotion[] = ['particles', 'plasma', 'none']
+
+/** The server's `VideoLayout.PlasmaFrames`: the plasma ball comes as this many pictures stacked, which it flickers between. */
+const plasmaFrames = 8
 
 /**
  * Where things go; width, height and the band must match the server's `VideoLayout`, which puts the analyzer or the
@@ -32,6 +36,12 @@ interface Layout {
   /** Baseline of the title's first line, and its largest size. */
   titleY: number
   titleSize: number
+  /** The plasma ball's square, centred on the cover's middle; the server's `VideoLayout.Plasma*`. */
+  plasmaX: number
+  plasmaY: number
+  plasmaSize: number
+  /** The glass without a cover, kept inside the frame; behind a cover the lightning reaches out to the square's edge. */
+  glassRadius: number
 }
 
 export const videoLayouts: Record<VideoFormat, Layout> = {
@@ -45,6 +55,10 @@ export const videoLayouts: Record<VideoFormat, Layout> = {
     coverSize: 560,
     titleY: 735,
     titleSize: 64,
+    plasmaX: 460,
+    plasmaY: -130,
+    plasmaSize: 1000,
+    glassRadius: 360,
   },
   // Everything above the bottom fifth, which the apps cover with caption and buttons.
   portrait: {
@@ -57,13 +71,18 @@ export const videoLayouts: Record<VideoFormat, Layout> = {
     coverSize: 760,
     titleY: 1100,
     titleSize: 68,
+    plasmaX: 0,
+    plasmaY: 70,
+    plasmaSize: 1080,
+    glassRadius: 440,
   },
 }
 
 export interface VideoSettings {
   format: VideoFormat
   effect: VideoEffect
-  particles: boolean
+  motion: VideoMotion
+  showCover: boolean
   showTitle: boolean
 }
 
@@ -71,13 +90,24 @@ const storageKey = 'yue-ui.video'
 
 /** Each browser remembers the last choice: a channel tends to post the same kind of video. */
 export function loadVideoSettings(): VideoSettings {
-  const defaults: VideoSettings = { format: 'landscape', effect: 'bars', particles: true, showTitle: true }
+  const defaults: VideoSettings = {
+    format: 'landscape',
+    effect: 'bars',
+    motion: 'particles',
+    showCover: true,
+    showTitle: true,
+  }
   try {
-    const stored = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<VideoSettings>
+    const stored = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<VideoSettings> & {
+      particles?: boolean
+    }
+    // The first version had only particles, on or off.
+    const motion = stored.motion ?? (stored.particles === false ? 'none' : undefined)
     return {
       format: videoFormats.includes(stored.format as VideoFormat) ? (stored.format as VideoFormat) : defaults.format,
       effect: videoEffects.includes(stored.effect as VideoEffect) ? (stored.effect as VideoEffect) : defaults.effect,
-      particles: typeof stored.particles === 'boolean' ? stored.particles : defaults.particles,
+      motion: videoMotions.includes(motion as VideoMotion) ? (motion as VideoMotion) : defaults.motion,
+      showCover: typeof stored.showCover === 'boolean' ? stored.showCover : defaults.showCover,
       showTitle: typeof stored.showTitle === 'boolean' ? stored.showTitle : defaults.showTitle,
     }
   } catch {
@@ -96,9 +126,11 @@ export function saveVideoSettings(settings: VideoSettings): void {
 /** The layers as canvases; `toPngs` turns them into what the server takes. */
 export interface VideoLayers {
   background: HTMLCanvasElement
-  cover: HTMLCanvasElement
+  cover: HTMLCanvasElement | null
   title: HTMLCanvasElement | null
   particles: HTMLCanvasElement | null
+  /** The plasma ball's frames, stacked. */
+  plasma: HTMLCanvasElement | null
 }
 
 /**
@@ -114,19 +146,26 @@ export async function drawVideoLayers(
   const image = await coverImage(target)
   return {
     background: drawBackground(layout, image),
-    cover: drawCoverLayer(layout, image),
+    cover: settings.showCover ? drawCoverLayer(layout, image) : null,
     title: settings.showTitle ? drawTitle(layout, target.title || 'Tonwerk', subtitle) : null,
-    particles: settings.particles ? drawParticles(layout, target.songId) : null,
+    particles: settings.motion === 'particles' ? drawParticles(layout, target.songId) : null,
+    plasma: settings.motion === 'plasma' ? drawPlasma(layout, target.songId, settings.showCover) : null,
   }
 }
 
 export async function toPngs(layers: VideoLayers): Promise<VideoLayerImages> {
-  return {
+  const images: VideoLayerImages = {
     background: await png(layers.background),
-    cover: await png(layers.cover),
+    cover: layers.cover ? await png(layers.cover) : null,
     title: layers.title ? await png(layers.title) : null,
-    particles: layers.particles ? await png(layers.particles) : null,
   }
+  if (layers.particles) {
+    images.particles = await png(layers.particles)
+  }
+  if (layers.plasma) {
+    images.plasma = await png(layers.plasma)
+  }
+  return images
 }
 
 /**
@@ -142,6 +181,10 @@ export function drawPreview(layers: VideoLayers, settings: VideoSettings): strin
   context.drawImage(layers.background, 0, 0)
   if (layers.particles) {
     context.drawImage(layers.particles, 0, 0)
+  }
+  if (layers.plasma) {
+    const { plasmaX, plasmaY, plasmaSize: size } = layout
+    context.drawImage(layers.plasma, 0, 0, size, size, plasmaX, plasmaY, size, size)
   }
   if (settings.effect !== 'none') {
     context.fillStyle = accent
@@ -165,7 +208,9 @@ export function drawPreview(layers: VideoLayers, settings: VideoSettings): strin
       context.stroke()
     }
   }
-  context.drawImage(layers.cover, 0, 0)
+  if (layers.cover) {
+    context.drawImage(layers.cover, 0, 0)
+  }
   if (layers.title) {
     context.drawImage(layers.title, 0, 0)
   }
@@ -312,6 +357,152 @@ function drawParticles(layout: Layout, songId: string): HTMLCanvasElement {
     }
   }
   return canvas
+}
+
+/**
+ * A plasma ball: a glass sphere with a glowing core and lightning from the core to the glass, drawn `plasmaFrames`
+ * times with different bolts and stacked; the server flickers between the frames and lets the bass flare them. Behind
+ * a cover only the bolts' outer ends show around it, so there are more of them and no glass. Seeded by the song.
+ */
+function drawPlasma(layout: Layout, songId: string, behindCover: boolean): HTMLCanvasElement {
+  const size = layout.plasmaSize
+  const { canvas, context } = frame(size, size * plasmaFrames)
+  const random = seeded(hashOf(songId) ^ 0x5bd1e995)
+  const centre = size / 2
+  const radius = behindCover ? size * 0.48 : layout.glassRadius
+  // Where each bolt starts its life, so neighbouring frames keep a family likeness while the shapes change.
+  const roots = Array.from({ length: behindCover ? 12 : 9 }, () => random() * Math.PI * 2)
+  for (let index = 0; index < plasmaFrames; index++) {
+    context.save()
+    context.translate(0, index * size)
+    context.beginPath()
+    context.rect(0, 0, size, size)
+    context.clip()
+    if (!behindCover) {
+      drawGlass(context, centre, radius)
+    }
+    for (const root of roots) {
+      if (random() < 0.15) {
+        continue // a bolt that is out this frame
+      }
+      const angle = root + (random() - 0.5) * 0.7
+      // Most reach the glass, some die out on the way.
+      const reach = random() < 0.75 ? radius : radius * (0.55 + random() * 0.35)
+      const end = { x: centre + Math.cos(angle) * reach, y: centre + Math.sin(angle) * reach }
+      const path = bolt({ x: centre, y: centre }, end, random)
+      drawBolt(context, path, 1)
+      // A branch or two off the bolt's outer half.
+      for (let b = 0; b < 2; b++) {
+        if (random() < 0.5) {
+          continue
+        }
+        const from = path[Math.floor(path.length * (0.4 + random() * 0.4))]!
+        const turn = angle + (random() < 0.5 ? -1 : 1) * (0.35 + random() * 0.5)
+        const length = radius * (0.15 + random() * 0.25)
+        drawBolt(
+          context,
+          bolt(from, { x: from.x + Math.cos(turn) * length, y: from.y + Math.sin(turn) * length }, random),
+          0.6,
+        )
+      }
+      if (reach === radius) {
+        glow(context, end.x, end.y, size * 0.03, '255 230 255', 0.9)
+      }
+    }
+    if (!behindCover) {
+      const pulse = 0.85 + random() * 0.3
+      glow(context, centre, centre, radius * 0.22 * pulse, '250 232 255', 1)
+      glow(context, centre, centre, radius * 0.45 * pulse, '192 132 252', 0.35)
+    }
+    context.restore()
+  }
+  return canvas
+}
+
+interface Point {
+  x: number
+  y: number
+}
+
+/** A jagged line from one point to another by midpoint displacement: each half bends sideways by a share of its length. */
+function bolt(from: Point, to: Point, random: () => number): Point[] {
+  let points = [from, to]
+  let roughness = 0.22
+  for (let depth = 0; depth < 6; depth++) {
+    const next: Point[] = [points[0]!]
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1]!
+      const b = points[i]!
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const shift = (random() - 0.5) * roughness
+      next.push({ x: (a.x + b.x) / 2 - dy * shift, y: (a.y + b.y) / 2 + dx * shift }, b)
+    }
+    points = next
+    roughness *= 0.85
+  }
+  return points
+}
+
+/** A bolt as a plasma ball shows it: a wide violet haze, a pink body and a white-hot core. */
+function drawBolt(context: CanvasRenderingContext2D, path: Point[], strength: number): void {
+  const strokes: [width: number, colour: string, blur: number][] = [
+    [14 * strength, 'rgb(168 85 247 / 0.22)', 30],
+    [5 * strength, 'rgb(232 121 249 / 0.7)', 12],
+    [1.8 * strength, 'rgb(255 255 255 / 0.95)', 0],
+  ]
+  context.save()
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  for (const [width, colour, blur] of strokes) {
+    context.beginPath()
+    context.moveTo(path[0]!.x, path[0]!.y)
+    for (const point of path.slice(1)) {
+      context.lineTo(point.x, point.y)
+    }
+    context.lineWidth = width
+    context.strokeStyle = colour
+    context.shadowColor = blur > 0 ? 'rgb(192 132 252 / 0.9)' : 'transparent'
+    context.shadowBlur = blur
+    context.stroke()
+  }
+  context.restore()
+}
+
+/** The glass: barely tinted, a faint rim and a highlight on its upper left, as a lamp in a dark room shows it. */
+function drawGlass(context: CanvasRenderingContext2D, centre: number, radius: number): void {
+  const fill = context.createRadialGradient(centre, centre, radius * 0.6, centre, centre, radius)
+  fill.addColorStop(0, 'rgb(147 51 234 / 0)')
+  fill.addColorStop(1, 'rgb(147 51 234 / 0.14)')
+  context.fillStyle = fill
+  context.beginPath()
+  context.arc(centre, centre, radius, 0, Math.PI * 2)
+  context.fill()
+  context.lineWidth = 2
+  context.strokeStyle = 'rgb(233 213 255 / 0.3)'
+  context.stroke()
+  context.beginPath()
+  context.arc(centre, centre, radius * 0.9, Math.PI * 1.1, Math.PI * 1.4)
+  context.lineWidth = radius * 0.025
+  context.lineCap = 'round'
+  context.strokeStyle = 'rgb(255 255 255 / 0.18)'
+  context.stroke()
+}
+
+function glow(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  colour: string,
+  alpha: number,
+): void {
+  const gradient = context.createRadialGradient(x, y, 0, x, y, radius)
+  gradient.addColorStop(0, `rgb(${colour} / ${alpha})`)
+  gradient.addColorStop(0.35, `rgb(${colour} / ${alpha * 0.5})`)
+  gradient.addColorStop(1, `rgb(${colour} / 0)`)
+  context.fillStyle = gradient
+  context.fillRect(x - radius, y - radius, radius * 2, radius * 2)
 }
 
 /** Draws the image cut to fill the box, like `object-fit: cover`. */

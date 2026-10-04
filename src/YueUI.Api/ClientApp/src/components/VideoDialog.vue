@@ -13,6 +13,7 @@ import {
   toPngs,
   videoEffects,
   videoFormats,
+  videoMotions,
   videoTarget,
   type VideoLayers,
 } from '../video'
@@ -33,12 +34,14 @@ const emit = defineEmits<{ error: [message: string] }>()
 const stored = loadVideoSettings()
 const format = ref(stored.format)
 const effect = ref(stored.effect)
-const particles = ref(stored.particles)
+const motion = ref(stored.motion)
+const showCover = ref(stored.showCover)
 const showTitle = ref(stored.showTitle)
 const settings = computed(() => ({
   format: format.value,
   effect: effect.value,
-  particles: particles.value,
+  motion: motion.value,
+  showCover: showCover.value,
   showTitle: showTitle.value,
 }))
 
@@ -47,6 +50,7 @@ const subtitle = loadExportSettings().artist
 
 const formatOptions = computed(() => videoFormats.map((value) => ({ value, label: t(`videoFormat_${value}`) })))
 const effectOptions = computed(() => videoEffects.map((value) => ({ value, label: t(`videoEffect_${value}`) })))
+const motionOptions = computed(() => videoMotions.map((value) => ({ value, label: t(`videoMotion_${value}`) })))
 
 const layers = ref<VideoLayers | null>(null)
 const preview = ref<string | null>(null)
@@ -163,7 +167,8 @@ function describe(video: VideoState): string {
   return [
     t(`videoFormat_${video.format}`),
     video.effect === 'none' ? null : t(`videoEffect_${video.effect}`),
-    video.particles ? t('videoParticles') : null,
+    video.motion === 'none' ? null : t(`videoMotion_${video.motion}`),
+    video.showCover ? null : t('videoWithoutCover'),
   ]
     .filter(Boolean)
     .join(' · ')
@@ -242,10 +247,20 @@ function close(): void {
         class="w-full"
         :pt="{ pcToggleButton: { root: { class: 'flex-1' } } }"
       />
+      <SelectButton
+        v-model="motion"
+        :options="motionOptions"
+        option-label="label"
+        option-value="value"
+        :allow-empty="false"
+        :aria-label="t('videoMotion')"
+        class="w-full"
+        :pt="{ pcToggleButton: { root: { class: 'flex-1' } } }"
+      />
       <div class="flex flex-wrap gap-x-5 gap-y-2">
         <label class="flex items-center gap-2">
-          <Checkbox v-model="particles" binary />
-          <span>{{ t('videoParticles') }}</span>
+          <Checkbox v-model="showCover" binary />
+          <span>{{ t('videoShowCover') }}</span>
         </label>
         <label class="flex items-center gap-2">
           <Checkbox v-model="showTitle" binary />

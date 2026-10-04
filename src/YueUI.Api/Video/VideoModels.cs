@@ -1,8 +1,8 @@
 namespace YueUI.Api.Video;
 
 /// <summary>
-/// A song as a video to upload: its cover over a blurred copy of itself, optionally the title, and an analyzer, a
-/// waveform or drifting particles moving to the music. The browser draws the still layers (it already draws covers),
+/// A song as a video to upload: its cover (or none) over a blurred copy of itself, optionally the title, an analyzer
+/// or a waveform, and drifting particles or a plasma ball moving to the music. The browser draws the still layers (it already draws covers),
 /// ffmpeg animates and encodes them (<see cref="FfmpegVideoRenderer"/>). The files are this app's own, in
 /// <c>videos/&lt;id&gt;/</c> next to its database. <see cref="Stage"/>: queued, rendering, done, failed or cancelled.
 /// </summary>
@@ -22,8 +22,11 @@ public sealed record VideoState
     /// <inheritdoc cref="VideoEffects"/>
     public required string Effect { get; init; }
 
-    /// <summary>Particles drift up behind the cover and light up with the bass.</summary>
-    public bool Particles { get; init; }
+    /// <inheritdoc cref="VideoMotions"/>
+    public string Motion { get; init; } = VideoMotions.None;
+
+    /// <summary>The cover sits in the middle; without it only its blurred copy in the background is left.</summary>
+    public bool ShowCover { get; init; } = true;
 
     /// <summary>The title fades in under the cover.</summary>
     public bool ShowTitle { get; init; }
@@ -58,7 +61,7 @@ public static class VideoFormats
     public static readonly IReadOnlyList<string> All = [Landscape, Portrait];
 }
 
-/// <summary><c>bars</c>: a spectrum analyzer; <c>wave</c>: the waveform; <c>none</c>: only the still picture (and particles).</summary>
+/// <summary><c>bars</c>: a spectrum analyzer; <c>wave</c>: the waveform; <c>none</c>: nothing in the band.</summary>
 public static class VideoEffects
 {
     public const string Bars = "bars";
@@ -66,6 +69,20 @@ public static class VideoEffects
     public const string None = "none";
 
     public static readonly IReadOnlyList<string> All = [Bars, Wave, None];
+}
+
+/// <summary>
+/// What moves behind the cover. <c>particles</c>: specks drifting up that light up with the bass; <c>plasma</c>: a
+/// plasma ball, lightning from the middle (behind the cover, if there is one) that flickers and flares with the bass;
+/// <c>none</c>: nothing.
+/// </summary>
+public static class VideoMotions
+{
+    public const string None = "none";
+    public const string Particles = "particles";
+    public const string Plasma = "plasma";
+
+    public static readonly IReadOnlyList<string> All = [None, Particles, Plasma];
 }
 
 /// <summary>
@@ -82,6 +99,23 @@ public sealed record VideoLayout(int Width, int Height, int BandY, int BandHeigh
 
     public const int BarWidth = 14;
 
+    /// <summary>
+    /// The plasma ball comes as this many pictures of its square stacked on top of each other (<see cref="PlasmaSize"/>
+    /// wide, this many times as high); the renderer flickers between them.
+    /// </summary>
+    public const int PlasmaFrames = 8;
+
+    /// <summary>
+    /// The plasma ball's square, centred on the cover's middle (<c>video.ts</c> draws the cover there), large enough
+    /// for the lightning to reach well beyond a cover.
+    /// </summary>
+    public int PlasmaSize => Width == 1080 ? 1080 : 1000;
+
+    public int PlasmaX => (Width - PlasmaSize) / 2;
+
+    /// <remarks>The landscape square reaches above the frame; overlay cuts it off, the glass stays inside.</remarks>
+    public int PlasmaY => Width == 1080 ? 70 : -130;
+
     /// <remarks>
     /// The vertical band sits above the bottom fifth, which Shorts, Reels and TikTok cover with caption and buttons.
     /// </remarks>
@@ -90,8 +124,11 @@ public sealed record VideoLayout(int Width, int Height, int BandY, int BandHeigh
         : new VideoLayout(1920, 1080, 850, 180);
 }
 
-/// <summary>The still layers the browser drew, as PNGs of the frame's size; title and particles only when asked for.</summary>
-public sealed record VideoLayers(string Background, string Cover, string? Title, string? Particles);
+/// <summary>
+/// The still layers the browser drew, as PNGs of the frame's size (the plasma ball's frames excepted, see
+/// <see cref="VideoLayout.PlasmaFrames"/>); all but the background only when asked for.
+/// </summary>
+public sealed record VideoLayers(string Background, string? Cover, string? Title, string? Motion);
 
 /// <summary>Makes the video from a song's FLAC and the layers. Tests replace it.</summary>
 public interface IVideoRenderer

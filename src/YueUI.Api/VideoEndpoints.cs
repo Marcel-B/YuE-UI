@@ -53,7 +53,8 @@ public static class VideoEndpoints
         string song,
         [FromForm] string? format,
         [FromForm] string? effect,
-        [FromForm] bool? particles,
+        [FromForm] string? motion,
+        [FromForm] bool? showCover,
         [FromForm] bool? showTitle,
         IFormFileCollection files,
         SongLibrary library,
@@ -79,25 +80,41 @@ public static class VideoEndpoints
         {
             errors["effect"] = [$"One of {string.Join(", ", VideoEffects.All)}."];
         }
+        motion ??= VideoMotions.None;
+        if (!VideoMotions.All.Contains(motion))
+        {
+            errors["motion"] = [$"One of {string.Join(", ", VideoMotions.All)}."];
+        }
+        // Older pages sent no showCover; they always drew the cover.
+        var withCover = showCover != false;
         var layout = VideoLayout.For(format ?? "");
-        // The layers by their form name; each must be a PNG of exactly the frame's size, or nothing lines up.
-        var wanted = new List<string> { "background", "cover" };
+        // The layers by their form name; each must be a PNG of exactly the size the renderer lays it out at, or
+        // nothing lines up.
+        var wanted = new List<(string Name, int Width, int Height)> { ("background", layout.Width, layout.Height) };
+        if (withCover)
+        {
+            wanted.Add(("cover", layout.Width, layout.Height));
+        }
         if (showTitle == true)
         {
-            wanted.Add("title");
+            wanted.Add(("title", layout.Width, layout.Height));
         }
-        if (particles == true)
+        if (motion == VideoMotions.Particles)
         {
-            wanted.Add("particles");
+            wanted.Add((VideoMotions.Particles, layout.Width, layout.Height));
+        }
+        else if (motion == VideoMotions.Plasma)
+        {
+            wanted.Add((VideoMotions.Plasma, layout.PlasmaSize, layout.PlasmaSize * VideoLayout.PlasmaFrames));
         }
         var layers = new Dictionary<string, byte[]>();
-        foreach (var name in wanted)
+        foreach (var (name, wantedWidth, wantedHeight) in wanted)
         {
             var file = files.GetFile(name);
             var data = file is { Length: > 0 and <= MaxLayerBytes } ? await ReadAsync(file, cancellationToken) : null;
-            if (data is null || PngSize(data) is not var (width, height) || width != layout.Width || height != layout.Height)
+            if (data is null || PngSize(data) is not var (width, height) || width != wantedWidth || height != wantedHeight)
             {
-                errors[name] = [$"A PNG of {layout.Width}×{layout.Height}."];
+                errors[name] = [$"A PNG of {wantedWidth}×{wantedHeight}."];
                 continue;
             }
             layers[name] = data;
@@ -115,7 +132,8 @@ public static class VideoEndpoints
             Title = library.TitleOf(run, directory),
             Format = format!,
             Effect = effect!,
-            Particles = particles == true,
+            Motion = motion,
+            ShowCover = withCover,
             ShowTitle = showTitle == true,
             CreatedAt = now,
             UpdatedAt = now,
@@ -136,7 +154,7 @@ public static class VideoEndpoints
     }
 
     /// <summary>Width and height from the PNG's header chunk, which always comes first; null for anything else.</summary>
-    internal static (int Width, int Height)? PngSize(byte[] data) =>
+    public static (int Width, int Height)? PngSize(byte[] data) =>
         data is [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, _, _, _, _, (byte)'I', (byte)'H', (byte)'D', (byte)'R', ..] && data.Length >= 24
             ? (System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(16)), System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(20)))
             : null;

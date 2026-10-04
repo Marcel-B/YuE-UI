@@ -21,18 +21,18 @@ public sealed class VideoEndpointTests : IDisposable
 
         var response = await client.PostAsync(
             "/api/songs/20260101-120000-neon/song2/videos",
-            Form(VideoFormats.Landscape, VideoEffects.Bars, particles: true, showTitle: true));
+            Form(VideoFormats.Landscape, VideoEffects.Bars, VideoMotions.Particles, showTitle: true));
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var queued = await response.Content.ReadFromJsonAsync<VideoState>(TestApp.Json);
-        Assert.Equal(("20260101-120000-neon/song2", "Neon Night", "landscape", "bars", true, true),
-            (queued!.SongId, queued.Title, queued.Format, queued.Effect, queued.Particles, queued.ShowTitle));
+        Assert.Equal(("20260101-120000-neon/song2", "Neon Night", "landscape", "bars", "particles", true, true),
+            (queued!.SongId, queued.Title, queued.Format, queued.Effect, queued.Motion, queued.ShowCover, queued.ShowTitle));
 
         var done = await WaitForVideo(client, "20260101-120000-neon/song2", v => v.Finished);
         Assert.Equal(("done", (long?)FakeVideoRenderer.Mp4.Length), (done.Stage, done.Bytes));
         Assert.Equal(187.5, _app.Videos.Seconds);
         var layers = _app.Videos.Layers!;
-        Assert.All(new[] { layers.Background, layers.Cover, layers.Title!, layers.Particles! }, path => Assert.True(File.Exists(path), path));
+        Assert.All(new[] { layers.Background, layers.Cover!, layers.Title!, layers.Motion! }, path => Assert.True(File.Exists(path), path));
 
         var file = await client.GetAsync($"/api/videos/{done.Id}/file?download=true");
         Assert.Equal("video/mp4", file.Content.Headers.ContentType!.MediaType);
@@ -52,28 +52,55 @@ public sealed class VideoEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_plasma_ball_without_cover_comes_as_its_stacked_frames()
+    {
+        _app.AddSong("20260101-120000-neon", "song1");
+        var client = _app.CreateClient();
+        var layout = VideoLayout.For(VideoFormats.Portrait);
+
+        var response = await client.PostAsync(
+            "/api/songs/20260101-120000-neon/song1/videos",
+            Form(VideoFormats.Portrait, VideoEffects.Wave, VideoMotions.Plasma, showTitle: false, showCover: false));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var done = await WaitForVideo(client, "20260101-120000-neon/song1", v => v.Finished);
+        Assert.Equal(("done", "plasma", false), (done.Stage, done.Motion, done.ShowCover));
+        var layers = _app.Videos.Layers!;
+        Assert.Null(layers.Cover);
+        Assert.Null(layers.Title);
+        Assert.Equal(Path.Combine(_app.Root, "videos", done.Id, "plasma.png"), layers.Motion);
+        Assert.Equal(
+            (layout.PlasmaSize, layout.PlasmaSize * VideoLayout.PlasmaFrames),
+            VideoEndpoints.PngSize(await File.ReadAllBytesAsync(layers.Motion!)));
+    }
+
+    [Fact]
     public async Task Layers_must_be_PNGs_of_the_frame_size_and_the_settings_known_ones()
     {
         _app.AddSong("20260101-120000-neon", "song1");
         var client = _app.CreateClient();
 
-        var response = await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form("square", "lasers", false, false));
+        var response = await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form("square", "lasers", "fireworks", false));
         var errors = (await response.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject();
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.True(errors.ContainsKey("format"));
         Assert.True(errors.ContainsKey("effect"));
+        Assert.True(errors.ContainsKey("motion"));
 
-        // A landscape background for a vertical video, a cover that is no PNG and no title although one was asked for.
+        // A landscape background for a vertical video, a cover that is no PNG, no title although one was asked for and
+        // a plasma ball of one frame.
         var wrong = new MultipartFormDataContent
         {
             { new StringContent("portrait"), "format" },
             { new StringContent("none"), "effect" },
+            { new StringContent("plasma"), "motion" },
             { new StringContent("true"), "showTitle" },
             { new ByteArrayContent(Png(1920, 1080)), "background", "background.png" },
             { new ByteArrayContent("not a png"u8.ToArray()), "cover", "cover.png" },
+            { new ByteArrayContent(Png(960, 960)), "plasma", "plasma.png" },
         };
         errors = (await (await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", wrong)).Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject();
-        Assert.Equal(["background", "cover", "title"], errors.Select(e => e.Key).Order());
+        Assert.Equal(["background", "cover", "plasma", "title"], errors.Select(e => e.Key).Order());
         Assert.Empty((await client.GetFromJsonAsync<VideoState[]>("/api/songs/20260101-120000-neon/song1/videos", TestApp.Json))!);
     }
 
@@ -83,11 +110,11 @@ public sealed class VideoEndpointTests : IDisposable
         _app.AddSong("20260101-120000-neon", "song1");
         var client = _app.CreateClient();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/api/songs/20260101-120000-neon/song9/videos", Form(VideoFormats.Landscape, VideoEffects.Bars, false, false))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/api/songs/20260101-120000-neon/song9/videos", Form(VideoFormats.Landscape, VideoEffects.Bars, VideoMotions.None, false))).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/songs/../song1/videos")).StatusCode);
 
         _app.Videos.Available = false;
-        var response = await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form(VideoFormats.Landscape, VideoEffects.Bars, false, false));
+        var response = await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form(VideoFormats.Landscape, VideoEffects.Bars, VideoMotions.None, false));
         Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
     }
 
@@ -98,7 +125,7 @@ public sealed class VideoEndpointTests : IDisposable
         _app.Videos.Failure = "Unknown encoder 'libx264'";
         var client = _app.CreateClient();
 
-        await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form(VideoFormats.Portrait, VideoEffects.None, false, false));
+        await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form(VideoFormats.Portrait, VideoEffects.None, VideoMotions.None, false));
         var failed = await WaitForVideo(client, "20260101-120000-neon/song1", v => v.Finished);
 
         Assert.Equal(("failed", "Unknown encoder 'libx264'"), (failed.Stage, failed.Message));
@@ -112,7 +139,7 @@ public sealed class VideoEndpointTests : IDisposable
         _app.Videos.Gate = new TaskCompletionSource();
         var client = _app.CreateClient();
 
-        await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form(VideoFormats.Landscape, VideoEffects.Wave, false, false));
+        await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form(VideoFormats.Landscape, VideoEffects.Wave, VideoMotions.None, false));
         var rendering = await WaitForVideo(client, "20260101-120000-neon/song1", v => v.Stage == "rendering");
         var busy = (await client.GetFromJsonAsync<BusyInfo>("/api/busy", TestApp.Json))!;
         Assert.True(busy.Busy);
@@ -131,7 +158,7 @@ public sealed class VideoEndpointTests : IDisposable
         _app.AddSong("20260101-120000-neon", "song2");
         var client = _app.CreateClient();
 
-        await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form(VideoFormats.Landscape, VideoEffects.Bars, false, false));
+        await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form(VideoFormats.Landscape, VideoEffects.Bars, VideoMotions.None, false));
         var done = await WaitForVideo(client, "20260101-120000-neon/song1", v => v.Finished);
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync("/api/songs/20260101-120000-neon/song1")).StatusCode);
 
@@ -139,28 +166,37 @@ public sealed class VideoEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/videos/{done.Id}/file")).StatusCode);
     }
 
-    private static MultipartFormDataContent Form(string format, string effect, bool particles, bool showTitle)
+    private static MultipartFormDataContent Form(string format, string effect, string motion, bool showTitle, bool showCover = true)
     {
         var layout = VideoLayout.For(format);
         var form = new MultipartFormDataContent
         {
             { new StringContent(format), "format" },
             { new StringContent(effect), "effect" },
-            { new StringContent(particles ? "true" : "false"), "particles" },
+            { new StringContent(motion), "motion" },
+            { new StringContent(showCover ? "true" : "false"), "showCover" },
             { new StringContent(showTitle ? "true" : "false"), "showTitle" },
         };
-        var names = new List<string> { "background", "cover" };
+        var names = new List<string> { "background" };
+        if (showCover)
+        {
+            names.Add("cover");
+        }
         if (showTitle)
         {
             names.Add("title");
         }
-        if (particles)
+        if (motion == VideoMotions.Particles)
         {
-            names.Add("particles");
+            names.Add(motion);
         }
         foreach (var name in names)
         {
             form.Add(new ByteArrayContent(Png(layout.Width, layout.Height)), name, $"{name}.png");
+        }
+        if (motion == VideoMotions.Plasma)
+        {
+            form.Add(new ByteArrayContent(Png(layout.PlasmaSize, layout.PlasmaSize * VideoLayout.PlasmaFrames)), motion, "plasma.png");
         }
         return form;
     }

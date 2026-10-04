@@ -452,6 +452,9 @@ export type VideoFormat = 'landscape' | 'portrait'
 /** A spectrum analyzer, the waveform, or only the still picture. */
 export type VideoEffect = 'bars' | 'wave' | 'none'
 
+/** What moves behind the cover: drifting particles, a plasma ball's lightning, or nothing. */
+export type VideoMotion = 'none' | 'particles' | 'plasma'
+
 /** A music video of a song (Video/VideoModels.cs); live changes arrive as `video` events. */
 export interface VideoState {
   id: string
@@ -460,7 +463,8 @@ export interface VideoState {
   title: string
   format: VideoFormat
   effect: VideoEffect
-  particles: boolean
+  motion: VideoMotion
+  showCover: boolean
   showTitle: boolean
   stage: 'queued' | 'rendering' | 'done' | 'failed' | 'cancelled'
   /** How much is rendered, 0 to 1. */
