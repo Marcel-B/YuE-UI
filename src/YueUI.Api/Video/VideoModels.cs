@@ -100,21 +100,22 @@ public sealed record VideoLayout(int Width, int Height, int BandY, int BandHeigh
     public const int BarWidth = 14;
 
     /// <summary>
-    /// The plasma ball comes as this many pictures of its square stacked on top of each other (<see cref="PlasmaSize"/>
-    /// wide, this many times as high); the renderer flickers between them.
+    /// The plasma ball comes as this many pictures of its area (<see cref="PlasmaArea"/>), which the renderer stacks
+    /// and flickers between.
     /// </summary>
     public const int PlasmaFrames = 8;
 
     /// <summary>
-    /// The plasma ball's square, centred on the cover's middle (<c>video.ts</c> draws the cover there), large enough
-    /// for the lightning to reach well beyond a cover.
+    /// Where the plasma ball's pictures go. Behind a cover: a square centred on the cover's middle (<c>video.ts</c>
+    /// draws the cover there), large enough for the lightning to reach well beyond it. Without a cover the lightning
+    /// runs from the same middle to the frame's edges, so its pictures are the whole frame.
     /// </summary>
-    public int PlasmaSize => Width == 1080 ? 1080 : 1000;
-
-    public int PlasmaX => (Width - PlasmaSize) / 2;
-
-    /// <remarks>The landscape square reaches above the frame; overlay cuts it off, the glass stays inside.</remarks>
-    public int PlasmaY => Width == 1080 ? 70 : -130;
+    /// <remarks>The landscape square reaches above the frame; overlay cuts it off.</remarks>
+    public (int X, int Y, int Width, int Height) PlasmaArea(bool behindCover) => !behindCover
+        ? (0, 0, Width, Height)
+        : Width == 1080
+            ? (0, 70, 1080, 1080)
+            : (460, -130, 1000, 1000);
 
     /// <remarks>
     /// The vertical band sits above the bottom fifth, which Shorts, Reels and TikTok cover with caption and buttons.
@@ -125,10 +126,11 @@ public sealed record VideoLayout(int Width, int Height, int BandY, int BandHeigh
 }
 
 /// <summary>
-/// The still layers the browser drew, as PNGs of the frame's size (the plasma ball's frames excepted, see
-/// <see cref="VideoLayout.PlasmaFrames"/>); all but the background only when asked for.
+/// The still layers the browser drew, as PNGs of the frame's size (the plasma ball's of its area, see
+/// <see cref="VideoLayout.PlasmaArea"/>); all but the background only when asked for. <see cref="Motion"/>: one
+/// picture of particles, <see cref="VideoLayout.PlasmaFrames"/> of the plasma ball, none without motion.
 /// </summary>
-public sealed record VideoLayers(string Background, string? Cover, string? Title, string? Motion);
+public sealed record VideoLayers(string Background, string? Cover, string? Title, IReadOnlyList<string> Motion);
 
 /// <summary>Makes the video from a song's FLAC and the layers. Tests replace it.</summary>
 public interface IVideoRenderer

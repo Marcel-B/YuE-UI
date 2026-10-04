@@ -40,12 +40,9 @@ public sealed class VideoRendererTests : IDisposable
             title ? await Picture(ffmpeg, "title.png", $"color=black@0:s={size},format=rgba,drawbox=x=100:y=600:w=800:h=60:color=white@1:t=fill") : null,
             motion switch
             {
-                VideoMotions.Particles => await Picture(ffmpeg, "particles.png", $"color=black@0:s={size},format=rgba,drawbox=x=300:y=50:w=6:h=6:color=white@0.8:t=fill"),
-                VideoMotions.Plasma => await Picture(
-                    ffmpeg,
-                    "plasma.png",
-                    $"color=black@0:s={layout.PlasmaSize}x{layout.PlasmaSize * VideoLayout.PlasmaFrames},format=rgba,drawbox=x=100:y=100:w=6:h=300:color=0xe879f9@1:t=fill"),
-                _ => null,
+                VideoMotions.Particles => [await Picture(ffmpeg, "particles.png", $"color=black@0:s={size},format=rgba,drawbox=x=300:y=50:w=6:h=6:color=white@0.8:t=fill")],
+                VideoMotions.Plasma => await PlasmaFrames(ffmpeg, layout.PlasmaArea(cover)),
+                _ => [],
             });
         var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "Neon Night", Format = format, Effect = effect, Motion = motion, ShowCover = cover, ShowTitle = title };
         var output = Path.Combine(_directory, "video.mp4");
@@ -82,10 +79,23 @@ public sealed class VideoRendererTests : IDisposable
         var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "", Format = VideoFormats.Landscape, Effect = VideoEffects.Bars };
 
         var failure = await Assert.ThrowsAsync<VideoException>(() => new FfmpegVideoRenderer(NullLogger<FfmpegVideoRenderer>.Instance)
-            .RenderAsync(video, flac, 3, new VideoLayers(missing, missing, null, null), Path.Combine(_directory, "video.mp4"), _ => { }, CancellationToken.None));
+            .RenderAsync(video, flac, 3, new VideoLayers(missing, missing, null, []), Path.Combine(_directory, "video.mp4"), _ => { }, CancellationToken.None));
 
         Assert.NotEmpty(failure.Message);
         Assert.False(File.Exists(Path.Combine(_directory, "video.mp4")));
+    }
+
+    private async Task<string[]> PlasmaFrames(string ffmpeg, (int X, int Y, int Width, int Height) area)
+    {
+        var frames = new string[VideoLayout.PlasmaFrames];
+        for (var i = 0; i < frames.Length; i++)
+        {
+            frames[i] = await Picture(
+                ffmpeg,
+                $"plasma{i}.png",
+                $"color=black@0:s={area.Width}x{area.Height},format=rgba,drawbox=x={100 + i * 10}:y=100:w=6:h=300:color=0xe879f9@1:t=fill");
+        }
+        return frames;
     }
 
     private async Task<string> Picture(string ffmpeg, string name, string source)

@@ -18,7 +18,7 @@ export const videoFormats: VideoFormat[] = ['landscape', 'portrait']
 export const videoEffects: VideoEffect[] = ['bars', 'wave', 'none']
 export const videoMotions: VideoMotion[] = ['particles', 'plasma', 'none']
 
-/** The server's `VideoLayout.PlasmaFrames`: the plasma ball comes as this many pictures stacked, which it flickers between. */
+/** The server's `VideoLayout.PlasmaFrames`: the plasma ball comes as this many pictures, which it flickers between. */
 const plasmaFrames = 8
 
 /**
@@ -36,12 +36,13 @@ interface Layout {
   /** Baseline of the title's first line, and its largest size. */
   titleY: number
   titleSize: number
-  /** The plasma ball's square, centred on the cover's middle; the server's `VideoLayout.Plasma*`. */
+  /**
+   * The plasma ball's square behind a cover, centred on the cover's middle (the server's `VideoLayout.PlasmaArea`);
+   * without a cover it takes the whole frame.
+   */
   plasmaX: number
   plasmaY: number
   plasmaSize: number
-  /** The glass without a cover, kept inside the frame; behind a cover the lightning reaches out to the square's edge. */
-  glassRadius: number
 }
 
 export const videoLayouts: Record<VideoFormat, Layout> = {
@@ -58,7 +59,6 @@ export const videoLayouts: Record<VideoFormat, Layout> = {
     plasmaX: 460,
     plasmaY: -130,
     plasmaSize: 1000,
-    glassRadius: 360,
   },
   // Everything above the bottom fifth, which the apps cover with caption and buttons.
   portrait: {
@@ -74,7 +74,6 @@ export const videoLayouts: Record<VideoFormat, Layout> = {
     plasmaX: 0,
     plasmaY: 70,
     plasmaSize: 1080,
-    glassRadius: 440,
   },
 }
 
@@ -129,8 +128,8 @@ export interface VideoLayers {
   cover: HTMLCanvasElement | null
   title: HTMLCanvasElement | null
   particles: HTMLCanvasElement | null
-  /** The plasma ball's frames, stacked. */
-  plasma: HTMLCanvasElement | null
+  /** The plasma ball's frames and where they go in the picture. */
+  plasma: { frames: HTMLCanvasElement[]; x: number; y: number } | null
 }
 
 /**
@@ -163,7 +162,7 @@ export async function toPngs(layers: VideoLayers): Promise<VideoLayerImages> {
     images.particles = await png(layers.particles)
   }
   if (layers.plasma) {
-    images.plasma = await png(layers.plasma)
+    images.plasma = await Promise.all(layers.plasma.frames.map(png))
   }
   return images
 }
@@ -183,8 +182,7 @@ export function drawPreview(layers: VideoLayers, settings: VideoSettings): strin
     context.drawImage(layers.particles, 0, 0)
   }
   if (layers.plasma) {
-    const { plasmaX, plasmaY, plasmaSize: size } = layout
-    context.drawImage(layers.plasma, 0, 0, size, size, plasmaX, plasmaY, size, size)
+    context.drawImage(layers.plasma.frames[0]!, layers.plasma.x, layers.plasma.y)
   }
   if (settings.effect !== 'none') {
     context.fillStyle = accent
@@ -360,36 +358,41 @@ function drawParticles(layout: Layout, songId: string): HTMLCanvasElement {
 }
 
 /**
- * A plasma ball: a glass sphere with a glowing core and lightning from the core to the glass, drawn `plasmaFrames`
- * times with different bolts and stacked; the server flickers between the frames and lets the bass flare them. Behind
- * a cover only the bolts' outer ends show around it, so there are more of them and no glass. Seeded by the song.
+ * A plasma ball without its glass: a glowing core in the cover's middle and lightning from it, drawn `plasmaFrames`
+ * times with different bolts; the server flickers between the frames and lets the bass flare them. Behind a cover the
+ * bolts reach out around it in a square and end in a spark; without one they run to the frame's edges and leave it.
+ * Seeded by the song.
  */
-function drawPlasma(layout: Layout, songId: string, behindCover: boolean): HTMLCanvasElement {
-  const size = layout.plasmaSize
-  const { canvas, context } = frame(size, size * plasmaFrames)
+function drawPlasma(
+  layout: Layout,
+  songId: string,
+  behindCover: boolean,
+): { frames: HTMLCanvasElement[]; x: number; y: number } {
+  const area = behindCover
+    ? { x: layout.plasmaX, y: layout.plasmaY, width: layout.plasmaSize, height: layout.plasmaSize }
+    : { x: 0, y: 0, width: layout.width, height: layout.height }
   const random = seeded(hashOf(songId) ^ 0x5bd1e995)
-  const centre = size / 2
-  const radius = behindCover ? size * 0.48 : layout.glassRadius
+  const centre = {
+    x: layout.coverX + layout.coverSize / 2 - area.x,
+    y: layout.coverY + layout.coverSize / 2 - area.y,
+  }
+  const square = layout.plasmaSize
   // Where each bolt starts its life, so neighbouring frames keep a family likeness while the shapes change.
-  const roots = Array.from({ length: behindCover ? 12 : 9 }, () => random() * Math.PI * 2)
+  const roots = Array.from({ length: behindCover ? 12 : 10 }, () => random() * Math.PI * 2)
+  const frames: HTMLCanvasElement[] = []
   for (let index = 0; index < plasmaFrames; index++) {
-    context.save()
-    context.translate(0, index * size)
-    context.beginPath()
-    context.rect(0, 0, size, size)
-    context.clip()
-    if (!behindCover) {
-      drawGlass(context, centre, radius)
-    }
+    const { canvas, context } = frame(area.width, area.height)
     for (const root of roots) {
       if (random() < 0.15) {
         continue // a bolt that is out this frame
       }
       const angle = root + (random() - 0.5) * 0.7
-      // Most reach the glass, some die out on the way.
-      const reach = random() < 0.75 ? radius : radius * (0.55 + random() * 0.35)
-      const end = { x: centre + Math.cos(angle) * reach, y: centre + Math.sin(angle) * reach }
-      const path = bolt({ x: centre, y: centre }, end, random)
+      const full = behindCover ? square * 0.48 : distanceToEdge(centre, angle, area.width, area.height) + 20
+      // Most reach the end, some die out on the way.
+      const whole = random() < 0.75
+      const reach = whole ? full : full * (0.55 + random() * 0.35)
+      const end = { x: centre.x + Math.cos(angle) * reach, y: centre.y + Math.sin(angle) * reach }
+      const path = bolt(centre, end, random)
       drawBolt(context, path, 1)
       // A branch or two off the bolt's outer half.
       for (let b = 0; b < 2; b++) {
@@ -398,25 +401,36 @@ function drawPlasma(layout: Layout, songId: string, behindCover: boolean): HTMLC
         }
         const from = path[Math.floor(path.length * (0.4 + random() * 0.4))]!
         const turn = angle + (random() < 0.5 ? -1 : 1) * (0.35 + random() * 0.5)
-        const length = radius * (0.15 + random() * 0.25)
+        const length = Math.min(full, square * 0.48) * (0.15 + random() * 0.25)
         drawBolt(
           context,
           bolt(from, { x: from.x + Math.cos(turn) * length, y: from.y + Math.sin(turn) * length }, random),
           0.6,
         )
       }
-      if (reach === radius) {
-        glow(context, end.x, end.y, size * 0.03, '255 230 255', 0.9)
+      if (whole && behindCover) {
+        glow(context, end.x, end.y, square * 0.03, '255 230 255', 0.9)
       }
     }
     if (!behindCover) {
       const pulse = 0.85 + random() * 0.3
-      glow(context, centre, centre, radius * 0.22 * pulse, '250 232 255', 1)
-      glow(context, centre, centre, radius * 0.45 * pulse, '192 132 252', 0.35)
+      glow(context, centre.x, centre.y, square * 0.1 * pulse, '250 232 255', 1)
+      glow(context, centre.x, centre.y, square * 0.2 * pulse, '192 132 252', 0.35)
     }
-    context.restore()
+    frames.push(canvas)
   }
-  return canvas
+  return { frames, x: area.x, y: area.y }
+}
+
+/** How far a ray from the point at this angle runs inside the box before it leaves it. */
+function distanceToEdge(from: Point, angle: number, width: number, height: number): number {
+  const dx = Math.cos(angle)
+  const dy = Math.sin(angle)
+  const along = [
+    dx > 0 ? (width - from.x) / dx : dx < 0 ? -from.x / dx : Infinity,
+    dy > 0 ? (height - from.y) / dy : dy < 0 ? -from.y / dy : Infinity,
+  ]
+  return Math.min(...along)
 }
 
 interface Point {
@@ -467,26 +481,6 @@ function drawBolt(context: CanvasRenderingContext2D, path: Point[], strength: nu
     context.stroke()
   }
   context.restore()
-}
-
-/** The glass: barely tinted, a faint rim and a highlight on its upper left, as a lamp in a dark room shows it. */
-function drawGlass(context: CanvasRenderingContext2D, centre: number, radius: number): void {
-  const fill = context.createRadialGradient(centre, centre, radius * 0.6, centre, centre, radius)
-  fill.addColorStop(0, 'rgb(147 51 234 / 0)')
-  fill.addColorStop(1, 'rgb(147 51 234 / 0.14)')
-  context.fillStyle = fill
-  context.beginPath()
-  context.arc(centre, centre, radius, 0, Math.PI * 2)
-  context.fill()
-  context.lineWidth = 2
-  context.strokeStyle = 'rgb(233 213 255 / 0.3)'
-  context.stroke()
-  context.beginPath()
-  context.arc(centre, centre, radius * 0.9, Math.PI * 1.1, Math.PI * 1.4)
-  context.lineWidth = radius * 0.025
-  context.lineCap = 'round'
-  context.strokeStyle = 'rgb(255 255 255 / 0.18)'
-  context.stroke()
 }
 
 function glow(

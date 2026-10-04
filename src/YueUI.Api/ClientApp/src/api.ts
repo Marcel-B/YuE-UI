@@ -462,7 +462,7 @@ export interface VideoRequest {
 }
 
 /**
- * The still layers drawn in `video.ts`, as PNGs of the frame's size (the plasma ball as its stacked frames); all but
+ * The still layers drawn in `video.ts`, as PNGs of the frame's size (the plasma ball's frames of its area); all but
  * the background only when asked for. Each goes under its name, the moving one under the motion's.
  */
 export interface VideoLayerImages {
@@ -470,7 +470,8 @@ export interface VideoLayerImages {
   cover: Blob | null
   title: Blob | null
   particles?: Blob
-  plasma?: Blob
+  /** The plasma ball's frames, sent as `plasma0`, `plasma1`, … */
+  plasma?: Blob[]
 }
 
 /** Sends the layers and queues the video; its progress arrives as `video` events. */
@@ -479,9 +480,11 @@ export async function addVideo(songId: string, request: VideoRequest, layers: Vi
   for (const [key, value] of Object.entries(request)) {
     form.append(key, String(value))
   }
-  for (const [name, blob] of Object.entries(layers)) {
-    if (blob) {
-      form.append(name, blob, `${name}.png`)
+  for (const [name, layer] of Object.entries(layers) as [string, Blob | Blob[] | null | undefined][]) {
+    if (Array.isArray(layer)) {
+      layer.forEach((blob, index) => form.append(`${name}${index}`, blob, `${name}${index}.png`))
+    } else if (layer) {
+      form.append(name, layer, `${name}.png`)
     }
   }
   return (await send(`/api/songs/${songId}/videos`, { method: 'POST', body: form })).json() as Promise<VideoState>

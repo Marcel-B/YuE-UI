@@ -105,7 +105,11 @@ public static class VideoEndpoints
         }
         else if (motion == VideoMotions.Plasma)
         {
-            wanted.Add((VideoMotions.Plasma, layout.PlasmaSize, layout.PlasmaSize * VideoLayout.PlasmaFrames));
+            var area = layout.PlasmaArea(withCover);
+            for (var i = 0; i < VideoLayout.PlasmaFrames; i++)
+            {
+                wanted.Add(($"plasma{i}", area.Width, area.Height));
+            }
         }
         var layers = new Dictionary<string, byte[]>();
         foreach (var (name, wantedWidth, wantedHeight) in wanted)

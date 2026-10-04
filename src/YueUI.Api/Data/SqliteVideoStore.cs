@@ -20,7 +20,12 @@ public sealed class SqliteVideoStore(SqliteDatabase database)
         Path.Combine(Folder(video.Id), "background.png"),
         video.ShowCover ? Path.Combine(Folder(video.Id), "cover.png") : null,
         video.ShowTitle ? Path.Combine(Folder(video.Id), "title.png") : null,
-        video.Motion == VideoMotions.None ? null : Path.Combine(Folder(video.Id), $"{video.Motion}.png"));
+        video.Motion switch
+        {
+            VideoMotions.Particles => [Path.Combine(Folder(video.Id), "particles.png")],
+            VideoMotions.Plasma => [.. Enumerable.Range(0, VideoLayout.PlasmaFrames).Select(i => Path.Combine(Folder(video.Id), $"plasma{i}.png"))],
+            _ => [],
+        });
 
     /// <summary>The song's videos, newest first, as the dialog lists them.</summary>
     public IReadOnlyList<VideoState> ForSong(string songId) =>

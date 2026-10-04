@@ -32,7 +32,7 @@ public sealed class VideoEndpointTests : IDisposable
         Assert.Equal(("done", (long?)FakeVideoRenderer.Mp4.Length), (done.Stage, done.Bytes));
         Assert.Equal(187.5, _app.Videos.Seconds);
         var layers = _app.Videos.Layers!;
-        Assert.All(new[] { layers.Background, layers.Cover!, layers.Title!, layers.Motion! }, path => Assert.True(File.Exists(path), path));
+        Assert.All(new[] { layers.Background, layers.Cover!, layers.Title!, Assert.Single(layers.Motion) }, path => Assert.True(File.Exists(path), path));
 
         var file = await client.GetAsync($"/api/videos/{done.Id}/file?download=true");
         Assert.Equal("video/mp4", file.Content.Headers.ContentType!.MediaType);
@@ -52,7 +52,7 @@ public sealed class VideoEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task A_plasma_ball_without_cover_comes_as_its_stacked_frames()
+    public async Task A_plasma_ball_without_cover_comes_as_frames_of_the_whole_picture()
     {
         _app.AddSong("20260101-120000-neon", "song1");
         var client = _app.CreateClient();
@@ -68,10 +68,13 @@ public sealed class VideoEndpointTests : IDisposable
         var layers = _app.Videos.Layers!;
         Assert.Null(layers.Cover);
         Assert.Null(layers.Title);
-        Assert.Equal(Path.Combine(_app.Root, "videos", done.Id, "plasma.png"), layers.Motion);
         Assert.Equal(
-            (layout.PlasmaSize, layout.PlasmaSize * VideoLayout.PlasmaFrames),
-            VideoEndpoints.PngSize(await File.ReadAllBytesAsync(layers.Motion!)));
+            Enumerable.Range(0, VideoLayout.PlasmaFrames).Select(i => Path.Combine(_app.Root, "videos", done.Id, $"plasma{i}.png")),
+            layers.Motion);
+        foreach (var frame in layers.Motion)
+        {
+            Assert.Equal((layout.Width, layout.Height), VideoEndpoints.PngSize(await File.ReadAllBytesAsync(frame)));
+        }
     }
 
     [Fact]
@@ -88,7 +91,7 @@ public sealed class VideoEndpointTests : IDisposable
         Assert.True(errors.ContainsKey("motion"));
 
         // A landscape background for a vertical video, a cover that is no PNG, no title although one was asked for and
-        // a plasma ball of one frame.
+        // a plasma ball of one frame, and that of the whole picture although it goes behind a cover.
         var wrong = new MultipartFormDataContent
         {
             { new StringContent("portrait"), "format" },
@@ -97,10 +100,12 @@ public sealed class VideoEndpointTests : IDisposable
             { new StringContent("true"), "showTitle" },
             { new ByteArrayContent(Png(1920, 1080)), "background", "background.png" },
             { new ByteArrayContent("not a png"u8.ToArray()), "cover", "cover.png" },
-            { new ByteArrayContent(Png(960, 960)), "plasma", "plasma.png" },
+            { new ByteArrayContent(Png(1080, 1920)), "plasma0", "plasma0.png" },
         };
         errors = (await (await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", wrong)).Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject();
-        Assert.Equal(["background", "cover", "plasma", "title"], errors.Select(e => e.Key).Order());
+        Assert.Equal(
+            ["background", "cover", .. Enumerable.Range(0, VideoLayout.PlasmaFrames).Select(i => $"plasma{i}"), "title"],
+            errors.Select(e => e.Key).Order());
         Assert.Empty((await client.GetFromJsonAsync<VideoState[]>("/api/songs/20260101-120000-neon/song1/videos", TestApp.Json))!);
     }
 
@@ -196,7 +201,11 @@ public sealed class VideoEndpointTests : IDisposable
         }
         if (motion == VideoMotions.Plasma)
         {
-            form.Add(new ByteArrayContent(Png(layout.PlasmaSize, layout.PlasmaSize * VideoLayout.PlasmaFrames)), motion, "plasma.png");
+            var area = layout.PlasmaArea(showCover);
+            for (var i = 0; i < VideoLayout.PlasmaFrames; i++)
+            {
+                form.Add(new ByteArrayContent(Png(area.Width, area.Height)), $"plasma{i}", $"plasma{i}.png");
+            }
         }
         return form;
     }
