@@ -34,6 +34,8 @@ import type {
   VideoFormat,
   VideoMotion,
   VideoState,
+  ImageInfo,
+  ImageState,
   VoiceInfo,
   WorkerInfo,
 } from './types'
@@ -600,6 +602,38 @@ export function speechTakeAudioUrl(id: string, download = false): string {
   return `${apiBase}/api/speech/takes/${encodeURIComponent(id)}/audio${download ? '?download=true' : ''}`
 }
 
+/** Whether mflux is installed, and the Klein models with what they cost and allow. */
+export async function getImageInfo(): Promise<ImageInfo> {
+  return (await send('/api/images')).json() as Promise<ImageInfo>
+}
+
+/** The song's painted cover candidates, newest first. */
+export async function listImages(songId: string): Promise<ImageState[]> {
+  return (await send(`/api/songs/${songId}/images`)).json() as Promise<ImageState[]>
+}
+
+/** Queues a picture; its progress arrives as `image` events. Without a seed the server picks one. */
+export async function paintImage(
+  songId: string,
+  request: { prompt: string; model: string; seed?: number },
+): Promise<ImageState> {
+  return (await send(`/api/songs/${songId}/images`, json('POST', request))).json() as Promise<ImageState>
+}
+
+export function imageUrl(id: string): string {
+  return `${apiBase}/api/images/${encodeURIComponent(id)}`
+}
+
+/** Makes the picture the song's cover; the library event brings it into the list and the player. */
+export async function takeImage(id: string): Promise<void> {
+  await send(`/api/images/${encodeURIComponent(id)}/cover`, { method: 'PUT' })
+}
+
+/** Stops a picture in the works, or removes a finished one. */
+export async function deleteImage(id: string): Promise<void> {
+  await send(`/api/images/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
 export interface EventHandlers {
   snapshot(snapshot: StatusSnapshot): void
   song(song: SongState): void
@@ -617,6 +651,8 @@ export interface EventHandlers {
   speech(take: SpeechTake): void
   /** A music video changed; a deleted one arrives as cancelled. */
   video(video: VideoState): void
+  /** A painted cover candidate changed; a deleted one arrives as cancelled. */
+  image(image: ImageState): void
   queue(queue: QueuedJob[]): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */
   connection(open: boolean): void
@@ -644,6 +680,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on<SwapState>('swap', handlers.swap)
   on<SpeechTake>('speech', handlers.speech)
   on<VideoState>('video', handlers.video)
+  on<ImageState>('image', handlers.image)
   source.onerror = () => handlers.connection(false)
   return () => source.close()
 }

@@ -11,6 +11,7 @@ using YueUI.Api.Lyrics;
 using YueUI.Api.Push;
 using YueUI.Api.Queue;
 using YueUI.Api.Share;
+using YueUI.Api.Images;
 using YueUI.Api.Speech;
 using YueUI.Api.Video;
 using YueUI.Api.Voices;
@@ -103,6 +104,11 @@ builder.Services.AddSingleton<SqliteSpeechStore>();
 builder.Services.AddSingleton<ISpeechEngine, MlxAudioEngine>();
 builder.Services.AddSingleton<SpeechLab>();
 builder.Services.AddHostedService(services => services.GetRequiredService<SpeechLab>());
+builder.Services.Configure<ImageOptions>(builder.Configuration.GetSection(ImageOptions.Section));
+builder.Services.AddSingleton<ImageActivity>();
+builder.Services.AddSingleton<IImageEngine, MfluxEngine>();
+builder.Services.AddSingleton<ImageMaker>();
+builder.Services.AddHostedService(services => services.GetRequiredService<ImageMaker>());
 
 // Songs, renders and lyrics drafts wait here for the memory instead of being refused; kept in the database.
 builder.Services.Configure<QueueOptions>(builder.Configuration.GetSection(QueueOptions.Section));
@@ -161,6 +167,7 @@ api.MapSwapEndpoints();
 api.MapVideoEndpoints();
 api.MapQueueEndpoints();
 api.MapSpeechEndpoints();
+api.MapImageEndpoints();
 api.MapBackupEndpoints();
 api.MapLogEndpoints();
 

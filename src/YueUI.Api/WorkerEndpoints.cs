@@ -48,9 +48,9 @@ public static class WorkerEndpoints
 
     /// <summary>
     /// What a restart would cut off, for <c>deploy/update.sh</c>, which waits until nothing is. Waiting jobs are not
-    /// counted: the queue, the voice converter and the speech lab keep theirs and take them up again after a restart.
+    /// counted: the queue, the voice converter, the speech lab and the cover painter keep theirs and take them up again after a restart.
     /// </summary>
-    internal static BusyInfo Busy(WorkerHost host, LyricsWriter lyrics, VoiceConverter voices, SpeechActivity speech, Video.VideoMaker videos)
+    internal static BusyInfo Busy(WorkerHost host, LyricsWriter lyrics, VoiceConverter voices, SpeechActivity speech, Video.VideoMaker videos, Images.ImageActivity images)
     {
         List<string> reasons = [];
         if (host.IsBusy)
@@ -76,6 +76,10 @@ public static class WorkerEndpoints
         if (videos.IsRendering)
         {
             reasons.Add("video");
+        }
+        if (images.IsPainting)
+        {
+            reasons.Add("images");
         }
         return new BusyInfo(reasons.Count > 0, reasons);
     }

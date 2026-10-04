@@ -54,6 +54,7 @@ public sealed class WorkerHost(
     private readonly Dictionary<string, StemSetState> _stems = [];
     private readonly Dictionary<string, SwapState> _swaps = [];
     private readonly Dictionary<string, Video.VideoState> _videos = [];
+    private readonly Dictionary<string, Images.ImageState> _images = [];
     /// <summary>The speech lab's takes in the works, in the order they are spoken (a list, since several share a time).</summary>
     private readonly List<Speech.SpeechTake> _speech = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
@@ -398,6 +399,24 @@ public sealed class WorkerHost(
             _videos[video.Id] = video;
         }
         Publish("video", video);
+    }
+
+    /// <summary>
+    /// Keeps a cover picture in the works (Images/ImageMaker.cs) for the snapshot, so the queue page shows what holds or
+    /// waits for the memory after a reload, and sends it to the browsers; a finished one leaves the snapshot with the
+    /// next, since the song's cover dialog lists it.
+    /// </summary>
+    public void UpdateImage(Images.ImageState image)
+    {
+        lock (_gate)
+        {
+            foreach (var old in _images.Values.Where(i => i.Finished).ToList())
+            {
+                _images.Remove(old.Id);
+            }
+            _images[image.Id] = image;
+        }
+        Publish("image", image);
     }
 
     /// <summary>
@@ -910,7 +929,8 @@ public sealed class WorkerHost(
         [.. _stems.Values.OrderBy(s => s.CreatedAt)],
         [.. _speech],
         [.. _swaps.Values.OrderBy(s => s.CreatedAt)],
-        [.. _videos.Values.OrderBy(v => v.CreatedAt)]);
+        [.. _videos.Values.OrderBy(v => v.CreatedAt)],
+        [.. _images.Values.OrderBy(i => i.CreatedAt)]);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);

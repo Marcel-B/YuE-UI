@@ -30,6 +30,7 @@ public sealed class VoiceConverter(
     WorkerHost host,
     LyricsWriter lyrics,
     Speech.SpeechActivity speech,
+    Images.ImageActivity images,
     VoiceEngine voices,
     StemSeparator stems,
     IAudioMixer mixer,
@@ -579,7 +580,7 @@ public sealed class VoiceConverter(
             await Task.Delay(options.Value.WaitInterval, time, cancellationToken);
         }
 
-        bool Occupied() => host.InUse || lyrics.IsWriting || speech.IsSpeaking;
+        bool Occupied() => host.InUse || lyrics.IsWriting || speech.IsSpeaking || images.IsPainting;
     }
 
     /// <summary>Stores the change (a version deleted meanwhile stays deleted) and tells the browsers.</summary>

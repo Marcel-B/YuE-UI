@@ -30,6 +30,7 @@ import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
 import { openExport, photoCover, pickImage } from '../export'
 import { openVideo } from '../video'
+import { openImages } from '../images'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
 import { needsReview, reviewCount, reviewDayChoices, reviewDays } from '../review'
@@ -382,6 +383,18 @@ function songActions(run: RunInfo, song: SongInfo): SongAction[] {
     command: () => chooseCover(song),
     disabled: covering.value.has(song.id),
     loading: covering.value.has(song.id),
+  })
+  actions.push({
+    key: 'paintCover',
+    label: t('paintCover'),
+    icon: 'pi pi-palette',
+    command: () =>
+      openImages({
+        songId: song.id,
+        title: run.title,
+        style: run.style,
+        cover: song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined,
+      }),
   })
   if (song.coverUpdatedAt) {
     actions.push({
