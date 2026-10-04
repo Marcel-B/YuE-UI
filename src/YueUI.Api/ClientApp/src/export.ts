@@ -33,9 +33,14 @@ export function registerExportLookup(find: (songId: string) => ExportTarget | un
   lookup = find
 }
 
-/** Opens the dialog for a song known only by its id; without the library at hand, with what the id says. */
+/** What the library knows about a song known only by its id; without the library at hand, what the id says. */
+export function exportTargetFor(songId: string, title = ''): ExportTarget {
+  return lookup(songId) ?? { songId, title, style: '' }
+}
+
+/** Opens the dialog for a song known only by its id. */
 export function openExportFor(songId: string, title = ''): void {
-  openExport(lookup(songId) ?? { songId, title, style: '' })
+  openExport(exportTargetFor(songId, title))
 }
 
 export interface ExportSettings {

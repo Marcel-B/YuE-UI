@@ -73,6 +73,10 @@ public sealed class PushNotifier(WorkerHost host, PushStore store, IPushSender s
         {
             _finished[$"swap:{swap.Id}"] = swap.Finished;
         }
+        foreach (var video in snapshot.Videos ?? [])
+        {
+            _finished[$"video:{video.Id}"] = video.Finished;
+        }
         if (snapshot.Lyrics is { } lyrics)
         {
             _finished[$"lyrics:{lyrics.Id}"] = lyrics.Finished;
@@ -98,6 +102,9 @@ public sealed class PushNotifier(WorkerHost host, PushStore store, IPushSender s
                 break;
             case SwapState swap when Finishes($"swap:{swap.Id}", swap.Finished) && swap.Stage != "cancelled":
                 Queue($"swap:{swap.Id}", language => PushTexts.Swap(swap, language));
+                break;
+            case Video.VideoState video when Finishes($"video:{video.Id}", video.Finished) && video.Stage != "cancelled":
+                Queue($"video:{video.Id}", language => PushTexts.Video(video, language));
                 break;
             case LyricsState lyrics when Finishes($"lyrics:{lyrics.Id}", lyrics.Finished):
                 Queue("lyrics", language => PushTexts.Lyrics(lyrics, language));

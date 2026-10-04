@@ -29,6 +29,7 @@ import { current, libraryTracks, play, playing, trackOf, versionTrack } from '..
 import { pickMidiFile } from '../midi'
 import { rate, ratingOf, ratings } from '../ratings'
 import { openExport, photoCover, pickImage } from '../export'
+import { openVideo } from '../video'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
 import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
 import { needsReview, reviewCount, reviewDayChoices, reviewDays } from '../review'
@@ -353,6 +354,20 @@ function songActions(run: RunInfo, song: SongInfo): SongAction[] {
       icon: 'pi pi-share-alt',
       command: () =>
         openExport({
+          songId: song.id,
+          title: run.title,
+          style: run.style,
+          cover: song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined,
+        }),
+    })
+  }
+  if (song.hasAudio) {
+    actions.push({
+      key: 'video',
+      label: t('musicVideo'),
+      icon: 'pi pi-video',
+      command: () =>
+        openVideo({
           songId: song.id,
           title: run.title,
           style: run.style,

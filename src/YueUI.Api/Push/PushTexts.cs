@@ -53,6 +53,16 @@ public static class PushTexts
             : (de ? "Stimmentausch fehlgeschlagen" : "Voice swap failed", WithMessage(which, swap.Message));
     }
 
+    public static (string Title, string Body) Video(Video.VideoState video, string language)
+    {
+        var de = IsGerman(language);
+        var song = video.SongId[(video.SongId.IndexOf('/') + 1)..].Replace("song", "Song ", StringComparison.Ordinal);
+        var which = $"{(string.IsNullOrWhiteSpace(video.Title) ? video.SongId : video.Title)} · {song}";
+        return video.Stage == "done"
+            ? (de ? "Video fertig" : "Video ready", which)
+            : (de ? "Video fehlgeschlagen" : "Video failed", WithMessage(which, video.Message));
+    }
+
     public static (string Title, string Body) Lyrics(LyricsState lyrics, string language)
     {
         var de = IsGerman(language);

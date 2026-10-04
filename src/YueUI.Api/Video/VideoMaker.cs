@@ -1,0 +1,161 @@
+using System.Threading.Channels;
+using YueUI.Api.Data;
+using YueUI.Api.Library;
+using YueUI.Api.Worker;
+
+namespace YueUI.Api.Video;
+
+/// <summary>
+/// Renders music videos one at a time, in the order they were asked for. ffmpeg needs the CPU and a few hundred
+/// megabytes, not the memory the models fight over, so a video does not wait for YuE2, a draft or a voice; it only
+/// slows them down a little. Progress goes out through <see cref="WorkerHost.UpdateVideo"/>. After a restart the
+/// unfinished ones start over, since everything they need is on disk.
+/// </summary>
+public sealed class VideoMaker(
+    SqliteVideoStore store,
+    IVideoRenderer renderer,
+    SongLibrary library,
+    WorkerHost host,
+    TimeProvider time,
+    ILogger<VideoMaker> logger) : BackgroundService
+{
+    private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
+    private readonly Lock _gate = new();
+    private string? _running;
+    private CancellationTokenSource? _cancel;
+
+    /// <summary>A video is being rendered; a restart would start it over.</summary>
+    public bool IsRendering
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _running is not null;
+            }
+        }
+    }
+
+    public bool Available => renderer.Available;
+
+    /// <summary>Keeps the video (its layers already lie in its folder) and queues it.</summary>
+    public VideoState Enqueue(VideoState video)
+    {
+        store.Add(video);
+        host.UpdateVideo(video);
+        _queue.Writer.TryWrite(video.Id);
+        return video;
+    }
+
+    /// <summary>Stops a video in the works, or removes a finished one, with its layers.</summary>
+    public void Delete(VideoState video)
+    {
+        lock (_gate)
+        {
+            if (_running == video.Id)
+            {
+                _cancel?.Cancel();
+            }
+        }
+        store.Remove(video.Id);
+        // Finished ones too: an open dialog lays the stream's states over its list and would bring a done one back.
+        host.UpdateVideo(video with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await Task.Yield();
+        foreach (var video in store.Unfinished())
+        {
+            var queued = video with { Stage = "queued", Fraction = 0, UpdatedAt = time.GetUtcNow() };
+            store.Update(queued);
+            host.UpdateVideo(queued);
+            _queue.Writer.TryWrite(video.Id);
+        }
+        try
+        {
+            await foreach (var id in _queue.Reader.ReadAllAsync(stoppingToken))
+            {
+                if (store.Get(id) is { Stage: "queued" } video)
+                {
+                    await RenderAsync(video, stoppingToken);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task RenderAsync(VideoState video, CancellationToken stoppingToken)
+    {
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        lock (_gate)
+        {
+            _running = video.Id;
+            _cancel = cancel;
+        }
+        var current = Save(video with { Stage = "rendering", Fraction = 0 });
+        try
+        {
+            if (video.SongId.Split('/') is not [var run, var song]
+                || library.SongDirectory(run, song) is not { } directory
+                || !File.Exists(Path.Combine(directory, "audio.flac")))
+            {
+                throw new VideoException("The song is gone.");
+            }
+            var seconds = SongLibrary.SecondsOf(directory);
+            var shown = 0.0;
+            await renderer.RenderAsync(
+                video,
+                Path.Combine(directory, "audio.flac"),
+                seconds,
+                store.Layers(video),
+                store.VideoPath(video.Id),
+                fraction =>
+                {
+                    // A step per per cent is enough for the ring and spares every browser thirty events a second.
+                    if (fraction - shown >= 0.01)
+                    {
+                        shown = fraction;
+                        current = Save(current with { Fraction = fraction }, persist: false);
+                    }
+                },
+                cancel.Token);
+            Save(current with { Stage = "done", Fraction = 1, Bytes = new FileInfo(store.VideoPath(video.Id)).Length });
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+        {
+            // Deleted while rendering: Delete has said so and removed the folder; ffmpeg may have written into it since.
+            store.Remove(video.Id);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Shutting down: it stays "rendering" in the database and starts over after the restart.
+            throw;
+        }
+        catch (Exception exception) when (exception is VideoException or IOException or InvalidOperationException)
+        {
+            logger.LogWarning("Video {Id} of {Song} failed: {Message}", video.Id, video.SongId, exception.Message);
+            Save(current with { Stage = "failed", Message = exception.Message });
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _running = null;
+                _cancel = null;
+            }
+        }
+    }
+
+    /// <summary>Progress is only sent, not written: it would be stale after a restart anyway.</summary>
+    private VideoState Save(VideoState video, bool persist = true)
+    {
+        var updated = video with { UpdatedAt = time.GetUtcNow() };
+        // Gone from the database: deleted itself or with its song; the queue must not keep showing it.
+        var kept = persist ? store.Update(updated) : store.Get(updated.Id) is not null;
+        host.UpdateVideo(kept ? updated : updated with { Stage = "cancelled" });
+        return updated;
+    }
+}

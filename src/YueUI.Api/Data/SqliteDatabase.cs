@@ -411,6 +411,31 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     PRAGMA user_version = 16;
                     """);
             }
+            if (current < 17)
+            {
+                // Music videos: the settings they were made with; the layers and the file lie in videos/<id>/.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    CREATE TABLE song_videos (
+                        id TEXT PRIMARY KEY,
+                        song_id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        format TEXT NOT NULL,
+                        effect TEXT NOT NULL,
+                        particles INTEGER NOT NULL,
+                        show_title INTEGER NOT NULL,
+                        stage TEXT NOT NULL,
+                        message TEXT NULL,
+                        bytes INTEGER NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX song_videos_song ON song_videos (song_id);
+                    PRAGMA user_version = 17;
+                    """);
+            }
             _ready = true;
         }
     }

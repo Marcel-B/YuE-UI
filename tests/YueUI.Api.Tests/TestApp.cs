@@ -67,6 +67,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
     public FakeSpeech Speech { get; } = new();
 
+    public FakeVideoRenderer Videos { get; } = new();
+
     public FakeNextcloud Nextcloud { get; } = new();
 
     /// <summary>The backup folder in the fake Nextcloud; null (the default) leaves the backup off.</summary>
@@ -174,6 +176,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddSingleton<IAudioMixer>(Mixer);
 
             services.AddSingleton<ISpeechEngine>(Speech);
+            services.AddSingleton<Video.IVideoRenderer>(Videos);
             services.Configure<SpeechOptions>(options =>
             {
                 options.Root = Path.Combine(Root, "speech");
@@ -919,5 +922,47 @@ public sealed class FakeNextcloud
                 return new HttpResponseMessage(HttpStatusCode.MethodNotAllowed);
             }
         }
+    }
+}
+
+/// <summary>Writes a few bytes instead of running ffmpeg; can be held back to see a video in the works.</summary>
+public sealed class FakeVideoRenderer : Video.IVideoRenderer
+{
+    public static readonly byte[] Mp4 = [.. "ftypisom"u8, 1, 2, 3];
+
+    /// <summary>False stands for a machine without ffmpeg.</summary>
+    public bool Available { get; set; } = true;
+
+    /// <summary>Set to make the render fail like ffmpeg would.</summary>
+    public string? Failure { get; set; }
+
+    /// <summary>Set to hold every render until it is released or cancelled.</summary>
+    public TaskCompletionSource? Gate { get; set; }
+
+    public Video.VideoLayers? Layers { get; private set; }
+
+    public double? Seconds { get; private set; }
+
+    public async Task RenderAsync(
+        Video.VideoState video,
+        string flac,
+        double? seconds,
+        Video.VideoLayers layers,
+        string output,
+        Action<double> progress,
+        CancellationToken cancellationToken)
+    {
+        Layers = layers;
+        Seconds = seconds;
+        progress(0.5);
+        if (Gate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+        if (Failure is { } failure)
+        {
+            throw new Video.VideoException(failure);
+        }
+        await File.WriteAllBytesAsync(output, Mp4, cancellationToken);
     }
 }
