@@ -220,8 +220,8 @@ export function drawPreview(layers: VideoLayers, settings: VideoSettings): strin
 
 /** The server's `FfmpegVideoRenderer.Accent` and the bars' pitch and width (`VideoLayout`), for the preview. */
 const accent = '#34d399'
-const barPitch = 20
-const barWidth = 14
+const barPitch = 40
+const barWidth = 32
 
 /**
  * The cover's most vivid hue as a light colour that stands out on the darkened background: the hues of a small copy

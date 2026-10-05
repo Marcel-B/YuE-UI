@@ -275,6 +275,15 @@ function useMidi(run: RunInfo, song: SongInfo): void {
   })
 }
 
+function openVideoOf(run: RunInfo, song: SongInfo): void {
+  openVideo({
+    songId: song.id,
+    title: run.title,
+    style: run.style,
+    cover: song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined,
+  })
+}
+
 /** Songs whose note is open; closed by default, the button shows whether one is written. */
 const notesOpen = ref(new Set<string>())
 /** Notes saved here before the library's reload brings them; a note on another song's field must not wait for it. */
@@ -367,13 +376,7 @@ function songActions(run: RunInfo, song: SongInfo): SongAction[] {
       key: 'video',
       label: t('musicVideo'),
       icon: 'pi pi-video',
-      command: () =>
-        openVideo({
-          songId: song.id,
-          title: run.title,
-          style: run.style,
-          cover: song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined,
-        }),
+      command: () => openVideoOf(run, song),
     })
   }
   actions.push({
@@ -860,6 +863,17 @@ const severityByQuality: Record<string, string> = {
                   <Tag v-if="song.quality" :severity="severityByQuality[song.quality]">
                     {{ song.quality === 'draft' ? t('qualityDraft') : t('qualityFull') }}
                   </Tag>
+                  <!-- Here rather than among the actions, which a phone hides in its menu. -->
+                  <Button
+                    v-if="song.videoFormats?.length"
+                    icon="pi pi-video"
+                    text
+                    rounded
+                    size="small"
+                    v-tooltip="t('songHasVideo')"
+                    :aria-label="t('songHasVideo')"
+                    @click="openVideoOf(run, song)"
+                  />
                   <div v-if="song.seed !== null" class="muted seed">#{{ song.seed }}</div>
                   <Rating
                     :model-value="ratingOf(song.id)"

@@ -31,6 +31,12 @@ public sealed class SqliteVideoStore(SqliteDatabase database)
     public IReadOnlyList<VideoState> ForSong(string songId) =>
         Query("SELECT * FROM song_videos WHERE song_id = $song ORDER BY created_at DESC", ("$song", songId));
 
+    /// <summary>The formats each song has a finished video in, for the library.</summary>
+    public Dictionary<string, IReadOnlyList<string>> FinishedFormats() =>
+        Query("SELECT * FROM song_videos WHERE stage = 'done' ORDER BY format")
+            .GroupBy(v => v.SongId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)[.. g.Select(v => v.Format).Distinct()]);
+
     public IReadOnlyList<VideoState> Unfinished() =>
         Query("SELECT * FROM song_videos WHERE stage NOT IN ('done', 'failed', 'cancelled') ORDER BY created_at");
 
