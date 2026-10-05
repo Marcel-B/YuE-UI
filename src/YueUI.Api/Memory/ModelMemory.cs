@@ -35,7 +35,7 @@ public enum LargeModel
 /// the holder the server decided on instead of inferring it from the stages of everything in the works.
 /// </para>
 /// </remarks>
-public sealed class ModelMemory(WorkerHost host)
+public sealed class ModelMemory(WorkerHost host, Status.StatusHub hub)
 {
     /// <summary>0 for none, otherwise the <see cref="LargeModel"/> plus one.</summary>
     private int _holder;
@@ -92,7 +92,7 @@ public sealed class ModelMemory(WorkerHost host)
     {
         lock (_publish)
         {
-            host.UpdateMemory(Holder);
+            hub.UpdateMemory(Holder);
         }
     }
 

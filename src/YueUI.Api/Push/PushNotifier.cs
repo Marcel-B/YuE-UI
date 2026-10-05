@@ -12,9 +12,9 @@ namespace YueUI.Api.Push;
 /// <remarks>
 /// Only the change to finished counts: a snapshot marks what is already done, and a song rendered again becomes news
 /// again once it runs. Cancelled songs stay silent, since whoever cancelled them knows. Sending is decoupled from
-/// reading, so a slow push service never makes this subscriber fall behind and get dropped by <see cref="WorkerHost"/>.
+/// reading, so a slow push service never makes this subscriber fall behind and get dropped by <see cref="Status.StatusHub"/>.
 /// </remarks>
-public sealed class PushNotifier(WorkerHost host, PushStore store, IPushSender sender, ILogger<PushNotifier> logger) : BackgroundService
+public sealed class PushNotifier(Status.StatusHub hub, PushStore store, IPushSender sender, ILogger<PushNotifier> logger) : BackgroundService
 {
     public const string AppUrl = "/ui/";
 
@@ -35,7 +35,7 @@ public sealed class PushNotifier(WorkerHost host, PushStore store, IPushSender s
         while (!stoppingToken.IsCancellationRequested)
         {
             // A dropped subscriber's channel completes; subscribing again starts from a fresh snapshot.
-            using var subscription = host.Subscribe(checkStudio: false);
+            using var subscription = hub.Subscribe(checkStudio: false);
             Remember(subscription.Snapshot);
             try
             {

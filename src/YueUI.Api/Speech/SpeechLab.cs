@@ -21,6 +21,7 @@ public sealed class SpeechLab(
     ISpeechEngine engine,
     ModelMemory memory,
     WorkerHost host,
+    Status.StatusHub hub,
     IOptions<SpeechOptions> options,
     TimeProvider time,
     ILogger<SpeechLab> logger) : BackgroundService
@@ -49,7 +50,7 @@ public sealed class SpeechLab(
                 UpdatedAt = now,
             };
             store.AddTake(take);
-            host.UpdateSpeech(take);
+            hub.UpdateSpeech(take);
             _queue.Writer.TryWrite(take.Id);
             takes.Add(take);
         }
@@ -67,7 +68,7 @@ public sealed class SpeechLab(
             }
         }
         store.RemoveTake(take.Id);
-        host.UpdateSpeech(take with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+        hub.UpdateSpeech(take with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -80,7 +81,7 @@ public sealed class SpeechLab(
                 if (take.Stage == "queued")
                 {
                     // Into the snapshot as well, so the queue shows it before its turn comes.
-                    host.UpdateSpeech(take);
+                    hub.UpdateSpeech(take);
                     _queue.Writer.TryWrite(take.Id);
                 }
                 else
@@ -204,7 +205,7 @@ public sealed class SpeechLab(
         {
             logger.LogWarning(exception, "Could not store the take {Id}", take.Id);
         }
-        host.UpdateSpeech(updated);
+        hub.UpdateSpeech(updated);
         return updated;
     }
 }

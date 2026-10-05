@@ -22,10 +22,10 @@ public static class WorkerEndpoints
 
     public static RouteGroupBuilder MapWorkerEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/status", (WorkerHost host) => host.Snapshot());
+        api.MapGet("/status", (Status.StatusHub hub) => hub.Snapshot());
         api.MapGet("/busy", Busy);
-        api.MapGet("/events", (WorkerHost host, CancellationToken cancellationToken) =>
-            TypedResults.ServerSentEvents(Stream(host, cancellationToken)));
+        api.MapGet("/events", (Status.StatusHub hub, CancellationToken cancellationToken) =>
+            TypedResults.ServerSentEvents(Stream(hub, cancellationToken)));
 
         api.MapPost("/generate", Generate);
         api.MapPost("/songs/{run}/{song}/render", Render);
@@ -166,14 +166,14 @@ public static class WorkerEndpoints
         }
     }
 
-    private static async IAsyncEnumerable<SseItem<object>> Stream(WorkerHost host, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private static async IAsyncEnumerable<SseItem<object>> Stream(Status.StatusHub hub, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        using var subscription = host.Subscribe();
+        using var subscription = hub.Subscribe();
         yield return new SseItem<object>(subscription.Snapshot, "snapshot");
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            ServerEvent? next;
+            Status.ServerEvent? next;
             using (var heartbeat = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 heartbeat.CancelAfter(Heartbeat);

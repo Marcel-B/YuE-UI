@@ -10,7 +10,7 @@ namespace YueUI.Api.Share;
 /// <see cref="Push.PushNotifier"/>; <c>afconvert</c> takes a few seconds and little memory, so it does not wait for
 /// the models.
 /// </summary>
-public sealed class StreamCopyMaker(WorkerHost host, SongLibrary library, StreamCopies streams) : BackgroundService
+public sealed class StreamCopyMaker(Status.StatusHub hub, SongLibrary library, StreamCopies streams) : BackgroundService
 {
     /// <summary>What was made, so that a fresh snapshot after a dropped subscription does not queue it again.</summary>
     private readonly HashSet<string> _made = [];
@@ -21,7 +21,7 @@ public sealed class StreamCopyMaker(WorkerHost host, SongLibrary library, Stream
         while (!stoppingToken.IsCancellationRequested)
         {
             // A dropped subscriber's channel completes; subscribing again starts from a fresh snapshot.
-            using var subscription = host.Subscribe(checkStudio: false);
+            using var subscription = hub.Subscribe(checkStudio: false);
             try
             {
                 foreach (var song in subscription.Snapshot.Songs)

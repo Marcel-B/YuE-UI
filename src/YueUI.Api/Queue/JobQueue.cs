@@ -38,6 +38,7 @@ namespace YueUI.Api.Queue;
 public sealed class JobQueue(
     SqliteJobStore store,
     WorkerHost host,
+    Status.StatusHub hub,
     LyricsWriter lyrics,
     VoiceConverter voices,
     Memory.ModelMemory memory,
@@ -517,7 +518,7 @@ public sealed class JobQueue(
         logger.LogWarning("The queued {Kind} {Id} could not start: {Message}", job.Kind, job.Id, message);
         if (job.Kind == JobKind.Lyrics)
         {
-            host.UpdateLyrics(new LyricsState { Id = job.Id, Stage = "failed", Message = message, UpdatedAt = time.GetUtcNow() });
+            hub.UpdateLyrics(new LyricsState { Id = job.Id, Stage = "failed", Message = message, UpdatedAt = time.GetUtcNow() });
         }
         else
         {
@@ -525,7 +526,7 @@ public sealed class JobQueue(
         }
     }
 
-    private void Published() => host.UpdateQueue(Jobs);
+    private void Published() => hub.UpdateQueue(Jobs);
 
     /// <summary>The queue works from memory; a database that cannot be written only costs the resumption after a restart.</summary>
     private void Persist(Action write)

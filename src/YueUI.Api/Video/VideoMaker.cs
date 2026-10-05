@@ -8,14 +8,14 @@ namespace YueUI.Api.Video;
 /// <summary>
 /// Renders music videos one at a time, in the order they were asked for. ffmpeg needs the CPU and a few hundred
 /// megabytes, not the memory the models fight over, so a video does not wait for YuE2, a draft or a voice; it only
-/// slows them down a little. Progress goes out through <see cref="WorkerHost.UpdateVideo"/>. After a restart the
+/// slows them down a little. Progress goes out through <see cref="Status.StatusHub.UpdateVideo"/>. After a restart the
 /// unfinished ones start over, since everything they need is on disk.
 /// </summary>
 public sealed class VideoMaker(
     SqliteVideoStore store,
     IVideoRenderer renderer,
     SongLibrary library,
-    WorkerHost host,
+    Status.StatusHub hub,
     TimeProvider time,
     ILogger<VideoMaker> logger) : BackgroundService
 {
@@ -42,7 +42,7 @@ public sealed class VideoMaker(
     public VideoState Enqueue(VideoState video)
     {
         store.Add(video);
-        host.UpdateVideo(video);
+        hub.UpdateVideo(video);
         _queue.Writer.TryWrite(video.Id);
         return video;
     }
@@ -58,9 +58,9 @@ public sealed class VideoMaker(
             }
         }
         store.Remove(video.Id);
-        host.LibraryChanged();
+        hub.LibraryChanged();
         // Finished ones too: an open dialog lays the stream's states over its list and would bring a done one back.
-        host.UpdateVideo(video with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+        hub.UpdateVideo(video with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -70,7 +70,7 @@ public sealed class VideoMaker(
         {
             var queued = video with { Stage = "queued", Fraction = 0, UpdatedAt = time.GetUtcNow() };
             store.Update(queued);
-            host.UpdateVideo(queued);
+            hub.UpdateVideo(queued);
             _queue.Writer.TryWrite(video.Id);
         }
         try
@@ -125,7 +125,7 @@ public sealed class VideoMaker(
                 cancel.Token);
             Save(current with { Stage = "done", Fraction = 1, Bytes = new FileInfo(store.VideoPath(video.Id)).Length });
             ReplaceOlder(video);
-            host.LibraryChanged();
+            hub.LibraryChanged();
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
         {
@@ -165,7 +165,7 @@ public sealed class VideoMaker(
                 && older.Stage is "done" or "failed")
             {
                 store.Remove(older.Id);
-                host.UpdateVideo(older with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+                hub.UpdateVideo(older with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
             }
         }
     }
@@ -176,7 +176,7 @@ public sealed class VideoMaker(
         var updated = video with { UpdatedAt = time.GetUtcNow() };
         // Gone from the database: deleted itself or with its song; the queue must not keep showing it.
         var kept = persist ? store.Update(updated) : store.Get(updated.Id) is not null;
-        host.UpdateVideo(kept ? updated : updated with { Stage = "cancelled" });
+        hub.UpdateVideo(kept ? updated : updated with { Stage = "cancelled" });
         return updated;
     }
 }

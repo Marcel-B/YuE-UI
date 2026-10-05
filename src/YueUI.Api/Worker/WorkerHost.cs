@@ -1,19 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Threading.Channels;
-using Microsoft.Extensions.Options;
 using YueUI.Api.Library;
-using YueUI.Api.Queue;
+using YueUI.Api.Status;
 using YueUI.Api.Voices;
 
 namespace YueUI.Api.Worker;
 
-/// <summary>An event for the browsers: <see cref="Type"/> becomes the SSE event name, <see cref="Data"/> its JSON.</summary>
-public sealed record ServerEvent(string Type, object Data);
-
 /// <summary>
 /// Owns the one worker process and turns its event stream into state: the songs in flight, a log, and whether the
-/// worker is up. Every change goes out to the subscribers (the browsers' event streams).
+/// worker is up. Every change goes out through <see cref="StatusHub"/>, which also builds the snapshot from its part.
 /// </summary>
 /// <remarks>
 /// The worker starts with the first command rather than with the server, so an idle server costs nothing; the
@@ -25,15 +20,14 @@ public sealed class WorkerHost(
     IWorkerLauncher launcher,
     SongLibrary library,
     IStudioDetector studio,
-    IOptions<QueueOptions> queueOptions,
+    StatusHub hub,
     TimeProvider time,
     Logs.LogStore logs,
-    ILogger<WorkerHost> logger) : IHostedService, IAsyncDisposable
+    ILogger<WorkerHost> logger) : IHostedService, IAsyncDisposable, IWorkerStatus
 {
     private const int LogCapacity = 300;
     private const int FinishedCapacity = 30;
     private const int FinishedTranscriptionCapacity = 5;
-    private const int SubscriberCapacity = 1000;
 
     /// <summary>The worker reports progress for every step; browsers (phones on mobile data) need far fewer.</summary>
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(300);
@@ -50,13 +44,6 @@ public sealed class WorkerHost(
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private readonly Dictionary<string, SongState> _songs = [];
     private readonly Dictionary<string, TranscriptionState> _transcriptions = [];
-    private readonly Dictionary<string, VersionState> _versions = [];
-    private readonly Dictionary<string, StemSetState> _stems = [];
-    private readonly Dictionary<string, SwapState> _swaps = [];
-    private readonly Dictionary<string, Video.VideoState> _videos = [];
-    private readonly Dictionary<string, Images.ImageState> _images = [];
-    /// <summary>The speech lab's takes in the works, in the order they are spoken (a list, since several share a time).</summary>
-    private readonly List<Speech.SpeechTake> _speech = [];
     private readonly Dictionary<string, DateTimeOffset> _lastProgress = [];
     /// <summary>Songs a render was asked for and that have not started yet; the worker's started event does not say.</summary>
     private readonly HashSet<string> _renders = [];
@@ -73,39 +60,34 @@ public sealed class WorkerHost(
     /// </summary>
     private readonly Dictionary<string, JsonObject> _requests = [];
     private readonly LinkedList<LogEntry> _log = [];
-    private readonly List<Channel<ServerEvent>> _subscribers = [];
     private IWorkerConnection? _connection;
     private WorkerStatus _status = WorkerStatus.Stopped;
     private string? _lastError;
     private bool? _extensions;
-    private LyricsState? _lyrics;
-    private IReadOnlyList<QueuedJob> _queue = [];
-    private MemoryInfo _memory = new(null);
     private bool _studioRunning;
     private DateTimeOffset _studioCheckedAt = DateTimeOffset.MinValue;
 
-    public StatusSnapshot Snapshot()
+    /// <summary>The worker's state, for those that only need that (the snapshot's <see cref="StatusSnapshot.Worker"/>).</summary>
+    public WorkerInfo Info()
     {
         var studioRunning = StudioRunning();
         lock (_gate)
         {
-            return SnapshotLocked(studioRunning);
+            return WorkerInfoLocked(studioRunning);
         }
     }
 
-    /// <summary>A snapshot and every change after it, with nothing lost in between. Dispose to unsubscribe.</summary>
-    /// <param name="checkStudio">
-    /// False for subscribers that do not show whether YuE Studio runs (push notifications): the snapshot then carries
-    /// the last known answer instead of scanning the process table, whose result would be kept for the next browser.
-    /// </param>
-    public Subscription Subscribe(bool checkStudio = true)
+    public void CheckStudio() => StudioRunning();
+
+    public WorkerPart Part()
     {
-        var channel = Channel.CreateBounded<ServerEvent>(new BoundedChannelOptions(SubscriberCapacity) { SingleReader = true });
-        var studioRunning = checkStudio ? StudioRunning() : _studioRunning;
         lock (_gate)
         {
-            _subscribers.Add(channel);
-            return new Subscription(SnapshotLocked(studioRunning), channel.Reader, () => Unsubscribe(channel));
+            return new WorkerPart(
+                WorkerInfoLocked(_studioRunning),
+                [.. _songs.Values.OrderBy(s => s.Run, StringComparer.Ordinal).ThenBy(s => s.Index)],
+                [.. _log],
+                [.. _transcriptions.Values.OrderBy(t => t.UpdatedAt)]);
         }
     }
 
@@ -289,9 +271,6 @@ public sealed class WorkerHost(
         }
     }
 
-    /// <summary>Tells the browsers that songs were deleted, so that every open library reloads.</summary>
-    public void LibraryChanged() => Publish("library", new { });
-
     /// <summary>The queue shows the run's songs by their new title too; then every browser reloads the library.</summary>
     public void RunRenamed(string run, string title)
     {
@@ -308,151 +287,11 @@ public sealed class WorkerHost(
         {
             Publish("song", song);
         }
-        LibraryChanged();
-    }
-
-    /// <summary>Keeps the lyrics draft for the snapshot of browsers that connect later, and sends it to the others.</summary>
-    public void UpdateLyrics(LyricsState lyrics)
-    {
-        lock (_gate)
-        {
-            _lyrics = lyrics;
-        }
-        Publish("lyrics", lyrics);
-    }
-
-    /// <summary>Keeps the jobs waiting in <see cref="JobQueue"/> for the snapshot and sends them to the browsers.</summary>
-    public void UpdateQueue(IReadOnlyList<QueuedJob> queue)
-    {
-        lock (_gate)
-        {
-            _queue = queue;
-        }
-        Publish("queue", queue);
-    }
-
-    /// <summary>Keeps which large model holds the memory (<see cref="Memory.ModelMemory"/>) for the snapshot and sends it to the browsers.</summary>
-    public void UpdateMemory(Memory.LargeModel? holder)
-    {
-        var memory = new MemoryInfo(holder);
-        lock (_gate)
-        {
-            _memory = memory;
-        }
-        Publish("memory", memory);
+        hub.LibraryChanged();
     }
 
     /// <summary>Something went wrong outside the worker that the queue's log should show, e.g. a queued song that could not start.</summary>
     public void LogError(string message) => AddLog("error", message);
-
-    /// <summary>
-    /// Keeps a song's version in the works (Voices/VoiceConverter.cs) for the snapshot and sends it to the browsers; a
-    /// finished one leaves the snapshot with the next, since the library lists it from then on.
-    /// </summary>
-    public void UpdateVersion(VersionState version)
-    {
-        lock (_gate)
-        {
-            foreach (var old in _versions.Values.Where(v => v.Finished).ToList())
-            {
-                _versions.Remove(old.Id);
-            }
-            _versions[version.Id] = version;
-        }
-        Publish("version", version);
-    }
-
-    /// <summary>
-    /// Keeps a song's stems in the works (Voices/VoiceConverter.cs) for the snapshot and sends them to the browsers; a
-    /// finished set leaves the snapshot with the next, since the voices page lists it from then on.
-    /// </summary>
-    public void UpdateStems(StemSetState set)
-    {
-        lock (_gate)
-        {
-            foreach (var old in _stems.Values.Where(s => s.Finished).ToList())
-            {
-                _stems.Remove(old.Id);
-            }
-            _stems[set.Id] = set;
-        }
-        Publish("stems", set);
-    }
-
-    /// <summary>
-    /// Keeps an uploaded recording being sung with another voice (Voices/VoiceConverter.cs) for the snapshot and sends it
-    /// to the browsers; a finished one leaves the snapshot with the next, since the voices page lists it from then on.
-    /// </summary>
-    public void UpdateSwap(SwapState swap)
-    {
-        lock (_gate)
-        {
-            foreach (var old in _swaps.Values.Where(s => s.Finished).ToList())
-            {
-                _swaps.Remove(old.Id);
-            }
-            _swaps[swap.Id] = swap;
-        }
-        Publish("swap", swap);
-    }
-
-    /// <summary>
-    /// Keeps a music video (Video/VideoMaker.cs) for the snapshot, so the queue page shows it after a reload, and sends
-    /// it to the browsers; a finished one leaves the snapshot with the next, since the song's video dialog lists it.
-    /// </summary>
-    public void UpdateVideo(Video.VideoState video)
-    {
-        lock (_gate)
-        {
-            foreach (var old in _videos.Values.Where(v => v.Finished).ToList())
-            {
-                _videos.Remove(old.Id);
-            }
-            _videos[video.Id] = video;
-        }
-        Publish("video", video);
-    }
-
-    /// <summary>
-    /// Keeps a cover picture in the works (Images/ImageMaker.cs) for the snapshot, so the queue page shows what holds or
-    /// waits for the memory after a reload, and sends it to the browsers; a finished one leaves the snapshot with the
-    /// next, since the song's cover dialog lists it.
-    /// </summary>
-    public void UpdateImage(Images.ImageState image)
-    {
-        lock (_gate)
-        {
-            foreach (var old in _images.Values.Where(i => i.Finished).ToList())
-            {
-                _images.Remove(old.Id);
-            }
-            _images[image.Id] = image;
-        }
-        Publish("image", image);
-    }
-
-    /// <summary>
-    /// Keeps a take of the speech lab (Speech/SpeechLab.cs) for the snapshot, so the queue shows what holds or waits for
-    /// the memory after a reload, and sends it to the browsers; a finished take leaves the snapshot with the next change,
-    /// since the lab page lists it from then on.
-    /// </summary>
-    public void UpdateSpeech(Speech.SpeechTake take)
-    {
-        lock (_gate)
-        {
-            _speech.RemoveAll(other => other.Finished && other.Id != take.Id);
-            var index = _speech.FindIndex(other => other.Id == take.Id);
-            if (index >= 0)
-            {
-                _speech[index] = take;
-            }
-            else
-            {
-                _speech.Add(take);
-            }
-        }
-        Publish("speech", take);
-    }
 
     /// <summary>Cancels every song. Does not start a worker just for that.</summary>
     public async Task StopAllAsync(CancellationToken cancellationToken)
@@ -661,7 +500,7 @@ public sealed class WorkerHost(
                     Quality = Text(message["quality"]),
                     Engine = Text(message["engine"]) ?? song.Engine,
                 });
-                Publish("library", new { });
+                hub.LibraryChanged();
                 break;
             case "failed":
                 lock (_gate)
@@ -904,46 +743,7 @@ public sealed class WorkerHost(
         Publish("worker", info);
     }
 
-    private void Publish(string type, object data)
-    {
-        var item = new ServerEvent(type, data);
-        lock (_gate)
-        {
-            foreach (var subscriber in _subscribers)
-            {
-                // A browser that stopped reading is dropped; its EventSource reconnects and starts from a fresh snapshot.
-                if (!subscriber.Writer.TryWrite(item))
-                {
-                    subscriber.Writer.TryComplete();
-                }
-            }
-        }
-    }
-
-    private void Unsubscribe(Channel<ServerEvent> channel)
-    {
-        lock (_gate)
-        {
-            _subscribers.Remove(channel);
-        }
-        channel.Writer.TryComplete();
-    }
-
-    private StatusSnapshot SnapshotLocked(bool studioRunning) => new(
-        WorkerInfoLocked(studioRunning),
-        [.. _songs.Values.OrderBy(s => s.Run, StringComparer.Ordinal).ThenBy(s => s.Index)],
-        [.. _log],
-        [.. _transcriptions.Values.OrderBy(t => t.UpdatedAt)],
-        _lyrics,
-        [.. _versions.Values.OrderBy(v => v.CreatedAt)],
-        _queue,
-        queueOptions.Value.BundleWindow.TotalSeconds,
-        [.. _stems.Values.OrderBy(s => s.CreatedAt)],
-        [.. _speech],
-        [.. _swaps.Values.OrderBy(s => s.CreatedAt)],
-        [.. _videos.Values.OrderBy(v => v.CreatedAt)],
-        [.. _images.Values.OrderBy(i => i.CreatedAt)],
-        _memory);
+    private void Publish(string type, object data) => hub.Publish(type, data);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);
@@ -984,14 +784,5 @@ public sealed class WorkerHost(
         {
             await connection.DisposeAsync();
         }
-    }
-
-    public sealed class Subscription(StatusSnapshot snapshot, ChannelReader<ServerEvent> reader, Action unsubscribe) : IDisposable
-    {
-        public StatusSnapshot Snapshot { get; } = snapshot;
-
-        public ChannelReader<ServerEvent> Reader { get; } = reader;
-
-        public void Dispose() => unsubscribe();
     }
 }

@@ -22,6 +22,7 @@ public sealed class ImageMaker(
     IImageEngine engine,
     ModelMemory memory,
     WorkerHost host,
+    Status.StatusHub hub,
     IOptions<ImageOptions> options,
     TimeProvider time,
     ILogger<ImageMaker> logger) : BackgroundService
@@ -90,7 +91,7 @@ public sealed class ImageMaker(
             _images.Remove(image.Id);
         }
         DeleteFiles(image.Id);
-        host.UpdateImage(image with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+        hub.UpdateImage(image with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
     }
 
     /// <summary>Every candidate of the run's songs, or of one song, when they are deleted.</summary>
@@ -273,7 +274,7 @@ public sealed class ImageMaker(
             {
                 _images[updated.Id] = updated;
             }
-            host.UpdateImage(updated);
+            hub.UpdateImage(updated);
         }
         return updated;
     }
@@ -295,7 +296,7 @@ public sealed class ImageMaker(
         {
             logger.LogWarning(exception, "Could not store the picture {Id}", image.Id);
         }
-        host.UpdateImage(image);
+        hub.UpdateImage(image);
     }
 
     private void DeleteFiles(string id)

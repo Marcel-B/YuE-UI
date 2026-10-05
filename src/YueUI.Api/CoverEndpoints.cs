@@ -16,13 +16,13 @@ public static class CoverEndpoints
                 ? Results.File(cover.Path, cover.ContentType, lastModified: cover.UpdatedAt)
                 : Results.NotFound());
         api.MapPut("/songs/{run}/{song}/cover", PutAsync).DisableAntiforgery();
-        api.MapDelete("/songs/{run}/{song}/cover", (string run, string song, SongLibrary library, WorkerHost host) =>
+        api.MapDelete("/songs/{run}/{song}/cover", (string run, string song, SongLibrary library, Status.StatusHub hub) =>
         {
             if (!library.SetCover(run, song, null))
             {
                 return Results.NotFound();
             }
-            host.LibraryChanged();
+            hub.LibraryChanged();
             return Results.NoContent();
         });
         return api;
@@ -30,7 +30,7 @@ public static class CoverEndpoints
 
     /// <summary>Every open browser reloads its library, so the phone and the Mac show the same cover.</summary>
     private static async Task<IResult> PutAsync(
-        string run, string song, IFormFile? cover, SongLibrary library, WorkerHost host, CancellationToken cancellationToken)
+        string run, string song, IFormFile? cover, SongLibrary library, Status.StatusHub hub, CancellationToken cancellationToken)
     {
         if (library.SongDirectory(run, song) is null)
         {
@@ -44,7 +44,7 @@ public static class CoverEndpoints
             });
         }
         library.SetCover(run, song, image);
-        host.LibraryChanged();
+        hub.LibraryChanged();
         return Results.NoContent();
     }
 }

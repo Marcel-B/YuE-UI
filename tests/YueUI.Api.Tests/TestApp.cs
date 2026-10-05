@@ -268,7 +268,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
     }
 
     /// <summary>The state as the browsers get it, without a round trip (for checks right after a request).</summary>
-    public StatusSnapshot Snapshot() => Services.GetRequiredService<WorkerHost>().Snapshot();
+    public StatusSnapshot Snapshot() => Services.GetRequiredService<YueUI.Api.Status.StatusHub>().Snapshot();
 
     public string AudioPath(string run, string song) => Path.Combine(OutputDir, run, song, "audio.flac");
 }
