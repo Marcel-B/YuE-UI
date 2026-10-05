@@ -38,6 +38,7 @@ import type {
   VideoState,
   ImageInfo,
   ImageState,
+  MemoryInfo,
   VoiceInfo,
   WorkerInfo,
 } from './types'
@@ -716,6 +717,8 @@ export interface EventHandlers {
   /** A painted cover candidate changed; a deleted one arrives as cancelled. */
   image(image: ImageState): void
   queue(queue: QueuedJob[]): void
+  /** Another large model took the memory, or gave it back. */
+  memory(memory: MemoryInfo): void
   /** False while the stream is down; the browser reconnects by itself and a new snapshot follows. */
   connection(open: boolean): void
 }
@@ -743,6 +746,7 @@ export function subscribe(handlers: EventHandlers): () => void {
   on<SpeechTake>('speech', handlers.speech)
   on<VideoState>('video', handlers.video)
   on<ImageState>('image', handlers.image)
+  on<MemoryInfo>('memory', handlers.memory)
   source.onerror = () => handlers.connection(false)
   return () => source.close()
 }

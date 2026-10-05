@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
+using YueUI.Api.Memory;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Lyrics;
@@ -27,6 +28,7 @@ public sealed partial class LyricsWriter(
     IOptions<LyricsOptions> options,
     ILmStudioStarter starter,
     WorkerHost worker,
+    ModelMemory memory,
     TimeProvider time,
     ILogger<LyricsWriter> logger)
 {
@@ -73,10 +75,8 @@ public sealed partial class LyricsWriter(
     /// </summary>
     private const int ImageTokens = 1536;
 
-    private readonly SemaphoreSlim _gate = new(1, 1);
-
     /// <summary>A draft is in progress, so the lyrics model may be in memory: no song should start now.</summary>
-    public bool IsWriting => _gate.CurrentCount == 0;
+    public bool IsWriting => memory.Holds(LargeModel.Lyrics);
 
     /// <summary>
     /// Starts a draft in the background; its progress and result arrive as <c>lyrics</c> events (see
@@ -86,11 +86,7 @@ public sealed partial class LyricsWriter(
     /// <param name="image">A photo as a <c>data:image/…;base64,</c> URL for a model that can see; the lyrics are about it.</param>
     /// <param name="revision">Lyrics to change as instructed, instead of new ones.</param>
     /// <param name="id">The id the draft was promised under while it waited in the queue; a new one otherwise.</param>
-    /// <param name="memoryTaken">
-    /// Whatever else holds the memory besides YuE2 (a voice conversion or a speech take, which cannot be asked from here without a
-    /// dependency cycle); checked once this draft has claimed it.
-    /// </param>
-    /// <exception cref="LyricsBusyException">Another draft is in progress, or YuE2 is generating.</exception>
+    /// <exception cref="LyricsBusyException">Another draft is in progress, YuE2 is generating, or another model holds the memory.</exception>
     public LyricsState Start(
         string? keywords,
         string? style,
@@ -98,29 +94,17 @@ public sealed partial class LyricsWriter(
         string? model = null,
         string? image = null,
         LyricsRevision? revision = null,
-        string? id = null,
-        Func<bool>? memoryTaken = null)
+        string? id = null)
     {
-        if (!_gate.Wait(0))
+        // From here on no song can start (see IsWriting).
+        if (!memory.TryClaim(LargeModel.Lyrics))
         {
-            throw new LyricsBusyException("Lyrics are already being written.");
-        }
-        // Checked inside the gate: from here on no song can start (see IsWriting).
-        if (worker.IsBusy)
-        {
-            _gate.Release();
-            throw new LyricsBusyException("YuE2 is generating; the lyrics model would not fit into memory beside it.");
-        }
-        // The worker is shut down below to make room; a transcription in it would end with it.
-        if (worker.IsTranscribing)
-        {
-            _gate.Release();
-            throw new LyricsBusyException("A transcription is running in the worker.");
-        }
-        if (memoryTaken?.Invoke() == true)
-        {
-            _gate.Release();
-            throw new LyricsBusyException("Another model holds the memory.");
+            throw new LyricsBusyException(
+                IsWriting ? "Lyrics are already being written."
+                : worker.IsBusy ? "YuE2 is generating; the lyrics model would not fit into memory beside it."
+                // The worker is shut down below to make room; a transcription in it would end with it.
+                : worker.IsTranscribing ? "A transcription is running in the worker."
+                : "Another model holds the memory.");
         }
         var state = new LyricsState { Id = id ?? NewId(), UpdatedAt = time.GetUtcNow() };
         worker.UpdateLyrics(state);
@@ -154,7 +138,7 @@ public sealed partial class LyricsWriter(
         finally
         {
             // Before the result goes out, so that a song started in answer to it is not refused.
-            _gate.Release();
+            memory.Release(LargeModel.Lyrics);
         }
         worker.UpdateLyrics(result with { UpdatedAt = time.GetUtcNow() });
     }

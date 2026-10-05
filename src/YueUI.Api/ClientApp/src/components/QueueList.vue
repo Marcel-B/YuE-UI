@@ -31,6 +31,7 @@ import type {
   VersionState,
   VideoState,
   ImageState,
+  LargeModel,
   WorkerInfo,
 } from '../types'
 
@@ -42,6 +43,8 @@ const props = defineProps<{
   jobs: QueuedJob[]
   worker: WorkerInfo
   lyricsDraft: LyricsState | null
+  /** The large model besides YuE2 that holds the memory, as the server says. */
+  memory: LargeModel | null
   versions: VersionState[]
   /** Songs being split into stems; they share the voices' queue and memory. */
   stems: StemSetState[]
@@ -113,9 +116,7 @@ const timer = setInterval(() => (now.value = Date.now()), 15_000)
 onBeforeUnmount(() => clearInterval(timer))
 
 const voiceWork = computed(() => [...props.versions, ...props.stems, ...props.swaps])
-const holder = computed(() =>
-  holderOf(props.worker, props.lyricsDraft, voiceWork.value, props.takes, props.transcriptions, props.images),
-)
+const holder = computed(() => holderOf(props.worker, props.memory, props.transcriptions))
 
 /** The one transcription in the worker (SheetSage2 takes one at a time). */
 const runningTranscription = computed(() => props.transcriptions.find((tr) => !tr.finished) ?? null)
@@ -332,6 +333,7 @@ watch(
       :jobs="jobs"
       :worker="worker"
       :lyrics-draft="lyricsDraft"
+      :memory="memory"
       :versions="voiceWork"
       :takes="takes"
       :transcriptions="transcriptions"

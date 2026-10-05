@@ -1,5 +1,5 @@
 import { formatDuration, t } from './i18n'
-import type { ImageState, LyricsState, QueuedJob, SpeechTake, TranscriptionState, WorkerInfo } from './types'
+import type { LargeModel, QueuedJob, TranscriptionState, WorkerInfo } from './types'
 
 /**
  * The large models that take turns in the memory (Queue/JobQueue.cs): YuE2 for songs and renders, the lyrics model in
@@ -28,36 +28,20 @@ export interface VoiceWork {
   finished: boolean
 }
 
-/** A take of the speech lab that is loading its model or speaking holds the memory (Speech/SpeechLab.cs). */
-export function speaking(takes: SpeechTake[]): boolean {
-  return takes.some((take) => take.stage === 'loading' || take.stage === 'speaking')
-}
+/** The server's name for each large model besides YuE2 (Memory/ModelMemory.cs), as the queue's tiles name them. */
+const largeModels: Record<LargeModel, Model> = { lyrics: 'lyrics', voices: 'voice', speech: 'speech', images: 'image' }
 
-/** A cover that is loading its model or being painted holds the memory (ImageActivity.IsPainting). */
-export function painting(images: ImageState[]): boolean {
-  return images.some((image) => image.stage === 'loading' || image.stage === 'painting')
-}
-
-/** Which model holds the memory now, or null while none works. */
+/**
+ * Which model holds the memory now, or null while none works. The server decides it for the large models besides
+ * YuE2 (ModelMemory), so nothing here guesses it from their stages; YuE2 and a transcription come from the worker.
+ */
 export function holderOf(
   worker: WorkerInfo,
-  lyrics: LyricsState | null,
-  versions: VoiceWork[],
-  takes: SpeechTake[] = [],
+  memory: LargeModel | null,
   transcriptions: TranscriptionState[] = [],
-  images: ImageState[] = [],
 ): Model | null {
-  if (speaking(takes)) {
-    return 'speech'
-  }
-  if (painting(images)) {
-    return 'image'
-  }
-  if (lyrics?.stage === 'writing') {
-    return 'lyrics'
-  }
-  if (versions.some((v) => !v.finished && v.stage !== 'queued')) {
-    return 'voice'
+  if (memory !== null) {
+    return largeModels[memory]
   }
   if (worker.busy) {
     return 'yue'
@@ -83,11 +67,11 @@ export function waitReason(
 ): string {
   const job = jobs[index]!
   if (holder === 'speech') {
-    // While a take speaks, JobQueue starts nothing (SpeechActivity.IsSpeaking).
+    // While a take speaks, JobQueue starts nothing (ModelMemory).
     return t('waitSpeech')
   }
   if (holder === 'image') {
-    // Likewise while a cover is painted (ImageActivity.IsPainting).
+    // Likewise while a cover is painted.
     return t('waitImage')
   }
   const left = (since: string) => (windowSeconds ?? 0) - (now - new Date(since).getTime()) / 1000

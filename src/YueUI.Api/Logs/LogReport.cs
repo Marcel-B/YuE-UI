@@ -19,11 +19,8 @@ namespace YueUI.Api.Logs;
 public sealed class LogReport(
     LogStore store,
     WorkerHost worker,
-    LyricsWriter lyrics,
-    VoiceConverter voices,
-    SpeechActivity speech,
+    Memory.ModelMemory memory,
     Video.VideoMaker videos,
-    Images.ImageActivity images,
     YuePaths paths,
     IOptions<VoiceOptions> voiceOptions,
     IOptions<SpeechOptions> speechOptions,
@@ -63,7 +60,7 @@ public sealed class LogReport(
             + $"speech lab {(File.Exists(speechOptions.Value.ResolvedPython) ? "installed" : "missing")}, "
             + $"images {(File.Exists(imageOptions.Value.ResolvedPython) ? "installed" : "missing")}, "
             + $"SheetSage2 {(paths.SheetSageInstalled ? "installed" : "missing")}, YuE2 worker {(File.Exists(paths.WorkerScript) ? "installed" : "missing")}");
-        var busy = WorkerEndpoints.Busy(worker, lyrics, voices, speech, videos, images);
+        var busy = WorkerEndpoints.Busy(worker, memory, videos);
         text.AppendLine($"Busy: {(busy.Busy ? string.Join(", ", busy.Reasons) : "no")}");
         text.AppendLine();
 

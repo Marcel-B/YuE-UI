@@ -28,9 +28,7 @@ public sealed class VoiceConverter(
     SqliteSwapStore swapStore,
     SongLibrary library,
     WorkerHost host,
-    LyricsWriter lyrics,
-    Speech.SpeechActivity speech,
-    Images.ImageActivity images,
+    Memory.ModelMemory memory,
     VoiceEngine voices,
     StemSeparator stems,
     IAudioMixer mixer,
@@ -51,10 +49,9 @@ public sealed class VoiceConverter(
     private readonly Lock _gate = new();
     private string? _running;
     private CancellationTokenSource? _cancel;
-    private volatile bool _converting;
 
     /// <summary>A separation or conversion holds the memory; YuE2 and the lyrics model have to wait.</summary>
-    public bool IsConverting => _converting;
+    public bool IsConverting => memory.Holds(Memory.LargeModel.Voices);
 
     /// <summary>
     /// When the version next in line was asked for, while it waits for the memory; null when none waits. The queue
@@ -245,7 +242,7 @@ public sealed class VoiceConverter(
             Interlocked.Exchange(ref _waitingTicks, version.CreatedAt.UtcTicks);
             try
             {
-                await WaitForMemoryAsync(cancel.Token);
+                await memory.ClaimAsync(Memory.LargeModel.Voices, options.Value.WaitInterval, time, cancel.Token);
             }
             finally
             {
@@ -299,7 +296,7 @@ public sealed class VoiceConverter(
         }
         finally
         {
-            _converting = false;
+            memory.Release(Memory.LargeModel.Voices);
             lock (_gate)
             {
                 _running = null;
@@ -345,7 +342,7 @@ public sealed class VoiceConverter(
             Interlocked.Exchange(ref _waitingTicks, set.CreatedAt.UtcTicks);
             try
             {
-                await WaitForMemoryAsync(cancel.Token);
+                await memory.ClaimAsync(Memory.LargeModel.Voices, options.Value.WaitInterval, time, cancel.Token);
             }
             finally
             {
@@ -377,7 +374,7 @@ public sealed class VoiceConverter(
                 throw new VoiceServiceException($"The separation model {set.Model} gave no stems.");
             }
             // The model has left the memory; measuring and encoding need none to speak of.
-            _converting = false;
+            memory.Release(Memory.LargeModel.Voices);
 
             var measured = files.Select(file => (File: file, Read: WavPeaks.Read(file, PeakCount))).ToList();
             // One scale for the whole set, so a quiet stem (the reverb) also looks quiet beside the others.
@@ -434,7 +431,7 @@ public sealed class VoiceConverter(
         }
         finally
         {
-            _converting = false;
+            memory.Release(Memory.LargeModel.Voices);
             lock (_gate)
             {
                 _running = null;
@@ -467,7 +464,7 @@ public sealed class VoiceConverter(
             Interlocked.Exchange(ref _waitingTicks, swap.CreatedAt.UtcTicks);
             try
             {
-                await WaitForMemoryAsync(cancel.Token);
+                await memory.ClaimAsync(Memory.LargeModel.Voices, options.Value.WaitInterval, time, cancel.Token);
             }
             finally
             {
@@ -504,7 +501,7 @@ public sealed class VoiceConverter(
                 await mixer.DecodeAsync(source, vocals, cancel.Token);
                 swap = UpdateSwap(swap, s => s with { Stage = "converting", Fraction = 0 });
                 await voices.ConvertAsync(swap.Conversion, vocals, converted, Progress, cancel.Token);
-                _converting = false;
+                memory.Release(Memory.LargeModel.Voices);
                 await mixer.EncodeFlacAsync(converted, result, cancel.Token);
             }
 
@@ -530,7 +527,7 @@ public sealed class VoiceConverter(
         }
         finally
         {
-            _converting = false;
+            memory.Release(Memory.LargeModel.Voices);
             lock (_gate)
             {
                 _running = null;
@@ -603,26 +600,6 @@ public sealed class VoiceConverter(
         }
         host.UpdateStems(updated);
         return updated;
-    }
-
-    /// <summary>Checked again once <see cref="IsConverting"/> is set, so a song sent in between is not overlooked.</summary>
-    private async Task WaitForMemoryAsync(CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            if (!Occupied())
-            {
-                _converting = true;
-                if (!Occupied())
-                {
-                    return;
-                }
-                _converting = false;
-            }
-            await Task.Delay(options.Value.WaitInterval, time, cancellationToken);
-        }
-
-        bool Occupied() => host.InUse || lyrics.IsWriting || speech.IsSpeaking || images.IsPainting;
     }
 
     /// <summary>Stores the change (a version deleted meanwhile stays deleted) and tells the browsers.</summary>

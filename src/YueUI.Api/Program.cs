@@ -35,6 +35,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 // One worker for the whole server; as a hosted service it is asked to quit (and free its memory) on shutdown.
 builder.Services.AddSingleton<WorkerHost>();
 builder.Services.AddHostedService(services => services.GetRequiredService<WorkerHost>());
+// Which large model holds the memory; on 24 GB they take turns (Memory/ModelMemory.cs).
+builder.Services.AddSingleton<YueUI.Api.Memory.ModelMemory>();
 // Lyrics drafts from LM Studio; loading a 15 GB model and writing take far longer than HttpClient's 100 s default allows for.
 builder.Services.Configure<LyricsOptions>(builder.Configuration.GetSection(LyricsOptions.Section));
 builder.Services.AddSingleton<ILmStudioStarter, LmsCli>();
@@ -100,13 +102,11 @@ builder.Services.AddHostedService(services => services.GetRequiredService<VideoM
 
 // The speech lab: text spoken by local models (mlx-audio in its own Python environment), one take at a time.
 builder.Services.Configure<SpeechOptions>(builder.Configuration.GetSection(SpeechOptions.Section));
-builder.Services.AddSingleton<SpeechActivity>();
 builder.Services.AddSingleton<SqliteSpeechStore>();
 builder.Services.AddSingleton<ISpeechEngine, MlxAudioEngine>();
 builder.Services.AddSingleton<SpeechLab>();
 builder.Services.AddHostedService(services => services.GetRequiredService<SpeechLab>());
 builder.Services.Configure<ImageOptions>(builder.Configuration.GetSection(ImageOptions.Section));
-builder.Services.AddSingleton<ImageActivity>();
 builder.Services.AddSingleton<IImageEngine, MfluxEngine>();
 builder.Services.AddSingleton<ImageMaker>();
 builder.Services.AddHostedService(services => services.GetRequiredService<ImageMaker>());

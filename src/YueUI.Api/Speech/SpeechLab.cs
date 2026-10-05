@@ -1,27 +1,10 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using YueUI.Api.Data;
-using YueUI.Api.Lyrics;
-using YueUI.Api.Voices;
+using YueUI.Api.Memory;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Speech;
-
-/// <summary>
-/// Whether a speech model holds the memory. A class of its own rather than a property of <see cref="SpeechLab"/>:
-/// the voice converter has to see it, and the lab has to see the converter.
-/// </summary>
-public sealed class SpeechActivity
-{
-    private volatile bool _speaking;
-
-    /// <summary>YuE2, the lyrics model and voice conversions wait while it is set.</summary>
-    public bool IsSpeaking
-    {
-        get => _speaking;
-        internal set => _speaking = value;
-    }
-}
 
 /// <summary>
 /// The speech lab's takes, spoken one at a time: a text, a model and optionally a recorded voice to clone
@@ -30,18 +13,14 @@ public sealed class SpeechActivity
 /// <remarks>
 /// A speech model is 3 to 17 GB, so it follows the rule the lyrics writer and the voice converter follow on 24 GB:
 /// a take waits while songs are generated, lyrics written or a song sung with another voice, an idle YuE worker is
-/// shut down first, and while <see cref="SpeechActivity.IsSpeaking"/> the others wait. The flag is taken before
-/// looking, as they do, so two sides never both see the memory free. Takes are not in <c>JobQueue</c>: a take is short,
-/// and the lab lists its own. Queued takes survive a restart; one that was halfway is marked failed.
+/// shut down first, and while it holds the memory (<see cref="ModelMemory"/>) the others wait. Takes are not in
+/// <c>JobQueue</c>: a take is short, and the lab lists its own. Queued takes survive a restart; one that was halfway is marked failed.
 /// </remarks>
 public sealed class SpeechLab(
     SqliteSpeechStore store,
     ISpeechEngine engine,
-    SpeechActivity activity,
+    ModelMemory memory,
     WorkerHost host,
-    LyricsWriter lyrics,
-    VoiceConverter voices,
-    Images.ImageActivity images,
     IOptions<SpeechOptions> options,
     TimeProvider time,
     ILogger<SpeechLab> logger) : BackgroundService
@@ -146,7 +125,7 @@ public sealed class SpeechLab(
                 ?? throw new SpeechException($"The model {take.ModelId} is no longer offered.");
             var voice = take.VoiceId is { } voiceId ? store.Voice(voiceId) ?? throw new SpeechException("The recorded voice is gone.") : null;
 
-            await WaitForMemoryAsync(cancel.Token);
+            await memory.ClaimAsync(LargeModel.Speech, options.Value.WaitInterval, time, cancel.Token);
             // YuE2 keeps its model for ten idle minutes; the speech model needs the memory now.
             await host.ShutdownWorkerAsync();
 
@@ -190,7 +169,7 @@ public sealed class SpeechLab(
         }
         finally
         {
-            activity.IsSpeaking = false;
+            memory.Release(LargeModel.Speech);
             lock (_gate)
             {
                 _running = null;
@@ -208,26 +187,6 @@ public sealed class SpeechLab(
                 logger.LogWarning(exception, "Could not delete {Directory}", work);
             }
         }
-    }
-
-    /// <summary>Checked again once the flag is set, so a song or a version started in between is not overlooked.</summary>
-    private async Task WaitForMemoryAsync(CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            if (!Occupied())
-            {
-                activity.IsSpeaking = true;
-                if (!Occupied())
-                {
-                    return;
-                }
-                activity.IsSpeaking = false;
-            }
-            await Task.Delay(options.Value.WaitInterval, time, cancellationToken);
-        }
-
-        bool Occupied() => host.InUse || lyrics.IsWriting || voices.IsConverting || images.IsPainting;
     }
 
     /// <summary>Stores the change (a take deleted meanwhile stays deleted) and tells the browsers.</summary>
