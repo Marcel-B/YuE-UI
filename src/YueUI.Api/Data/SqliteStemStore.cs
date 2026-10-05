@@ -15,6 +15,10 @@ public sealed class SqliteStemStore(SqliteDatabase database)
 
     public string Folder(string id) => Path.Combine(database.Directory, "stems", id);
 
+    /// <summary>An upload waiting to be separated (<c>source</c> with the ending it came with), or null.</summary>
+    public string? SourcePath(string id) =>
+        Directory.Exists(Folder(id)) ? Directory.EnumerateFiles(Folder(id), "source*").FirstOrDefault() : null;
+
     /// <summary>The stored file of a stem, or null for a name the set does not have.</summary>
     public string? FilePath(StemSetState set, string name) =>
         set.Stems.FirstOrDefault(s => s.Name == name) is { } stem ? Path.Combine(Folder(set.Id), stem.File) : null;

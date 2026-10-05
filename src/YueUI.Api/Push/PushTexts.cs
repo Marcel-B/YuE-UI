@@ -38,7 +38,9 @@ public static class PushTexts
     public static (string Title, string Body) Stems(StemSetState set, string language)
     {
         var de = IsGerman(language);
-        var which = $"{(string.IsNullOrWhiteSpace(set.Title) ? set.Run : set.Title)} · {set.Song.Replace("song", "Song ", StringComparison.Ordinal)}";
+        var which = set.Upload
+            ? set.Title
+            : $"{(string.IsNullOrWhiteSpace(set.Title) ? set.Run : set.Title)} · {set.Song.Replace("song", "Song ", StringComparison.Ordinal)}";
         return set.Stage == "done"
             ? (de ? "Stems fertig" : "Stems ready", which)
             : (de ? "Stems fehlgeschlagen" : "Stems failed", WithMessage(which, set.Message));

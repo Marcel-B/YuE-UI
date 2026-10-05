@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import Checkbox from 'primevue/checkbox'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { deleteStems, listStemModels, listStems, separateSong, stemAudioUrl, stemToMidi, type MidiTrack } from '../api'
+import {
+  deleteStems,
+  listStemModels,
+  listStems,
+  separateFile,
+  separateSong,
+  stemAudioUrl,
+  stemToMidi,
+  type MidiTrack,
+} from '../api'
 import { loadMidiInfo, midiInfo, midiSettings } from '../audioMidi'
 import { formatDateTime, formatDuration, hasMessage, t } from '../i18n'
 import { playing as songPlaying, toggle as toggleSong } from '../player'
@@ -9,10 +18,11 @@ import type { RunInfo, StemFile, StemModel, StemSetState } from '../types'
 import { showSong, songHref, stemSong } from '../view'
 import MidiOptions from './MidiOptions.vue'
 import MidiResult from './MidiResult.vue'
+import NumberField from './NumberField.vue'
 import WaveformView from './WaveformView.vue'
 
 /**
- * Songs split into their stems: pick a song and a model, and the stems are listed below once they are
+ * Songs split into their stems: pick a song (or a file of one's own) and a model, and the stems are listed below once they are
  * made, each with its waveform to listen to and download. The separation waits in the same queue as the voices,
  * since it needs the same memory.
  */
@@ -88,12 +98,49 @@ const sets = computed(() => {
 
 // ---- Asking for stems -------------------------------------------------------------------------------
 
+/** A song of the library, or a file from the device: anything ffmpeg reads, a mix from elsewhere included. */
+type Source = 'song' | 'file'
+const source = ref<Source>('song')
+const sourceOptions = computed(() => [
+  { value: 'song', label: t('stemsSourceSong') },
+  { value: 'file', label: t('stemsSourceFile') },
+])
+
 const song = ref<string | null>(stemSong.value)
 watch(stemSong, (value) => {
   if (value) {
     song.value = value
+    source.value = 'song'
   }
 })
+
+const file = ref<File | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
+/** Read by the browser, for the estimate; null until known or where it cannot read the file. */
+const fileSeconds = ref<number | null>(null)
+
+function pick(event: Event): void {
+  file.value = (event.target as HTMLInputElement).files?.[0] ?? null
+  fileSeconds.value = null
+  if (!file.value) {
+    return
+  }
+  const chosen = file.value
+  const url = URL.createObjectURL(chosen)
+  const probe = new Audio()
+  probe.preload = 'metadata'
+  const done = (): void => {
+    if (file.value === chosen && Number.isFinite(probe.duration)) {
+      fileSeconds.value = probe.duration
+    }
+    URL.revokeObjectURL(url)
+  }
+  probe.addEventListener('loadedmetadata', done, { once: true })
+  probe.addEventListener('error', () => URL.revokeObjectURL(url), { once: true })
+  probe.src = url
+}
+
+const ready = computed(() => (source.value === 'song' ? !!song.value : !!file.value))
 
 const songOptions = computed(() =>
   props.runs.flatMap((run) =>
@@ -141,7 +188,8 @@ const modelHint = computed(() => {
   if (chosen.stems?.length) {
     parts.push(chosen.stems.map(stemLabel).join(', '))
   }
-  const seconds = songOptions.value.find((o) => o.value === song.value)?.seconds
+  const seconds =
+    source.value === 'song' ? songOptions.value.find((o) => o.value === song.value)?.seconds : fileSeconds.value
   if (chosen.realtimeFactor && seconds) {
     parts.push(t('stemsEstimate', { duration: formatDuration(seconds / chosen.realtimeFactor) }))
   }
@@ -149,13 +197,23 @@ const modelHint = computed(() => {
 })
 
 async function separate(): Promise<void> {
-  if (!song.value || separating.value) {
+  if (!ready.value || separating.value) {
     return
   }
   separating.value = true
   try {
-    const set = await separateSong(song.value, model.value, dereverb.value)
+    const set =
+      source.value === 'song'
+        ? await separateSong(song.value!, model.value, dereverb.value)
+        : await separateFile(file.value!, model.value, dereverb.value)
     loaded.value = [set, ...loaded.value.filter((s) => s.id !== set.id)]
+    if (source.value === 'file') {
+      file.value = null
+      fileSeconds.value = null
+      if (fileInput.value) {
+        fileInput.value.value = ''
+      }
+    }
   } catch (caught) {
     emit('error', message(caught))
   } finally {
@@ -165,14 +223,14 @@ async function separate(): Promise<void> {
 
 async function remove(set: StemSetState): Promise<void> {
   const question = set.finished ? 'stemsDeleteConfirm' : 'stemsCancelConfirm'
-  if (!window.confirm(t(question, { title: set.title || t('untitled'), song: songName(set) }))) {
+  if (!window.confirm(t(question, { name: setName(set) }))) {
     return
   }
   try {
     if (listening.value?.set === set.id) {
       stop()
     }
-    await deleteStems(set.songId, set.id)
+    await deleteStems(set.id)
     removed.value = new Set([...removed.value, set.id])
   } catch (caught) {
     emit('error', message(caught))
@@ -233,7 +291,7 @@ function start(set: StemSetState, stem: StemFile, at: number): void {
     toggleSong()
   }
   listening.value = { set: set.id, name: stem.name }
-  audio.src = stemAudioUrl(set.songId, set.id, stem.name)
+  audio.src = stemAudioUrl(set.id, stem.name)
   audio.currentTime = at
   position.value = at
   void audio.play().catch(() => (listening.value = null))
@@ -264,6 +322,10 @@ const midi = ref<Record<string, MidiTrack>>({})
 const midiErrors = ref<Record<string, string>>({})
 const converting = ref<string | null>(null)
 const anyDone = computed(() => sets.value.some((set) => set.stage === 'done'))
+/** An upload has no score to take a tempo from; as on the transcription page, without one the file is at 120 bpm. */
+const anyUploadDone = computed(() => sets.value.some((set) => set.stage === 'done' && set.upload))
+const tempo = ref<number>(midiSettings.value.tempo ?? 120)
+const tempoKnown = ref(midiSettings.value.tempo != null)
 
 function midiKey(set: StemSetState, stem: StemFile): string {
   return `${set.id}/${stem.name}`
@@ -277,7 +339,12 @@ async function toMidi(set: StemSetState, stem: StemFile): Promise<void> {
   converting.value = key
   delete midiErrors.value[key]
   try {
-    midi.value[key] = await stemToMidi(set.songId, set.id, stem.name, midiSettings.value)
+    let uploadTempo: number | null = null
+    if (set.upload) {
+      midiSettings.value.tempo = tempoKnown.value ? tempo.value : null
+      uploadTempo = midiSettings.value.tempo
+    }
+    midi.value[key] = await stemToMidi(set.id, stem.name, midiSettings.value, uploadTempo)
   } catch (caught) {
     delete midi.value[key]
     midiErrors.value[key] = message(caught)
@@ -302,6 +369,11 @@ function songName(set: StemSetState): string {
   return t('songN', { n: set.songId.slice(set.songId.lastIndexOf('/') + 5) })
 }
 
+/** How the list and the questions name a set: run title and song, or the uploaded file. */
+function setName(set: StemSetState): string {
+  return set.upload ? set.title : `${set.title || t('untitled')} · ${songName(set)}`
+}
+
 function message(caught: unknown): string {
   return caught instanceof Error ? caught.message : String(caught)
 }
@@ -314,7 +386,43 @@ const stageSeverity: Record<string, string | undefined> = { done: 'success', fai
     <p class="muted m-0 text-sm">{{ t('stemsIntro') }}</p>
 
     <form class="flex flex-wrap items-end gap-3" @submit.prevent="separate">
-      <div class="flex min-w-0 flex-[1_1_16rem] flex-col gap-1">
+      <div class="flex w-full">
+        <SelectButton
+          v-model="source"
+          :options="sourceOptions"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          :aria-label="t('stemsSource')"
+          size="small"
+        />
+      </div>
+      <div v-if="source === 'file'" class="flex min-w-0 flex-[1_1_16rem] flex-col gap-1">
+        <label for="stems-file" class="muted text-sm">{{ t('stemsFile') }}</label>
+        <!-- A native file input, as for the voices: PrimeVue's FileUpload brings its own upload flow. -->
+        <input
+          id="stems-file"
+          ref="fileInput"
+          type="file"
+          accept="audio/*,.wav,.mp3,.flac,.m4a,.aac,.ogg,.opus,.aif,.aiff"
+          class="hidden"
+          @change="pick"
+        />
+        <div class="flex min-w-0 items-center gap-2">
+          <Button
+            type="button"
+            icon="pi pi-folder-open"
+            :label="t('chooseRecording')"
+            severity="secondary"
+            outlined
+            class="shrink-0"
+            :disabled="separating"
+            @click="fileInput?.click()"
+          />
+          <span class="muted min-w-0 truncate text-sm">{{ file?.name ?? t('noRecording') }}</span>
+        </div>
+      </div>
+      <div v-else class="flex min-w-0 flex-[1_1_16rem] flex-col gap-1">
         <label for="stems-song" class="muted text-sm">{{ t('stemsSong') }}</label>
         <Select
           v-model="song"
@@ -341,7 +449,7 @@ const stageSeverity: Record<string, string | undefined> = { done: 'success', fai
         :label="t('stemsSeparate')"
         icon="pi pi-sliders-v"
         :loading="separating"
-        :disabled="!song || separating"
+        :disabled="!ready || separating"
       />
     </form>
     <p v-if="modelHint" class="muted -mt-2 mb-0 text-sm">{{ modelHint }}</p>
@@ -352,17 +460,31 @@ const stageSeverity: Record<string, string | undefined> = { done: 'success', fai
     <div v-if="midiInfo?.installed && anyDone" class="flex flex-col gap-1">
       <span class="muted text-sm">{{ t('stemsMidi') }}</span>
       <MidiOptions id-prefix="stems-midi" />
+      <div v-if="anyUploadDone" class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div class="flex items-center gap-2">
+          <Checkbox v-model="tempoKnown" input-id="stems-midi-tempo-known" binary />
+          <label for="stems-midi-tempo-known" class="text-sm">{{ t('stemsMidiTempo') }}</label>
+        </div>
+        <NumberField v-if="tempoKnown" v-model="tempo" :min="20" :max="300" class="w-20" :aria-label="t('midiTempo')" />
+        <span v-if="tempoKnown" class="muted text-sm">bpm</span>
+        <span v-else-if="midiSettings.quantize" class="danger text-sm">{{ t('midiQuantizeNeedsTempo') }}</span>
+      </div>
     </div>
 
     <ul class="m-0 flex list-none flex-col gap-4 p-0">
       <li v-for="set in sets" :key="set.id" class="flex flex-col gap-2 border-t border-surface pt-3">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
           <div class="min-w-0 flex-1">
+            <span v-if="set.upload" class="flex min-w-0 items-center gap-1 font-semibold">
+              <i class="pi pi-file muted text-xs" :aria-label="t('stemsSourceFile')" />
+              <span class="truncate">{{ set.title }}</span>
+            </span>
             <a
+              v-else
               :href="songHref(set.songId)"
               class="font-semibold text-primary no-underline"
               @click.prevent="showSong(set.songId)"
-              >{{ set.title || t('untitled') }} · {{ songName(set) }}</a
+              >{{ setName(set) }}</a
             >
             <div class="muted truncate text-sm">
               {{ modelName(set.model) }}<template v-if="set.dereverb"> · {{ t('stemsDereverbShort') }}</template> ·
@@ -419,7 +541,7 @@ const stageSeverity: Record<string, string | undefined> = { done: 'success', fai
             </div>
             <Button
               as="a"
-              :href="stemAudioUrl(set.songId, set.id, stem.name, true)"
+              :href="stemAudioUrl(set.id, stem.name, true)"
               icon="pi pi-download"
               text
               rounded

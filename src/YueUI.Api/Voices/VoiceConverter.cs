@@ -73,7 +73,7 @@ public sealed class VoiceConverter(
     public StemSetState EnqueueStems(string songId, string title, string model, bool dereverb)
     {
         var now = time.GetUtcNow();
-        var set = new StemSetState
+        return EnqueueStems(new StemSetState
         {
             Id = Guid.NewGuid().ToString("N"),
             SongId = songId,
@@ -82,7 +82,14 @@ public sealed class VoiceConverter(
             Dereverb = dereverb,
             CreatedAt = now,
             UpdatedAt = now,
-        };
+        });
+    }
+
+    /// <summary>
+    /// Queues a set as it is; an upload's file must already lie in its folder (<see cref="SqliteStemStore.SourcePath"/>).
+    /// </summary>
+    public StemSetState EnqueueStems(StemSetState set)
+    {
         stemStore.Add(set);
         host.UpdateStems(set);
         _queue.Writer.TryWrite(StemsKey + set.Id);
@@ -329,7 +336,10 @@ public sealed class VoiceConverter(
             _cancel = cancel;
         }
         var work = Path.Combine(Path.GetTempPath(), $"yueui-stems-{id}");
+        // Apart from work, where the separator's WAVs land and are taken as stems.
+        var decoded = Path.Combine(Path.GetTempPath(), $"yueui-stems-{id}-source");
         var target = stemStore.Folder(id);
+        string? source = null;
         try
         {
             Interlocked.Exchange(ref _waitingTicks, set.CreatedAt.UtcTicks);
@@ -341,14 +351,27 @@ public sealed class VoiceConverter(
             {
                 Interlocked.Exchange(ref _waitingTicks, 0);
             }
-            if (library.SongDirectory(set.Run, set.Song) is not { } directory || !File.Exists(Path.Combine(directory, "audio.flac")))
+            string input;
+            if (set.Upload)
+            {
+                source = stemStore.SourcePath(id) ?? throw new VoiceServiceException("The uploaded file is gone.");
+                // FLAC, since the stem service takes it as such; the local separator reads anything.
+                Directory.CreateDirectory(decoded);
+                input = Path.Combine(decoded, "song.flac");
+                await mixer.DecodeAsync(source, input, cancel.Token);
+            }
+            else if (library.SongDirectory(set.Run, set.Song) is { } directory && File.Exists(Path.Combine(directory, "audio.flac")))
+            {
+                input = Path.Combine(directory, "audio.flac");
+            }
+            else
             {
                 throw new VoiceServiceException("The song is gone.");
             }
             await host.ShutdownWorkerAsync();
 
             set = UpdateStems(set, s => s with { Stage = "separating" });
-            var files = await stems.ExtractAsync(Path.Combine(directory, "audio.flac"), set.Model, set.Dereverb, work, cancel.Token);
+            var files = await stems.ExtractAsync(input, set.Model, set.Dereverb, work, cancel.Token);
             if (files.Count == 0)
             {
                 throw new VoiceServiceException($"The separation model {set.Model} gave no stems.");
@@ -387,13 +410,19 @@ public sealed class VoiceConverter(
             else
             {
                 UpdateStems(set, s => s with { Stage = "done", Stems = result });
+                // The stems are what was asked for; the upload would only double the space they take.
+                if (source is not null)
+                {
+                    TryDeleteFile(source);
+                }
             }
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
-            DeleteFolder(target);
+            // A server stop leaves the folder: a set still waiting resumes after the restart and needs its upload.
             if (!stoppingToken.IsCancellationRequested)
             {
+                DeleteFolder(target);
                 UpdateStems(set, s => s with { Stage = "cancelled" });
             }
         }
@@ -412,6 +441,7 @@ public sealed class VoiceConverter(
                 _cancel = null;
             }
             DeleteFolder(work);
+            DeleteFolder(decoded);
         }
     }
 
@@ -527,6 +557,18 @@ public sealed class VoiceConverter(
         }
         host.UpdateSwap(updated);
         return updated;
+    }
+
+    private void TryDeleteFile(string file)
+    {
+        try
+        {
+            File.Delete(file);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(exception, "Could not delete {File}", file);
+        }
     }
 
     private void DeleteFolder(string folder)
