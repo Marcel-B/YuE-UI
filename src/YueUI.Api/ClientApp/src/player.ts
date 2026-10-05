@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { coverUrl, streamUrl, versionStreamUrl } from './api'
+import { drawCover, exportTargetFor } from './export'
 import { t } from './i18n'
 import { createSpectrumAnalyser, registerSource, visuals, type SpectrumSource } from './spectrum'
 import type { RunInfo, SongInfo, VersionState } from './types'
@@ -82,6 +83,12 @@ const position = ref(-1)
 /** Mirrors the audio element, for the play/pause icons next to the songs. */
 export const playing = ref(false)
 
+/** Where the song is and how long it runs, in seconds, for the full-screen player's progress bar. */
+export const elapsed = ref(0)
+export const duration = ref(0)
+/** The full-screen player (NowPlaying.vue) is open. */
+export const expanded = ref(false)
+
 export const current = computed<Track | null>(() => tracks.value[position.value] ?? null)
 export const hasNext = computed(() => position.value >= 0 && position.value < tracks.value.length - 1)
 export const hasPrevious = computed(() => position.value > 0)
@@ -95,6 +102,16 @@ export const playerSource: SpectrumSource = { analysers: () => (analyser ? [anal
 registerSource(playerSource)
 
 /**
+ * The small analyzer wants the element routed, and so does the open full-screen player when its analyzer or effects
+ * are on; a full-screen player never opened leaves a switched-off analyzer as it was.
+ */
+function wantsAnalyser(): boolean {
+  return (
+    visuals.value.player || (expanded.value && (visuals.value.nowPlayingAnalyzer || visuals.value.nowPlayingEffects))
+  )
+}
+
+/**
  * Routes the audio element through Web Audio, for the analyzer. Once routed it stays so (an element cannot leave its
  * source node), so this only happens with the analyzer switched on, and inside a click: iOS starts a context made
  * outside one suspended, and a routed element then plays silence. Called again on every start, since iOS suspends
@@ -102,7 +119,7 @@ registerSource(playerSource)
  * element's own controls, the lock screen) that may not count as a click.
  */
 export function listen(create = true): void {
-  if (!audio || (!context && (!create || !visuals.value.player))) {
+  if (!audio || (!context && (!create || !wantsAnalyser()))) {
     return
   }
   if (!context) {
@@ -216,7 +233,31 @@ export function previous(): void {
   }
 }
 
+/** The element started playing, from wherever: the lock screen gets title and cover once more. */
+export function refreshLockScreen(): void {
+  if (current.value) {
+    showOnLockScreen(current.value)
+  }
+}
+
+/** Jumps within the playing song. */
+export function seek(seconds: number): void {
+  if (audio && Number.isFinite(seconds)) {
+    audio.currentTime = seconds
+    elapsed.value = seconds
+  }
+}
+
+/** The audio element's clock, as PlayerBar hears it. */
+export function updateTime(): void {
+  if (audio) {
+    elapsed.value = audio.currentTime
+    duration.value = Number.isFinite(audio.duration) ? audio.duration : 0
+  }
+}
+
 export function close(): void {
+  expanded.value = false
   audio?.pause()
   audio?.removeAttribute('src')
   audio?.load()
@@ -230,24 +271,80 @@ function start(): void {
     return
   }
   audio.src = track.src ?? streamUrl(track.id)
+  elapsed.value = 0
+  duration.value = 0
   listen()
   // A refusal (autoplay rules, a deleted file) leaves the player paused with its own controls to try again.
   void audio.play().catch(() => undefined)
   showOnLockScreen(track)
 }
 
-/** The title on the lock screen and in Control Center, with skip buttons that follow the list. */
+/**
+ * The drawn covers given to the lock screen, by song id, as data URLs: the lock screen fetches artwork outside the
+ * page, where a blob URL means nothing, and the drawn cover exists only in the browser.
+ */
+const drawnArtwork = new Map<string, string>()
+
+/**
+ * The cover for the lock screen: the song's own, else the drawn one the export would put in (made once per song),
+ * so the lock screen never falls back to the app icon.
+ */
+async function artworkOf(track: Track): Promise<MediaImage[]> {
+  if (track.cover) {
+    // An absolute address: the lock screen fetches it outside the page.
+    return [{ src: new URL(track.cover, location.href).href }]
+  }
+  let src = drawnArtwork.get(track.songId)
+  if (!src) {
+    const blob = await drawCover(exportTargetFor(track.songId, track.title))
+    src = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => reject(reader.error ?? new Error('cover'))
+      reader.readAsDataURL(blob)
+    })
+    if (drawnArtwork.size > 20) {
+      drawnArtwork.clear()
+    }
+    drawnArtwork.set(track.songId, src)
+  }
+  return [{ src, sizes: '1000x1000', type: 'image/jpeg' }]
+}
+
+/**
+ * The title on the lock screen and in Control Center, with skip buttons that follow the list. Set again when the
+ * song starts playing (`refreshLockScreen`): iOS keeps what it was given only once the element plays, and a home-screen
+ * app otherwise shows its own icon.
+ */
 function showOnLockScreen(track: Track): void {
   if (!('mediaSession' in navigator)) {
     return
   }
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: track.title,
-    artist: track.detail,
-    album: 'Tonwerk',
-    // An absolute address: the lock screen fetches it outside the page.
-    artwork: track.cover ? [{ src: new URL(track.cover, location.href).href }] : [],
-  })
+  const describe = (artwork: MediaImage[]) =>
+    new MediaMetadata({ title: track.title, artist: track.detail, album: 'Tonwerk', artwork })
+  const drawn = drawnArtwork.get(track.songId)
+  navigator.mediaSession.metadata = describe(
+    track.cover
+      ? [{ src: new URL(track.cover, location.href).href }]
+      : drawn
+        ? [{ src: drawn, sizes: '1000x1000', type: 'image/jpeg' }]
+        : [],
+  )
+  if (!track.cover && !drawn) {
+    void artworkOf(track)
+      .then((artwork) => {
+        if (current.value?.id === track.id && 'mediaSession' in navigator) {
+          navigator.mediaSession.metadata = describe(artwork)
+        }
+      })
+      .catch(() => undefined)
+  }
   navigator.mediaSession.setActionHandler('nexttrack', hasNext.value ? () => void next() : null)
   navigator.mediaSession.setActionHandler('previoustrack', () => previous())
+  try {
+    // The lock screen's progress bar can then be dragged, as the full-screen player's can.
+    navigator.mediaSession.setActionHandler('seekto', (details) => seek(details.seekTime ?? 0))
+  } catch {
+    // Older Safari does not know the action and throws.
+  }
 }

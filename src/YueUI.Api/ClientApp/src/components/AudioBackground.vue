@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
+import { expanded } from '../player'
 import { allSources, anythingPlaying, readBands, reducedMotion, visuals } from '../spectrum'
 
 /**
@@ -10,7 +11,10 @@ import { allSources, anythingPlaying, readBands, reducedMotion, visuals } from '
  */
 const glows = useTemplateRef<HTMLDivElement[]>('glows')
 
-const active = computed(() => visuals.value.background && !reducedMotion.value && anythingPlaying.value)
+// Hidden behind the full-screen player, which has glows of its own.
+const active = computed(
+  () => visuals.value.background && !reducedMotion.value && anythingPlaying.value && !expanded.value,
+)
 
 const bands = new Float32Array(24)
 /** Bass, mids, highs: smoothed, so the glows breathe rather than flicker. */

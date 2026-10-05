@@ -105,17 +105,32 @@ interface VisualSettings {
   logic: boolean
   /** The page's background moves with the music. Off by default: it is decoration and costs battery. */
   background: boolean
+  /** The full-screen player's large analyzer under the cover. */
+  nowPlayingAnalyzer: boolean
+  /** The full-screen player's glows in the cover's colour, and the cover beating with the bass. */
+  nowPlayingEffects: boolean
+  /** The full-screen player shows the lyrics instead of the large cover. */
+  nowPlayingLyrics: boolean
 }
 
 function load(): VisualSettings {
-  const defaults: VisualSettings = { player: true, logic: true, background: false }
+  const defaults: VisualSettings = {
+    player: true,
+    logic: true,
+    background: false,
+    nowPlayingAnalyzer: true,
+    nowPlayingEffects: true,
+    nowPlayingLyrics: false,
+  }
   try {
     const stored = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<VisualSettings>
-    return {
-      player: typeof stored.player === 'boolean' ? stored.player : defaults.player,
-      logic: typeof stored.logic === 'boolean' ? stored.logic : defaults.logic,
-      background: typeof stored.background === 'boolean' ? stored.background : defaults.background,
+    const settings = { ...defaults }
+    for (const key of Object.keys(defaults) as (keyof VisualSettings)[]) {
+      if (typeof stored[key] === 'boolean') {
+        settings[key] = stored[key]
+      }
     }
+    return settings
   } catch {
     return defaults
   }

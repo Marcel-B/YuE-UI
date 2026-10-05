@@ -861,6 +861,7 @@ async function useAsNewSong(songId: string): Promise<void> {
   <div v-if="current" class="h-28" />
   <PlayerBar
     :has-score="!!current && !!librarySongs.get(current.songId)?.song.hasScore"
+    :lyrics="(current && librarySongs.get(current.songId)?.run.lyrics) || ''"
     @use-score="useSongScoreById"
     @new-song="useAsNewSong"
     @error="show($event, true)"
