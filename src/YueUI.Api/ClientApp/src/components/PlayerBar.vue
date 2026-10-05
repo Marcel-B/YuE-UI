@@ -5,6 +5,7 @@ import {
   attach,
   close,
   current,
+  expanded,
   guardSilence,
   hasNext,
   hasPrevious,
@@ -14,15 +15,20 @@ import {
   playing,
   previous,
   toggle,
+  updateTime,
 } from '../player'
 import { rate, ratingOf } from '../ratings'
-import { showSong, songHref } from '../view'
+import NowPlaying from './NowPlaying.vue'
 import PlaylistToggle from './PlaylistToggle.vue'
 import SongMenu from './SongMenu.vue'
 import VisualsButton from './VisualsButton.vue'
 
-/** The playing song has a score, as far as the library knows. */
-defineProps<{ hasScore: boolean }>()
+defineProps<{
+  /** The playing song has a score, as far as the library knows. */
+  hasScore: boolean
+  /** The playing song's lyrics, for the full-screen player; empty for an instrumental or a song the library lacks. */
+  lyrics: string
+}>()
 
 const emit = defineEmits<{ error: [message: string]; useScore: [songId: string]; newSong: [songId: string] }>()
 
@@ -48,6 +54,12 @@ function onPlay(): void {
   guardSilence()
 }
 
+/** Opens the full-screen player; the tap also routes the audio for its analyzer, which iOS allows only in one. */
+function expand(): void {
+  expanded.value = true
+  listen()
+}
+
 function ended(): void {
   if (!next()) {
     playing.value = false
@@ -59,22 +71,24 @@ function ended(): void {
   <!-- Always in the page, only hidden without a song: the element has to exist before the first click on "play". -->
   <div v-show="current" class="player" role="region" :aria-label="t('play')">
     <div class="flex items-center gap-2">
+      <!-- Cover and title open the full-screen player, as a tap on the mini player does in the music apps. -->
       <img
         v-if="current?.cover"
         :src="current.cover"
         alt=""
         class="h-10 w-10 shrink-0 cursor-pointer rounded-md object-cover"
-        @click="showSong(current.songId)"
+        @click="expand"
       />
       <div class="min-w-0 flex-1">
-        <a
+        <button
           v-if="current"
-          :href="songHref(current.songId)"
-          class="block truncate font-semibold text-color no-underline hover:underline"
-          :title="t('showSong')"
-          @click.prevent="showSong(current.songId)"
-          >{{ current.title }} <span class="text-sm font-normal text-muted-color">· {{ current.detail }}</span></a
+          type="button"
+          class="title block w-full truncate text-left font-semibold text-color hover:underline"
+          :title="t('openNowPlaying')"
+          @click="expand"
         >
+          {{ current.title }} <span class="text-sm font-normal text-muted-color">· {{ current.detail }}</span>
+        </button>
         <!-- Rated while it plays, when the song is best judged. The line below the title has room for the stars and
              the analyzer. -->
         <div v-if="current" class="mt-1 flex items-center gap-3">
@@ -110,7 +124,27 @@ function ended(): void {
       />
       <Button icon="pi pi-times" text rounded severity="secondary" :aria-label="t('closePlayer')" @click="close" />
     </div>
-    <audio ref="audio" controls preload="none" @play="onPlay" @pause="playing = false" @ended="ended" />
+    <audio
+      ref="audio"
+      controls
+      preload="none"
+      @play="onPlay"
+      @pause="playing = false"
+      @ended="ended"
+      @timeupdate="updateTime"
+      @durationchange="updateTime"
+      @loadedmetadata="updateTime"
+    />
+    <Transition name="sheet">
+      <NowPlaying
+        v-if="expanded && current"
+        :lyrics="lyrics"
+        :has-score="hasScore"
+        @use-score="emit('useScore', $event)"
+        @new-song="emit('newSong', $event)"
+        @error="emit('error', $event)"
+      />
+    </Transition>
   </div>
 </template>
 
@@ -131,6 +165,35 @@ function ended(): void {
   border-top: 1px solid var(--p-content-border-color);
   background: var(--p-content-background);
   box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08);
+}
+
+.title {
+  padding: 0;
+  border: 0;
+  font: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+/* The full-screen player comes up from the mini player and goes back down into it. */
+.sheet-enter-active,
+.sheet-leave-active {
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease;
+}
+
+.sheet-enter-from,
+.sheet-leave-to {
+  transform: translateY(100%);
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-enter-active,
+  .sheet-leave-active {
+    transition: none;
+  }
 }
 
 audio {

@@ -86,6 +86,8 @@ Abgespielt wird in einem Player am unteren Rand, der beim Seitenwechsel weiterl�
 
 Neben den Sternen im Player zeigt ein kleiner Analyzer das Spektrum des laufenden Songs. Ein Tipp darauf öffnet zwei Schalter: den Analyzer selbst und **Hintergrund zur Musik**, bei dem auf jeder Seite hinter den Karten drei weiche Lichter mit Bass, Mitten und Höhen pulsieren (standardmäßig aus; bei der Systemeinstellung „Bewegung reduzieren“ bewegt sich nichts). Beides merkt sich der Browser. Für den Analyzer läuft der Ton über Web Audio; wer das auf dem iPhone nicht will (etwa wenn die Wiedergabe im Hintergrund stockt), schaltet ihn aus und lädt die Seite neu.
 
+Ein Tipp auf Titel oder Cover im Player öffnet ihn **über den ganzen Bildschirm**, wie bei Spotify oder Apple Music: das Cover groß vor einer weichgezeichneten Kopie seiner selbst (Songs ohne eigenes Cover zeigen das gezeichnete), Bewertung, Playlist-Knopf, ein Fortschrittsbalken zum Spulen mit verstrichener und verbleibender Zeit und große Knöpfe. Darunter drei Schalter, die sich der Browser merkt: **Text** zeigt den Songtext mit seinen Abschnitten statt des großen Covers (am breiten Bildschirm daneben), **Analyzer** ein großes Spektrum in der Farbe des Covers, **Effekte** drei Lichter in dieser Farbe, die mit Bass, Mitten und Höhen pulsieren, und das Cover schlägt leicht mit dem Bass (bei „Bewegung reduzieren“ bleibt beides still). Analyzer und Effekte leiten den Ton über Web Audio, auch wenn der kleine Analyzer aus ist, aber nur, solange der große Player offen ist. Der Pfeil oben, Herunterziehen, die Zurück-Geste oder Escape verkleinern ihn wieder; die Musik läuft dabei weiter. Der Text läuft nicht mit, YuE2 liefert keine Zeitmarken für die Zeilen.
+
 Auf der Playlist-Seite wählt das Feld oben, welche Playlist sie zeigt; daneben legen Plus, Stift und Papierkorb eine neue an, benennen die gezeigte um oder löschen sie (die Songs selbst bleiben, die letzte Playlist lässt sich nicht löschen). Welche Playlist gezeigt wird, merkt sich jeder Browser selbst. Die Reihenfolge lässt sich dort ändern.
 
 Das Plus neben einem Song setzt ihn ans Ende der Playlist, der Haken nimmt ihn wieder heraus; denselben Knopf hat der Player für den Song, der gerade läuft. Gibt es mehrere Playlists, öffnet der Knopf eine Liste, in der jeder Tipp den Song in eine Playlist legt oder herausnimmt; der Haken am Knopf heißt dann, dass der Song in mindestens einer steckt. Die Playlists liegen auf dem Server in `~/Library/Application Support/YuE UI/yueui.db` (SQLite), Handy und Mac sehen also dieselben. Gelöschte Songs fallen von selbst heraus.
@@ -471,6 +473,7 @@ Ideen und geplante Änderungen, ohne feste Reihenfolge. Erledigtes abhaken oder 
 - [x] Oszilloskop, Delay und Hall für die Browser-Synthesizer
 - [x] Vorschau mit Aufnahme und Wellenform, MusicXML-Export
 - [x] Spektrum-Analyzer im Player und in der Vorschau, Hintergrund zur Musik
+- [x] Player über den ganzen Bildschirm mit Songtext, Analyzer und Effekten
 - [x] Stimme schon im Formular wählen; die Fassung entsteht dann von selbst, sobald der Song fertig ist
 - [ ] Eine Fassung statt der Originalstimme ins Logic-Projekt
 - [x] PrimeVue-Importe optimieren (nur benötigte Komponenten, kleineres Bundle)

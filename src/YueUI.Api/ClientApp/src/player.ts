@@ -82,6 +82,12 @@ const position = ref(-1)
 /** Mirrors the audio element, for the play/pause icons next to the songs. */
 export const playing = ref(false)
 
+/** Where the song is and how long it runs, in seconds, for the full-screen player's progress bar. */
+export const elapsed = ref(0)
+export const duration = ref(0)
+/** The full-screen player (NowPlaying.vue) is open. */
+export const expanded = ref(false)
+
 export const current = computed<Track | null>(() => tracks.value[position.value] ?? null)
 export const hasNext = computed(() => position.value >= 0 && position.value < tracks.value.length - 1)
 export const hasPrevious = computed(() => position.value > 0)
@@ -95,6 +101,16 @@ export const playerSource: SpectrumSource = { analysers: () => (analyser ? [anal
 registerSource(playerSource)
 
 /**
+ * The small analyzer wants the element routed, and so does the open full-screen player when its analyzer or effects
+ * are on; a full-screen player never opened leaves a switched-off analyzer as it was.
+ */
+function wantsAnalyser(): boolean {
+  return (
+    visuals.value.player || (expanded.value && (visuals.value.nowPlayingAnalyzer || visuals.value.nowPlayingEffects))
+  )
+}
+
+/**
  * Routes the audio element through Web Audio, for the analyzer. Once routed it stays so (an element cannot leave its
  * source node), so this only happens with the analyzer switched on, and inside a click: iOS starts a context made
  * outside one suspended, and a routed element then plays silence. Called again on every start, since iOS suspends
@@ -102,7 +118,7 @@ registerSource(playerSource)
  * element's own controls, the lock screen) that may not count as a click.
  */
 export function listen(create = true): void {
-  if (!audio || (!context && (!create || !visuals.value.player))) {
+  if (!audio || (!context && (!create || !wantsAnalyser()))) {
     return
   }
   if (!context) {
@@ -216,7 +232,24 @@ export function previous(): void {
   }
 }
 
+/** Jumps within the playing song. */
+export function seek(seconds: number): void {
+  if (audio && Number.isFinite(seconds)) {
+    audio.currentTime = seconds
+    elapsed.value = seconds
+  }
+}
+
+/** The audio element's clock, as PlayerBar hears it. */
+export function updateTime(): void {
+  if (audio) {
+    elapsed.value = audio.currentTime
+    duration.value = Number.isFinite(audio.duration) ? audio.duration : 0
+  }
+}
+
 export function close(): void {
+  expanded.value = false
   audio?.pause()
   audio?.removeAttribute('src')
   audio?.load()
@@ -230,6 +263,8 @@ function start(): void {
     return
   }
   audio.src = track.src ?? streamUrl(track.id)
+  elapsed.value = 0
+  duration.value = 0
   listen()
   // A refusal (autoplay rules, a deleted file) leaves the player paused with its own controls to try again.
   void audio.play().catch(() => undefined)
@@ -250,4 +285,10 @@ function showOnLockScreen(track: Track): void {
   })
   navigator.mediaSession.setActionHandler('nexttrack', hasNext.value ? () => void next() : null)
   navigator.mediaSession.setActionHandler('previoustrack', () => previous())
+  try {
+    // The lock screen's progress bar can then be dragged, as the full-screen player's can.
+    navigator.mediaSession.setActionHandler('seekto', (details) => seek(details.seekTime ?? 0))
+  } catch {
+    // Older Safari does not know the action and throws.
+  }
 }
