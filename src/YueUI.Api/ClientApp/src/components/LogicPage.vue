@@ -24,7 +24,7 @@ import { baseName, download } from '../logic/score'
 import type { Assignments, ConversionResult, Diagnostic } from '../logic/types'
 import { audioUrl } from '../api'
 import type { RunInfo, SongInfo } from '../types'
-import { logicSong, replaceLogicSong } from '../view'
+import { handedMidi, logicSong, replaceLogicSong } from '../view'
 import FileDropZone from './logic/FileDropZone.vue'
 import OptionsForm from './logic/OptionsForm.vue'
 import ResultView from './logic/ResultView.vue'
@@ -406,6 +406,20 @@ function reset(): void {
   outputName.value = 'score'
   logicBusy.value = false
 }
+
+// A track turned into MIDI on the transcription or voices page arrives as the score to upload; last in
+// setup, since taking it touches state declared further up.
+watch(
+  handedMidi,
+  (handed) => {
+    if (handed?.view === 'logic') {
+      mode.value = 'upload'
+      selectFile(handed.file)
+      handedMidi.value = null
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

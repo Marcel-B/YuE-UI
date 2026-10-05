@@ -71,6 +71,8 @@ public sealed class TestApp : WebApplicationFactory<Program>
 
     public FakeImages Images { get; } = new();
 
+    public FakeAudioMidi AudioMidi { get; } = new();
+
     public FakeNextcloud Nextcloud { get; } = new();
 
     /// <summary>The backup folder in the fake Nextcloud; null (the default) leaves the backup off.</summary>
@@ -180,6 +182,7 @@ public sealed class TestApp : WebApplicationFactory<Program>
             services.AddSingleton<ISpeechEngine>(Speech);
             services.AddSingleton<Video.IVideoRenderer>(Videos);
             services.AddSingleton<Images.IImageEngine>(Images);
+            services.AddSingleton<AudioMidi.IAudioMidiEngine>(AudioMidi);
             services.Configure<Images.ImageOptions>(options =>
             {
                 options.Root = Path.Combine(Root, "images");
@@ -1016,5 +1019,39 @@ public sealed class FakeImages : Images.IImageEngine
         var gate = new TaskCompletionSource();
         gate.SetResult();
         return gate;
+    }
+}
+
+/// <summary>Basic Pitch: records what it was asked to convert and writes a few MIDI bytes, or fails as told.</summary>
+public sealed class FakeAudioMidi : AudioMidi.IAudioMidiEngine
+{
+    public static readonly byte[] Midi = [.. "MThd"u8, 0, 0, 0, 6, 0, 1, 0, 1, 1, 0xE0];
+
+    public bool Installed { get; set; } = true;
+
+    /// <summary>How many notes it reports; 0 stands for a track without any.</summary>
+    public int Notes { get; set; } = 42;
+
+    /// <summary>Set to make the next conversions fail with it.</summary>
+    public string? Failure { get; set; }
+
+    public List<AudioMidi.AudioMidiJob> Jobs { get; } = [];
+
+    /// <summary>The audio each job got, read while it still existed (an upload's folder goes with the request).</summary>
+    public List<byte[]> Audio { get; } = [];
+
+    public async Task<AudioMidi.AudioMidiResult> ConvertAsync(AudioMidi.AudioMidiJob job, CancellationToken cancellationToken)
+    {
+        lock (Jobs)
+        {
+            Jobs.Add(job);
+            Audio.Add(File.ReadAllBytes(job.Audio));
+        }
+        if (Failure is { } failure)
+        {
+            throw new AudioMidi.AudioMidiException(failure);
+        }
+        await File.WriteAllBytesAsync(job.Output, Midi, cancellationToken);
+        return new AudioMidi.AudioMidiResult(Notes, 1.5);
     }
 }

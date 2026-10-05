@@ -1,4 +1,6 @@
 import type {
+  AudioMidiInfo,
+  AudioMidiSettings,
   BackupStatus,
   GenerateRequest,
   LogEntry,
@@ -319,6 +321,50 @@ function fileName(disposition: string | null): string | null {
     return decodeURIComponent(utf8[1]!)
   }
   return disposition?.match(/filename="?([^";]+)"?/i)?.[1] ?? null
+}
+
+/** Whether Basic Pitch is installed, for the pages that turn a track into MIDI. */
+export async function getAudioMidi(): Promise<AudioMidiInfo> {
+  return (await send('/api/audio-midi')).json() as Promise<AudioMidiInfo>
+}
+
+/** A track turned into MIDI: the file, named by the server, and how many notes were heard. */
+export interface MidiTrack {
+  file: File
+  notes: number
+}
+
+/** A recording (a sung track, typically) to MIDI with Basic Pitch; takes seconds, answered at once. */
+export async function audioToMidi(file: File, settings: AudioMidiSettings): Promise<MidiTrack> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('mono', String(settings.mono))
+  form.append('quantize', String(settings.quantize))
+  form.append('bends', String(settings.bends))
+  if (settings.tempo) {
+    form.append('tempo', String(settings.tempo))
+  }
+  return midiTrack(await send('/api/audio-midi', { method: 'POST', body: form }), 'recording.mid')
+}
+
+/** A separated stem to MIDI, at its song's tempo. */
+export async function stemToMidi(
+  songId: string,
+  setId: string,
+  stem: string,
+  settings: AudioMidiSettings,
+): Promise<MidiTrack> {
+  const response = await send(
+    `/api/songs/${songId}/stems/${setId}/${encodeURIComponent(stem)}/midi`,
+    json('POST', { mono: settings.mono, quantize: settings.quantize, bends: settings.bends }),
+  )
+  return midiTrack(response, `${stem}.mid`)
+}
+
+async function midiTrack(response: Response, fallback: string): Promise<MidiTrack> {
+  const name = fileName(response.headers.get('Content-Disposition')) ?? fallback
+  const notes = Number(response.headers.get('X-Audio-Midi-Notes') ?? 0)
+  return { file: new File([await response.blob()], name, { type: 'audio/midi' }), notes }
 }
 
 /** A MIDI file, typically a song edited in Logic, read back into a score. */

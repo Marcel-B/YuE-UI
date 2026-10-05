@@ -9,6 +9,7 @@ import AudioBackground from './components/AudioBackground.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import PlaylistView from './components/PlaylistView.vue'
 import TranscribePanel from './components/TranscribePanel.vue'
+import AudioMidiPanel from './components/AudioMidiPanel.vue'
 import VoicesPanel from './components/VoicesPanel.vue'
 import StemsPanel from './components/StemsPanel.vue'
 import VoiceSwapPanel from './components/VoiceSwapPanel.vue'
@@ -739,6 +740,14 @@ async function useAsNewSong(songId: string): Promise<void> {
           @use-score="useScore"
           @error="show($event, true)"
         />
+      </template>
+    </Card>
+    <Card>
+      <template #title>
+        <h2>{{ t('audioMidi') }}</h2>
+      </template>
+      <template #content>
+        <AudioMidiPanel />
       </template>
     </Card>
   </main>

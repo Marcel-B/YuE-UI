@@ -1,0 +1,221 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using YueUI.Api.AudioMidi;
+using YueUI.Api.Data;
+using YueUI.Api.Library;
+using YueUI.Api.Voices;
+
+namespace YueUI.Api;
+
+/// <summary>
+/// A track to MIDI with Basic Pitch (<see cref="IAudioMidiEngine"/>): an uploaded recording, or a stem the voices page
+/// separated. Answered at once with the MIDI file, since a song's track takes seconds; the browser fetches it so a
+/// refusal becomes a message.
+/// </summary>
+public static partial class AudioMidiEndpoints
+{
+    /// <summary>A six-minute WAV in 24 bit is about 100 MB.</summary>
+    public const long MaxUploadBytes = 200L * 1024 * 1024;
+
+    public const string NotesHeader = "X-Audio-Midi-Notes";
+
+    public static RouteGroupBuilder MapAudioMidiEndpoints(this RouteGroupBuilder api)
+    {
+        api.MapGet("/audio-midi", (IOptions<AudioMidiOptions> options, IAudioMidiEngine engine) =>
+            new AudioMidiInfo(engine.Installed, options.Value.ResolvedPython));
+        api.MapPost("/audio-midi", ConvertUploadAsync)
+            // A recording is posted from a plain form; there is no login and no cookie that a forged request could use.
+            .DisableAntiforgery()
+            .WithFormOptions(multipartBodyLengthLimit: MaxUploadBytes)
+            .WithMetadata(new RequestSizeLimitAttribute(MaxUploadBytes));
+        api.MapPost("/songs/{run}/{song}/stems/{id}/{name}/midi", ConvertStemAsync);
+        return api;
+    }
+
+    private static async Task<IResult> ConvertUploadAsync(
+        IFormFile? file,
+        [FromForm] bool? mono,
+        [FromForm] bool? quantize,
+        [FromForm] bool? bends,
+        [FromForm] double? tempo,
+        IAudioMidiEngine engine,
+        IAudioMixer mixer,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var settings = new AudioMidiSettings(mono ?? true, quantize ?? false, bends ?? false, tempo);
+        var errors = settings.Validate(tempoKnown: false);
+        if (file is null || file.Length == 0)
+        {
+            errors["file"] = ["A recording is required."];
+        }
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+        if (!engine.Installed)
+        {
+            return NotInstalled();
+        }
+        var folder = Directory.CreateTempSubdirectory("yueui-midi-").FullName;
+        try
+        {
+            // Through ffmpeg first: librosa reads WAV and FLAC by itself, but an MP3 or a phone's M4A only with luck.
+            var upload = Path.Combine(folder, "upload" + SafeExtension(file!.FileName));
+            await using (var target = File.Create(upload))
+            {
+                await file.CopyToAsync(target, cancellationToken);
+            }
+            var audio = Path.Combine(folder, "audio.wav");
+            try
+            {
+                await mixer.DecodeAsync(upload, audio, cancellationToken);
+            }
+            catch (Exception exception) when (exception is VoiceServiceException or InvalidOperationException)
+            {
+                return Results.Problem(title: "The recording could not be read.", detail: exception.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+            }
+            var name = Path.GetFileNameWithoutExtension(file.FileName);
+            return await ConvertAsync(engine, response, audio, folder, "Vocal", settings, voice: true, $"{LibraryEndpoints.FileName(name, "recording")}.mid", cancellationToken);
+        }
+        finally
+        {
+            TryDelete(folder);
+        }
+    }
+
+    private static async Task<IResult> ConvertStemAsync(
+        string run,
+        string song,
+        string id,
+        string name,
+        AudioMidiSettings? settings,
+        SqliteStemStore store,
+        SongLibrary library,
+        IAudioMidiEngine engine,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (store.Get(id) is not { Stage: "done" } set || set.SongId != $"{run}/{song}"
+            || store.FilePath(set, name) is not { } path || !File.Exists(path)
+            || library.SongDirectory(run, song) is not { } directory)
+        {
+            return Results.NotFound();
+        }
+        settings ??= new AudioMidiSettings();
+        var songTempo = SongTempo(directory);
+        var errors = settings.Validate(tempoKnown: songTempo is not null);
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+        if (!engine.Installed)
+        {
+            return NotInstalled();
+        }
+        var folder = Directory.CreateTempSubdirectory("yueui-midi-").FullName;
+        try
+        {
+            var fileName = $"{LibraryEndpoints.FileName(library.TitleOf(run, directory), run)}-{song}-{LibraryEndpoints.FileName(name, "stem")}.mid";
+            return await ConvertAsync(
+                engine, response, path, folder, TrackName(name), settings with { Tempo = settings.Tempo ?? songTempo }, IsVoice(name), fileName, cancellationToken);
+        }
+        finally
+        {
+            TryDelete(folder);
+        }
+    }
+
+    private static async Task<IResult> ConvertAsync(
+        IAudioMidiEngine engine, HttpResponse response, string audio, string folder, string trackName, AudioMidiSettings settings, bool voice, string fileName, CancellationToken cancellationToken)
+    {
+        var output = Path.Combine(folder, "track.mid");
+        try
+        {
+            var result = await engine.ConvertAsync(new AudioMidiJob(audio, output, trackName, settings, settings.Tempo ?? 120, voice), cancellationToken);
+            if (result.Notes == 0)
+            {
+                return Results.Problem(title: "No notes were heard in this track.", statusCode: StatusCodes.Status422UnprocessableEntity);
+            }
+            // For the page to say what came out; the body is the file.
+            response.Headers[NotesHeader] = result.Notes.ToString(CultureInfo.InvariantCulture);
+        }
+        catch (AudioMidiException exception)
+        {
+            return Results.Problem(title: exception.Message, statusCode: exception.Status);
+        }
+        // Read into memory: the folder goes when the request ends, and a MIDI file is a few KB.
+        return Results.File(await File.ReadAllBytesAsync(output, cancellationToken), "audio/midi", fileName);
+    }
+
+    /// <summary>
+    /// The song's tempo from its score's <c>Q:</c> field, which YuE2 sings at; null where there is none (the score
+    /// parser would assume 120, which is a guess the grid should not snap to).
+    /// </summary>
+    internal static double? SongTempo(string songDirectory)
+    {
+        var score = Path.Combine(songDirectory, "score.abc");
+        string text;
+        try
+        {
+            if (!File.Exists(score))
+            {
+                return null;
+            }
+            text = File.ReadAllText(score);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        if (TempoField().Match(text) is not { Success: true } match
+            || !double.TryParse(match.Groups["bpm"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var bpm))
+        {
+            return null;
+        }
+        // Q:1/8=180 counts eighths; the file's tempo counts quarters.
+        if (match.Groups["num"].Success)
+        {
+            bpm *= 4.0 * int.Parse(match.Groups["num"].Value, CultureInfo.InvariantCulture) / int.Parse(match.Groups["den"].Value, CultureInfo.InvariantCulture);
+        }
+        return bpm is >= AudioMidiSettings.MinTempo and <= AudioMidiSettings.MaxTempo ? bpm : null;
+    }
+
+    [GeneratedRegex(@"^Q:\s*(?:(?<num>[1-9]\d?)/(?<den>[1-9]\d?)\s*=\s*)?(?<bpm>\d+(?:\.\d+)?)", RegexOptions.Multiline)]
+    private static partial Regex TempoField();
+
+    /// <summary>Every vocal stem the separators make (vocals, vocals_dry, …) is sung; the rest are instruments.</summary>
+    internal static bool IsVoice(string stem) => stem.Contains("vocal", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Named as the Logic page names its tracks, so a vocal stem comes back as the melody (<c>Vocal</c>) and a bass stem
+    /// lands on the bass's channel and sound.
+    /// </summary>
+    internal static string TrackName(string stem) =>
+        IsVoice(stem) ? "Vocal" : stem.Length == 0 ? "Track" : char.ToUpperInvariant(stem[0]) + stem[1..].Replace('_', ' ');
+
+    private static string SafeExtension(string name)
+    {
+        var extension = Path.GetExtension(name);
+        return extension.Length is > 1 and <= 6 && extension[1..].All(char.IsAsciiLetterOrDigit) ? extension : ".audio";
+    }
+
+    private static void TryDelete(string folder)
+    {
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static IResult NotInstalled() =>
+        Results.Problem(title: "Basic Pitch is not installed: run deploy/install-midi.sh on the Mac (or deploy/setup-mac.sh with --midi).", statusCode: StatusCodes.Status501NotImplemented);
+}

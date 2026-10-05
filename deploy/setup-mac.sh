@@ -8,7 +8,8 @@
 #   deploy/setup-mac.sh --voices           plus stem separation and Seed-VC for other voices (about 3 GB more)
 #   deploy/setup-mac.sh --speech           plus the speech lab's environment (deploy/install-speech.sh)
 #   deploy/setup-mac.sh --images           plus FLUX.2 Klein for painted covers (deploy/install-images.sh)
-#   deploy/setup-mac.sh --all              all four
+#   deploy/setup-mac.sh --midi             plus Basic Pitch for audio to MIDI (deploy/install-midi.sh)
+#   deploy/setup-mac.sh --all              all five
 #   deploy/setup-mac.sh --engine-from-source
 #                                          replace an engine the YuE Studio app installed by a git checkout
 #   deploy/setup-mac.sh --update           again with the options of the last run, without asking (deploy/update.sh)
@@ -51,6 +52,7 @@ TRANSCRIPTION=false
 VOICES=false
 SPEECH=false
 IMAGES=false
+MIDI=false
 FROM_SOURCE=false
 UPDATE=false
 AUTO_UPDATE=true
@@ -67,7 +69,8 @@ for argument in "$@"; do
     --voices) VOICES=true ;;
     --speech) SPEECH=true ;;
     --images) IMAGES=true ;;
-    --all) TRANSCRIPTION=true; VOICES=true; SPEECH=true; IMAGES=true ;;
+    --midi) MIDI=true ;;
+    --all) TRANSCRIPTION=true; VOICES=true; SPEECH=true; IMAGES=true; MIDI=true ;;
     --engine-from-source) FROM_SOURCE=true ;;
     --no-auto-update) AUTO_UPDATE=false ;;
     --update) echo "--update comes first." >&2; exit 2 ;;
@@ -315,6 +318,19 @@ if [ "$IMAGES" = true ]; then
     "$REPO/deploy/install-images.sh"
     mkdir -p "$DATA/images"
     echo "$IMAGES_RECIPE" > "$DATA/images/recipe"
+  fi
+fi
+
+if [ "$MIDI" = true ]; then
+  step "Audio to MIDI"
+  # install-midi.sh pins Basic Pitch and its packages; an update runs it only when the script changed.
+  MIDI_RECIPE="$(cksum < "$REPO/deploy/install-midi.sh")"
+  if [ "$UPDATE" = true ] && [ "$(cat "$DATA/midi/recipe" 2>/dev/null)" = "$MIDI_RECIPE" ]; then
+    echo "Unchanged."
+  else
+    "$REPO/deploy/install-midi.sh"
+    mkdir -p "$DATA/midi"
+    echo "$MIDI_RECIPE" > "$DATA/midi/recipe"
   fi
 fi
 

@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using YueUI.Api;
+using YueUI.Api.AudioMidi;
 using YueUI.Api.Backup;
 using YueUI.Api.Data;
 using YueUI.Api.Export;
@@ -109,6 +110,8 @@ builder.Services.AddSingleton<ImageActivity>();
 builder.Services.AddSingleton<IImageEngine, MfluxEngine>();
 builder.Services.AddSingleton<ImageMaker>();
 builder.Services.AddHostedService(services => services.GetRequiredService<ImageMaker>());
+builder.Services.Configure<AudioMidiOptions>(builder.Configuration.GetSection(AudioMidiOptions.Section));
+builder.Services.AddSingleton<IAudioMidiEngine, BasicPitchEngine>();
 
 // Songs, renders and lyrics drafts wait here for the memory instead of being refused; kept in the database.
 builder.Services.Configure<QueueOptions>(builder.Configuration.GetSection(QueueOptions.Section));
@@ -168,6 +171,7 @@ api.MapVideoEndpoints();
 api.MapQueueEndpoints();
 api.MapSpeechEndpoints();
 api.MapImageEndpoints();
+api.MapAudioMidiEndpoints();
 api.MapBackupEndpoints();
 api.MapLogEndpoints();
 

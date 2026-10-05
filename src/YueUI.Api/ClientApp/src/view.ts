@@ -127,6 +127,17 @@ export function replaceLogicSong(songId: string | null): void {
   }
 }
 
+/**
+ * A MIDI file made on another page (audio to MIDI) that the Logic page or the backing vocals take as their upload.
+ * Both pages load on first use, so they read it when they mount as well as when it changes, and clear it once taken.
+ */
+export const handedMidi = ref<{ view: 'logic' | 'harmony'; file: File } | null>(null)
+
+export function openMidiOn(target: 'logic' | 'harmony', file: File): void {
+  handedMidi.value = { view: target, file }
+  navigate(target)
+}
+
 /** Opens the voices page with the song picked to be split into stems. */
 export function openStems(songId: string): void {
   setHash(`#/voices/${songId}`)
