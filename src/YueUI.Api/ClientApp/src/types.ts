@@ -111,6 +111,15 @@ export interface StatusSnapshot {
   videos: VideoState[] | null
   /** Painted covers in the works (and the last finished one); null from a server before them. */
   images?: ImageState[] | null
+  /** Which large model besides YuE2 holds the memory; the server decides it (Memory/ModelMemory.cs). */
+  memory?: MemoryInfo | null
+}
+
+/** The large models besides YuE2 that take turns in the memory. */
+export type LargeModel = 'lyrics' | 'voices' | 'speech' | 'images'
+
+export interface MemoryInfo {
+  holder: LargeModel | null
 }
 
 export type JobKind = 'song' | 'render' | 'lyrics' | 'transcription'

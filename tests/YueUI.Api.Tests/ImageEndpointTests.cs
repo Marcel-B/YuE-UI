@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using YueUI.Api.Images;
+using YueUI.Api.Memory;
 using YueUI.Api.Speech;
 using YueUI.Api.Worker;
 
@@ -106,8 +107,8 @@ public sealed class ImageEndpointTests : IDisposable
         _app.Images.Gate.SetResult();
         await WaitForImages("song1", all => all.Single().Stage == "done");
         await _app.StartedWorker();
-        Assert.False(_app.Services.GetRequiredService<ImageActivity>().IsPainting);
-        Assert.False(_app.Services.GetRequiredService<SpeechActivity>().IsSpeaking);
+        Assert.False(_app.Services.GetRequiredService<ModelMemory>().Holds(LargeModel.Images));
+        Assert.False(_app.Services.GetRequiredService<ModelMemory>().Holds(LargeModel.Speech));
     }
 
     [Fact]
@@ -120,7 +121,7 @@ public sealed class ImageEndpointTests : IDisposable
 
         Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/images/{image!.Id}")).StatusCode);
         await WaitForImages("song1", all => all.Count == 0);
-        await TestApp.WaitUntil(() => !_app.Services.GetRequiredService<ImageActivity>().IsPainting);
+        await TestApp.WaitUntil(() => !_app.Services.GetRequiredService<ModelMemory>().Holds(LargeModel.Images));
 
         _app.Images.Gate = new TaskCompletionSource();
         _app.Images.Gate.SetResult();

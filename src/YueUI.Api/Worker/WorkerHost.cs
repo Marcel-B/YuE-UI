@@ -80,6 +80,7 @@ public sealed class WorkerHost(
     private bool? _extensions;
     private LyricsState? _lyrics;
     private IReadOnlyList<QueuedJob> _queue = [];
+    private MemoryInfo _memory = new(null);
     private bool _studioRunning;
     private DateTimeOffset _studioCheckedAt = DateTimeOffset.MinValue;
 
@@ -328,6 +329,17 @@ public sealed class WorkerHost(
             _queue = queue;
         }
         Publish("queue", queue);
+    }
+
+    /// <summary>Keeps which large model holds the memory (<see cref="Memory.ModelMemory"/>) for the snapshot and sends it to the browsers.</summary>
+    public void UpdateMemory(Memory.LargeModel? holder)
+    {
+        var memory = new MemoryInfo(holder);
+        lock (_gate)
+        {
+            _memory = memory;
+        }
+        Publish("memory", memory);
     }
 
     /// <summary>Something went wrong outside the worker that the queue's log should show, e.g. a queued song that could not start.</summary>
@@ -930,7 +942,8 @@ public sealed class WorkerHost(
         [.. _speech],
         [.. _swaps.Values.OrderBy(s => s.CreatedAt)],
         [.. _videos.Values.OrderBy(v => v.CreatedAt)],
-        [.. _images.Values.OrderBy(i => i.CreatedAt)]);
+        [.. _images.Values.OrderBy(i => i.CreatedAt)],
+        _memory);
 
     private WorkerInfo WorkerInfoLocked(bool studioRunning) =>
         new(_status, BusyLocked(), studioRunning, _lastError, _extensions);

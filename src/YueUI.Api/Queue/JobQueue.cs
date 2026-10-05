@@ -40,8 +40,7 @@ public sealed class JobQueue(
     WorkerHost host,
     LyricsWriter lyrics,
     VoiceConverter voices,
-    SpeechActivity speech,
-    Images.ImageActivity images,
+    Memory.ModelMemory memory,
     SongLibrary library,
     YuePaths paths,
     IOptions<QueueOptions> options,
@@ -422,10 +421,10 @@ public sealed class JobQueue(
             directory = found;
         }
 
-        // Announced before looking: the lyrics writer and the voice converter claim the memory first and then look at
-        // the worker, so one of the two always sees the other.
+        // Announced before looking: the other models claim the memory first and then look at the worker
+        // (Memory/ModelMemory.cs), so one of the two always sees the other.
         host.ExpectSongs(voice, command);
-        if (lyrics.IsWriting || voices.IsConverting || speech.IsSpeaking || images.IsPainting || VersionOverdue())
+        if (memory.Holder is not null || VersionOverdue())
         {
             host.ExpectNoSongs();
             return false;
@@ -470,7 +469,7 @@ public sealed class JobQueue(
             audio,
             offline: paths.SheetSageModelsCached,
             cancellationToken,
-            memoryTaken: () => lyrics.IsWriting || voices.IsConverting || speech.IsSpeaking || images.IsPainting || VersionOverdue());
+            memoryTaken: () => memory.Holder is not null || VersionOverdue());
     }
 
     /// <summary>The upload of a transcription that leaves the queue without reaching the worker.</summary>
@@ -503,8 +502,7 @@ public sealed class JobQueue(
                 request.Model,
                 request.Image,
                 revision,
-                job.Id,
-                () => voices.IsConverting || speech.IsSpeaking || images.IsPainting);
+                job.Id);
             return true;
         }
         catch (LyricsBusyException)

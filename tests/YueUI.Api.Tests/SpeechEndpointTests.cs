@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using YueUI.Api.Memory;
 using YueUI.Api.Share;
 using YueUI.Api.Speech;
 
@@ -201,7 +202,7 @@ public sealed class SpeechEndpointTests : IDisposable
 
         await WaitForTakes(client, all => all.Count == 0);
         // The memory is free again: a song goes straight to the worker.
-        await TestApp.WaitUntil(() => !_app.Services.GetRequiredService<SpeechActivity>().IsSpeaking);
+        await TestApp.WaitUntil(() => !_app.Services.GetRequiredService<ModelMemory>().Holds(LargeModel.Speech));
         await client.PostAsJsonAsync("/api/generate", new { style = "pop", lyrics = "[verse]\nLa", title = "X" });
         Assert.NotNull(_app.Launcher.Current);
     }

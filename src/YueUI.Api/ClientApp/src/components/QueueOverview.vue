@@ -4,6 +4,7 @@ import { t, type MessageKey } from '../i18n'
 import { holderOf, modelOf, type Model, type VoiceWork } from '../queueModels'
 import type {
   ImageState,
+  LargeModel,
   LyricsState,
   QueuedJob,
   SongState,
@@ -22,6 +23,8 @@ const props = defineProps<{
   jobs: QueuedJob[]
   worker: WorkerInfo
   lyricsDraft: LyricsState | null
+  /** The large model besides YuE2 that holds the memory, as the server says. */
+  memory: LargeModel | null
   /** Voice versions and stem separations. */
   versions: VoiceWork[]
   /** The speech lab's takes in the works. */
@@ -63,9 +66,7 @@ const shown = computed(() =>
   }),
 )
 
-const holder = computed(() =>
-  holderOf(props.worker, props.lyricsDraft, props.versions, props.takes, props.transcriptions, props.images),
-)
+const holder = computed(() => holderOf(props.worker, props.memory, props.transcriptions))
 
 function running(model: Model): number {
   switch (model) {

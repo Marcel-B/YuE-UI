@@ -44,6 +44,7 @@ import type {
   SwapState,
   VideoState,
   ImageState,
+  LargeModel,
   VersionState,
   QueuedJob,
   VoiceInfo,
@@ -105,6 +106,8 @@ const swaps = ref<SwapState[]>([])
 const videos = ref<VideoState[]>([])
 /** Painted covers in the works, and those finished while the page was open. */
 const images = ref<ImageState[]>([])
+/** The large model besides YuE2 that holds the memory, as the server says. */
+const memory = ref<LargeModel | null>(null)
 /**
  * The speech lab's takes: those in the works from the snapshot, then as the event stream reports them, by id. The queue
  * shows the unfinished ones; the lab lays them all over what it loaded.
@@ -211,6 +214,7 @@ const unsubscribe = subscribe({
     speechTakes.value = snapshot.speech ?? []
     jobs.value = snapshot.queue ?? []
     bundleWindowSeconds.value = snapshot.bundleWindowSeconds ?? null
+    memory.value = snapshot.memory?.holder ?? null
     // The stream (re)opened: whatever was written meanwhile is in the library now, the playlists may have changed on
     // another device.
     void loadLibrary()
@@ -255,6 +259,9 @@ const unsubscribe = subscribe({
   },
   queue(queue) {
     jobs.value = queue
+  },
+  memory(info) {
+    memory.value = info.holder
   },
   connection(open) {
     connected.value = open
@@ -680,6 +687,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :jobs="jobs"
           :worker="worker"
           :lyrics-draft="lyricsDraft"
+          :memory="memory"
           :versions="[...versions, ...stemSets, ...swaps]"
           :takes="speechTakes"
           :transcriptions="transcriptions"
@@ -712,6 +720,7 @@ async function useAsNewSong(songId: string): Promise<void> {
           :listed="listedIds"
           :worker="worker"
           :lyrics-draft="lyricsDraft"
+          :memory="memory"
           :versions="versions"
           :stems="stemSets"
           :swaps="swaps"

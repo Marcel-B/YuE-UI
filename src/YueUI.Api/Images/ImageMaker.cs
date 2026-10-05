@@ -2,28 +2,10 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using YueUI.Api.Data;
-using YueUI.Api.Lyrics;
-using YueUI.Api.Speech;
-using YueUI.Api.Voices;
+using YueUI.Api.Memory;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Images;
-
-/// <summary>
-/// Whether an image model holds the memory. A class of its own like <see cref="SpeechActivity"/>: the queue, the voice
-/// converter and the speech lab have to see it, and the painter has to see them.
-/// </summary>
-public sealed class ImageActivity
-{
-    private volatile bool _painting;
-
-    /// <summary>YuE2, the lyrics model, voice conversions and the speech lab wait while it is set.</summary>
-    public bool IsPainting
-    {
-        get => _painting;
-        internal set => _painting = value;
-    }
-}
 
 /// <summary>
 /// Paints cover candidates for songs, one at a time, with a local FLUX.2 Klein (<see cref="IImageEngine"/>). The dialog
@@ -32,18 +14,14 @@ public sealed class ImageActivity
 /// <remarks>
 /// Klein holds about 9 GB while it paints, so it follows the memory rule the speech lab follows on 24 GB: a picture
 /// waits while songs are generated, lyrics written, a voice sung or a take spoken, an idle YuE worker is shut down
-/// first, and while <see cref="ImageActivity.IsPainting"/> the others wait. The flag is taken before looking, as they
-/// do. Candidates are not cover material yet, so they lie in <c>images/</c> next to the database as a JPEG and a JSON
-/// each, not in the database; waiting ones survive a restart, one that was halfway is marked failed.
+/// first, and while it holds the memory (<see cref="ModelMemory"/>) the others wait. Candidates are not cover material
+/// yet, so they lie in <c>images/</c> next to the database as a JPEG and a JSON each, not in the database; waiting ones survive a restart, one that was halfway is marked failed.
 /// </remarks>
 public sealed class ImageMaker(
     SqliteDatabase database,
     IImageEngine engine,
-    ImageActivity activity,
-    SpeechActivity speech,
+    ModelMemory memory,
     WorkerHost host,
-    LyricsWriter lyrics,
-    VoiceConverter voices,
     IOptions<ImageOptions> options,
     TimeProvider time,
     ILogger<ImageMaker> logger) : BackgroundService
@@ -213,7 +191,7 @@ public sealed class ImageMaker(
             var model = options.Value.ResolvedModels.FirstOrDefault(m => m.Id == image.ModelId)
                 ?? throw new ImageException($"The model {image.ModelId} is no longer offered.");
 
-            await WaitForMemoryAsync(cancel.Token);
+            await memory.ClaimAsync(LargeModel.Images, options.Value.WaitInterval, time, cancel.Token);
             // YuE2 keeps its model for ten idle minutes; the image model needs the memory now.
             await host.ShutdownWorkerAsync();
 
@@ -257,7 +235,7 @@ public sealed class ImageMaker(
         }
         finally
         {
-            activity.IsPainting = false;
+            memory.Release(LargeModel.Images);
             lock (_gate)
             {
                 _running = null;
@@ -272,26 +250,6 @@ public sealed class ImageMaker(
                 logger.LogWarning(exception, "Could not delete {File}", output);
             }
         }
-    }
-
-    /// <summary>Checked again once the flag is set, so a song or a take started in between is not overlooked.</summary>
-    private async Task WaitForMemoryAsync(CancellationToken cancellationToken)
-    {
-        while (true)
-        {
-            if (!Occupied())
-            {
-                activity.IsPainting = true;
-                if (!Occupied())
-                {
-                    return;
-                }
-                activity.IsPainting = false;
-            }
-            await Task.Delay(options.Value.WaitInterval, time, cancellationToken);
-        }
-
-        bool Occupied() => host.InUse || lyrics.IsWriting || voices.IsConverting || speech.IsSpeaking;
     }
 
     /// <summary>Keeps the change unless the picture was deleted meanwhile, and tells the browsers.</summary>
