@@ -81,6 +81,8 @@ public static class LogSources
         ("YueUI.Api.Share.", "export"),
         ("YueUI.Api.Export.", "export"),
         ("YueUI.Api.Logic.", "logic"),
+        // MIDI from a track ends up on the Logic page or in Logic; one source fewer to filter by.
+        ("YueUI.Api.AudioMidi.", "logic"),
         ("YueToLogic.", "logic"),
         ("YueUI.Api.Backup.", "backup"),
         ("YueUI.Api.Push.", "push"),

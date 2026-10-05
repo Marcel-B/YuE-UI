@@ -27,10 +27,10 @@ Auf einem Mac, auf dem außer macOS nichts installiert ist, richtet ein Skript a
 ```sh
 xcode-select --install                 # Command Line Tools (git, clang), einmal
 git clone https://github.com/Marcel-B/YuE-UI.git ~/repos/YueUI
-~/repos/YueUI/deploy/setup-mac.sh      # --transcription, --voices, --speech, --images oder --all für mehr
+~/repos/YueUI/deploy/setup-mac.sh      # --transcription, --voices, --speech, --images, --midi oder --all für mehr
 ```
 
-Es prüft den Mac (Apple Silicon, macOS 14+, Speicher, rund 20 GB frei) und installiert, was fehlt: Homebrew, uv, ffmpeg, Node.js und das .NET 10 SDK. Danach holt es YuE2 ohne die App, nämlich als Git-Checkout von [YuE Studio](https://github.com/tonywestonuk/YuE-Studio) in der Version, gegen die Tonwerks Erweiterung des Workers geprüft ist (`ENGINE_REF`, derzeit v0.4.0). Es baut die Brücke zur Neural Engine, legt die Python-Umgebung an und lädt die Modelle (etwa 7 GB). Am Ende veröffentlicht es Tonwerk mit `deploy/install.sh` und startet den Worker einmal zur Probe. Mit `--transcription` kommt SheetSage2 dazu (etwa 2 GB), mit `--speech` das Sprachlabor, mit `--images` FLUX.2 Klein für gemalte Cover.
+Es prüft den Mac (Apple Silicon, macOS 14+, Speicher, rund 20 GB frei) und installiert, was fehlt: Homebrew, uv, ffmpeg, Node.js und das .NET 10 SDK. Danach holt es YuE2 ohne die App, nämlich als Git-Checkout von [YuE Studio](https://github.com/tonywestonuk/YuE-Studio) in der Version, gegen die Tonwerks Erweiterung des Workers geprüft ist (`ENGINE_REF`, derzeit v0.4.0). Es baut die Brücke zur Neural Engine, legt die Python-Umgebung an und lädt die Modelle (etwa 7 GB). Am Ende veröffentlicht es Tonwerk mit `deploy/install.sh` und startet den Worker einmal zur Probe. Mit `--transcription` kommt SheetSage2 dazu (etwa 2 GB), mit `--speech` das Sprachlabor, mit `--images` FLUX.2 Klein für gemalte Cover, mit `--midi` Basic Pitch für Audio zu MIDI.
 
 Die Schritte entsprechen denen des Installers der App und landen in denselben Ordnern (`~/Library/Application Support/YuE Studio`, Songs in `~/Music/YuE Studio`). Tonwerk braucht deshalb keine andere Konfiguration, und eine später installierte App findet die Modelle. Öffnet man die App, installiert sie ihre eigene Kopie über den Checkout; das funktioniert, nur die Git-Historie ist dann weg. Umgekehrt lässt das Skript eine Installation der App unangetastet, solange es nicht mit `--engine-from-source` läuft.
 
@@ -176,6 +176,18 @@ Grenzen: YuE2 gibt kein Werkzeug heraus, das aus fremder Musik die Song-Tokens g
 Unter **Transkription** lässt sich eine Aufnahme hochladen (jedes Format, das macOS lesen kann, bis 300 MB). SheetSage2 macht daraus eine Melodie-Partitur im ABC-Format ohne Akkorde. **Als Partitur übernehmen** setzt sie als eigene Partitur ins Formular und stellt die Planung auf „Nur Melodie“, die Grundlage für ein Cover mit neuem Stil und Text. Jede Transkription landet als Ordner in `~/Music/YuE Studio/transcriptions` (Partitur, MIDI-Spuren, Analyse); die Liste zeigt auch die, die in YuE Studio entstanden sind.
 
 SheetSage2 braucht eine eigene Python-Umgebung und etwa 2 GB Modelle. Installiert wird beides mit `deploy/setup-mac.sh --transcription` oder in der App YuE Studio: dort einmal **Transcribe recording** öffnen und **Install transcription support** wählen. Transkribiert wird auf der CPU, das dauert einige Minuten, immer eine Aufnahme zur Zeit. Weitere Aufnahmen warten in der Warteschlange, ebenso eine, während ein Textentwurf, eine Stimme oder das Sprachlabor den Speicher belegt; Songs laufen neben einer Transkription weiter. Umgekehrt warten Textentwurf, Stimme und Sprachlabor, bis die Transkription fertig ist, weil sie sonst den Worker samt Transkription beenden würden.
+
+## Audio zu MIDI mit Basic Pitch
+
+Unter der Transkription macht **Audio zu MIDI** aus einer Aufnahme eine MIDI-Datei, mit [Basic Pitch](https://github.com/spotify/basic-pitch) von Spotify. Anders als SheetSage2 schreibt es keine Partitur auf den Schlag, sondern hört jede Note mit Einsatz und Länge, so wie sie gesungen wurde. Am besten geht das mit einer Gesangsspur ohne Begleitung, etwa dem trockenen Gesang aus den Stems: Dort steht neben jeder Spur ein Knopf **Als MIDI**, der die Spur im Tempo ihres Songs (aus `score.abc`) umwandelt. Hall und Begleitung würden sonst zu Noten.
+
+- **Einstimmig** (Standard): immer nur eine Note, wie eine Stimme singt. Basic Pitch hört mehrstimmig und meldet sonst Obertöne als eigene leise Noten.
+- **Aufs 16tel-Raster**: Einsätze und Enden auf Sechzehntel des Tempos. Bei einer hochgeladenen Aufnahme muss dafür das Tempo angegeben sein; sonst wird die Datei mit 120 bpm geschrieben.
+- **Pitch-Bends**: Gleiter und Vibrato als Pitch-Bends (nur einstimmig).
+
+Die Spur heißt `Vocal`, eine Instrumentenspur aus den Stems nach ihrem Stem (`Bass`, `Drums`, …). Das Ergebnis lässt sich speichern oder direkt an die **Begleitstimmen** oder die **Logic-Seite** geben, die es als hochgeladene Melodie nehmen. Vibrato und Gleiter zerfallen manchmal in kurze Nachbarnoten, die man in Logic aufräumt.
+
+Basic Pitch ist klein (ein paar MB) und läuft über ONNX Runtime auf dem Prozessor, neben YuE2 und ohne Warteschlange; ein Song dauert Sekunden. Einrichten einmal auf dem Mac mit `deploy/install-midi.sh` oder `deploy/setup-mac.sh $(cat "$HOME/Library/Application Support/YuE UI/setup-options") --midi`; die Umgebung liegt unter `~/Library/Application Support/YuE UI/midi/`.
 
 ## Songtext entwerfen mit LM Studio
 
@@ -357,6 +369,7 @@ Klein 9B liegt auf Hugging Face hinter seiner Lizenz: auf [huggingface.co/black-
 | `Speech:Python` (`Speech__Python`) | `<Root>/env/bin/python` | Python mit mlx-audio |
 | `Speech:ModelCache` (`Speech__ModelCache`) | `<Root>/models` | Hugging-Face-Cache der Sprachmodelle (`HF_HOME`) |
 | `Speech:Timeout` (`Speech__Timeout`) | `01:00:00` | so lange darf ein Ergebnis samt erstem Download dauern |
+| `AudioMidi:Python` (`AudioMidi__Python`) | `~/Library/Application Support/YuE UI/midi/env/bin/python` | Python mit Basic Pitch für Audio zu MIDI |
 | `Images:Root` (`Images__Root`) | `~/Library/Application Support/YuE UI/images` | Ordner für gemalte Cover (Python-Umgebung und Modelle) |
 | `Images:Python` (`Images__Python`) | `<Root>/env/bin/python` | Python mit mflux |
 | `Images:ModelCache` (`Images__ModelCache`) | `<Root>/models` | Hugging-Face-Cache der Bildmodelle (`HF_HOME`) |
@@ -453,6 +466,9 @@ Klein 9B liegt auf Hugging Face hinter seiner Lizenz: auf [huggingface.co/black-
 | `POST` | `/api/speech/takes` | `{ text, voiceId?, models }`: ein Ergebnis je Modell, antwortet `202` mit ihnen; der Fortschritt kommt als `speech`-Event (`queued`, `loading`, `speaking`, dann `done` oder `failed` mit `message`); `501` ohne mlx-audio |
 | `GET` | `/api/speech/takes/{id}/audio` | fertiges Ergebnis als WAV (`?download=true` als Download) |
 | `DELETE` | `/api/speech/takes/{id}` | Ergebnis abbrechen oder löschen |
+| `GET` | `/api/audio-midi` | Audio zu MIDI: `{ installed, python }` |
+| `POST` | `/api/audio-midi` | Aufnahme zu MIDI: Formular mit `file` (jedes Format, das ffmpeg liest, bis 200 MB), `mono?` (Standard an), `quantize?`, `bends?`, `tempo?`; antwortet sofort mit der MIDI-Datei, die Zahl der Noten im Header `X-Audio-Midi-Notes`; `400` für das Raster ohne Tempo, `422` ohne Noten, `501` ohne Basic Pitch |
+| `POST` | `/api/songs/{run}/{song}/stems/{id}/{name}/midi` | Ein Stem zu MIDI: `{ mono?, quantize?, bends?, tempo? }`, Tempo sonst aus `score.abc` des Songs; Antwort wie oben |
 | `GET` | `/api/images` | Gemalte Cover: `{ installed, python, models }` (Modelle mit Lizenz, `commercial`, `downloaded`, `tokenFound`) |
 | `GET` / `POST` | `/api/songs/{run}/{song}/images` | Vorschläge des Songs, neueste zuerst, bzw. `{ prompt, model?, seed? }` malen; antwortet `202`, der Fortschritt kommt als `image`-Event (`queued`, `loading`, `painting` mit `fraction`, dann `done` oder `failed`); `501` ohne mflux |
 | `GET` / `DELETE` | `/api/images/{id}` | Vorschlag als JPEG bzw. abbrechen oder löschen |

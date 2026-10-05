@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import Checkbox from 'primevue/checkbox'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { deleteStems, listStemModels, listStems, separateSong, stemAudioUrl } from '../api'
+import { deleteStems, listStemModels, listStems, separateSong, stemAudioUrl, stemToMidi, type MidiTrack } from '../api'
+import { loadMidiInfo, midiInfo, midiSettings } from '../audioMidi'
 import { formatDateTime, formatDuration, hasMessage, t } from '../i18n'
 import { playing as songPlaying, toggle as toggleSong } from '../player'
 import type { RunInfo, StemFile, StemModel, StemSetState } from '../types'
 import { showSong, songHref, stemSong } from '../view'
+import MidiOptions from './MidiOptions.vue'
+import MidiResult from './MidiResult.vue'
 import WaveformView from './WaveformView.vue'
 
 /**
@@ -54,6 +57,7 @@ watch(
   (active) => {
     if (active) {
       void load()
+      void loadMidiInfo()
       if (models.value.length === 0) {
         void loadModels()
       }
@@ -253,6 +257,35 @@ function stemPosition(set: StemSetState, stem: StemFile): number {
   return listening.value?.set === set.id && listening.value.name === stem.name ? position.value : 0
 }
 
+// ---- MIDI -------------------------------------------------------------------------------------------
+
+/** Made in this visit, by set and stem; a MIDI file takes seconds, so it is made again rather than stored. */
+const midi = ref<Record<string, MidiTrack>>({})
+const midiErrors = ref<Record<string, string>>({})
+const converting = ref<string | null>(null)
+const anyDone = computed(() => sets.value.some((set) => set.stage === 'done'))
+
+function midiKey(set: StemSetState, stem: StemFile): string {
+  return `${set.id}/${stem.name}`
+}
+
+async function toMidi(set: StemSetState, stem: StemFile): Promise<void> {
+  const key = midiKey(set, stem)
+  if (converting.value) {
+    return
+  }
+  converting.value = key
+  delete midiErrors.value[key]
+  try {
+    midi.value[key] = await stemToMidi(set.songId, set.id, stem.name, midiSettings.value)
+  } catch (caught) {
+    delete midi.value[key]
+    midiErrors.value[key] = message(caught)
+  } finally {
+    converting.value = null
+  }
+}
+
 // ---- Labels -----------------------------------------------------------------------------------------
 
 /** StemMyWav's file names, as people call them; an unknown one as it is. */
@@ -316,6 +349,11 @@ const stageSeverity: Record<string, string | undefined> = { done: 'success', fai
     <p v-if="loadError" class="danger m-0">{{ t('stemsError', { message: loadError }) }}</p>
     <p v-else-if="sets.length === 0" class="muted m-0">{{ t('stemsEmpty') }}</p>
 
+    <div v-if="midiInfo?.installed && anyDone" class="flex flex-col gap-1">
+      <span class="muted text-sm">{{ t('stemsMidi') }}</span>
+      <MidiOptions id-prefix="stems-midi" />
+    </div>
+
     <ul class="m-0 flex list-none flex-col gap-4 p-0">
       <li v-for="set in sets" :key="set.id" class="flex flex-col gap-2 border-t border-surface pt-3">
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -348,46 +386,64 @@ const stageSeverity: Record<string, string | undefined> = { done: 'success', fai
         </div>
         <p v-if="set.stage === 'failed' && set.message" class="danger m-0 text-sm">{{ set.message }}</p>
 
-        <div v-for="stem in set.stems" :key="stem.name" class="flex items-center gap-2">
-          <Button
-            :icon="isPlaying(set, stem) ? 'pi pi-pause' : 'pi pi-play'"
-            rounded
-            outlined
-            size="small"
-            :aria-label="isPlaying(set, stem) ? t('pause') : t('stemsListen', { stem: stemLabel(stem.name) })"
-            @click="toggle(set, stem)"
-          />
-          <div class="min-w-0 flex-1">
-            <div class="flex items-baseline gap-2 text-sm">
-              <span class="truncate font-semibold">{{ stemLabel(stem.name) }}</span>
-              <span v-if="stem.seconds > 0" class="muted ml-auto shrink-0 tabular-nums">
-                <template v-if="listening?.set === set.id && listening.name === stem.name"
-                  >{{ formatDuration(position) }} /
-                </template>
-                {{ formatDuration(stem.seconds) }}
-              </span>
+        <div v-for="stem in set.stems" :key="stem.name" class="flex flex-col gap-1">
+          <div class="flex items-center gap-2">
+            <Button
+              :icon="isPlaying(set, stem) ? 'pi pi-pause' : 'pi pi-play'"
+              rounded
+              outlined
+              size="small"
+              :aria-label="isPlaying(set, stem) ? t('pause') : t('stemsListen', { stem: stemLabel(stem.name) })"
+              @click="toggle(set, stem)"
+            />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2 text-sm">
+                <span class="truncate font-semibold">{{ stemLabel(stem.name) }}</span>
+                <span v-if="stem.seconds > 0" class="muted ml-auto shrink-0 tabular-nums">
+                  <template v-if="listening?.set === set.id && listening.name === stem.name"
+                    >{{ formatDuration(position) }} /
+                  </template>
+                  {{ formatDuration(stem.seconds) }}
+                </span>
+              </div>
+              <WaveformView
+                v-if="stem.peaks && stem.seconds > 0"
+                :peaks="stem.peaks"
+                :duration="stem.seconds"
+                :start="0"
+                :end="stemPosition(set, stem)"
+                :position="stemPosition(set, stem)"
+                compact
+                @seek="seek(set, stem, $event)"
+              />
             </div>
-            <WaveformView
-              v-if="stem.peaks && stem.seconds > 0"
-              :peaks="stem.peaks"
-              :duration="stem.seconds"
-              :start="0"
-              :end="stemPosition(set, stem)"
-              :position="stemPosition(set, stem)"
-              compact
-              @seek="seek(set, stem, $event)"
+            <Button
+              as="a"
+              :href="stemAudioUrl(set.songId, set.id, stem.name, true)"
+              icon="pi pi-download"
+              text
+              rounded
+              size="small"
+              v-tooltip="t('stemsDownload')"
+              :aria-label="t('stemsDownload')"
+            />
+            <Button
+              v-if="midiInfo?.installed"
+              icon="pi pi-wave-pulse"
+              text
+              rounded
+              size="small"
+              :loading="converting === midiKey(set, stem)"
+              :disabled="converting !== null"
+              v-tooltip="t('stemsToMidi')"
+              :aria-label="t('stemsToMidi')"
+              @click="toMidi(set, stem)"
             />
           </div>
-          <Button
-            as="a"
-            :href="stemAudioUrl(set.songId, set.id, stem.name, true)"
-            icon="pi pi-download"
-            text
-            rounded
-            size="small"
-            v-tooltip="t('stemsDownload')"
-            :aria-label="t('stemsDownload')"
-          />
+          <MidiResult v-if="midi[midiKey(set, stem)]" :track="midi[midiKey(set, stem)]!" class="pl-10" />
+          <p v-if="midiErrors[midiKey(set, stem)]" class="danger m-0 pl-10 text-sm">
+            {{ midiErrors[midiKey(set, stem)] }}
+          </p>
         </div>
       </li>
     </ul>

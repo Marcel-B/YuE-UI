@@ -654,6 +654,24 @@ export interface ImageModelInfo {
   tokenFound: boolean
 }
 
+/** `GET /api/audio-midi`: whether Basic Pitch is set up, and where the server looks for it. */
+export interface AudioMidiInfo {
+  installed: boolean
+  python: string
+}
+
+/** How a track becomes MIDI (`AudioMidiSettings`). */
+export interface AudioMidiSettings {
+  /** One note at a time, as a voice sings; Basic Pitch hears overtones as notes of their own. */
+  mono: boolean
+  /** Starts and ends on the sixteenth grid of the tempo. */
+  quantize: boolean
+  /** Keeps slides and vibrato as pitch bends; only with `mono`. */
+  bends: boolean
+  /** An upload's tempo; a stem takes its song's. */
+  tempo?: number | null
+}
+
 export interface ImageInfo {
   installed: boolean
   python: string

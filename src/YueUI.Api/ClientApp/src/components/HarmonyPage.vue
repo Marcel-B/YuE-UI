@@ -10,7 +10,7 @@ import { defaultFormState, toConversionOptions } from '../logic/options'
 import { baseName, download, midiBlob } from '../logic/score'
 import { HARMONY_PARTS, type Assignments, type ConversionResult, type HarmonyPart } from '../logic/types'
 import type { RunInfo } from '../types'
-import { navigate } from '../view'
+import { handedMidi, navigate } from '../view'
 import FileDropZone from './logic/FileDropZone.vue'
 import ScorePreview from './logic/ScorePreview.vue'
 
@@ -30,6 +30,19 @@ const modes = computed(() => [
 ])
 const file = ref<File | null>(null)
 const songId = ref<string | null>(null)
+
+// A track turned into MIDI on the transcription or voices page arrives as the upload.
+watch(
+  handedMidi,
+  (handed) => {
+    if (handed?.view === 'harmony') {
+      mode.value = 'upload'
+      file.value = handed.file
+      handedMidi.value = null
+    }
+  },
+  { immediate: true },
+)
 const songOptions = computed(() =>
   props.runs.flatMap((run) =>
     run.songs
