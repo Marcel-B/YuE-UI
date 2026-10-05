@@ -21,6 +21,7 @@ deploy/install-speech.sh         # the speech lab's Python environment with mlx-
 deploy/install-images.sh         # the painted covers' Python environment with mflux (pinned), for FLUX.2 Klein
 deploy/train-lora.sh <folder> <trigger>   # a sound LoRA from a folder of songs, into loras/ next to the database (--background)
 deploy/update.sh                 # one update round: new commits on main once GET /api/busy is false, then setup-mac.sh --update; on/off/status for its LaunchAgent
+deploy/move-to-volume.sh [/Volumes/X part…]   # big folders (models, songs, …) to an external volume, a symlink left behind; --back
 ```
 
 Frontend only, from `src/YueUI.Api/ClientApp`: `npm run dev`, `npm run build` (vue-tsc, then Vite), `npm run type-check`, `npm run format` (Prettier, config in `.prettierrc.json`; VS Code formats on save through `.vscode/settings.json`). Pass `-p:SkipClientAppBuild=true` to skip every npm step.
