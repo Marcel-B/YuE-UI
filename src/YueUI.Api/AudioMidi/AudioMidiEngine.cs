@@ -96,7 +96,13 @@ public sealed class BasicPitchEngine(IOptions<AudioMidiOptions> options, ILogger
         {
             _one.Release();
         }
-        if (run.ExitCode != 0 || result is null || !File.Exists(job.Output))
+        // The script says done only after the file is written; a crash while Python shuts down after that (onnxruntime
+        // aborted on the Mac at exit) costs nothing, so the file counts.
+        if (result is not null && File.Exists(job.Output) && run.ExitCode != 0)
+        {
+            logger.LogWarning("Basic Pitch exited with {Code} after writing {Output}:\n{Tail}", run.ExitCode, Path.GetFileName(job.Output), string.Join('\n', run.Tail.TakeLast(3)));
+        }
+        else if (run.ExitCode != 0 || result is null || !File.Exists(job.Output))
         {
             logger.LogWarning("Basic Pitch failed on {Audio}:\n{Output}", Path.GetFileName(job.Audio), string.Join('\n', run.Tail));
             throw new AudioMidiException(ToolProcess.Reason(run, "Basic Pitch wrote no MIDI file."));
