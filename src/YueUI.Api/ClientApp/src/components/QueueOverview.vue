@@ -2,7 +2,16 @@
 import { computed } from 'vue'
 import { t, type MessageKey } from '../i18n'
 import { holderOf, modelOf, type Model, type VoiceWork } from '../queueModels'
-import type { LyricsState, QueuedJob, SongState, SpeechTake, TranscriptionState, WorkerInfo } from '../types'
+import type {
+  ImageState,
+  LyricsState,
+  QueuedJob,
+  SongState,
+  SpeechTake,
+  TranscriptionState,
+  VideoState,
+  WorkerInfo,
+} from '../types'
 
 /**
  * One line over the queue: the models that take turns in the 24 GB, which one holds the memory now and how much waits
@@ -19,6 +28,10 @@ const props = defineProps<{
   takes: SpeechTake[]
   /** SheetSage2's, running or finished; the waiting ones are in jobs. */
   transcriptions: TranscriptionState[]
+  /** Painted covers; FLUX.2 Klein takes the memory like the others. */
+  images: ImageState[]
+  /** Music videos; ffmpeg renders them on the CPU beside the models. */
+  videos: VideoState[]
 }>()
 
 const models: { model: Model; icon: string; label: MessageKey }[] = [
@@ -26,20 +39,24 @@ const models: { model: Model; icon: string; label: MessageKey }[] = [
   { model: 'lyrics', icon: 'pi pi-pen-to-square', label: 'modelLyrics' },
   { model: 'voice', icon: 'pi pi-user', label: 'modelVoice' },
   { model: 'speech', icon: 'pi pi-comments', label: 'modelSpeech' },
+  { model: 'image', icon: 'pi pi-palette', label: 'modelImage' },
   { model: 'transcription', icon: 'pi pi-microphone', label: 'modelTranscription' },
+  { model: 'video', icon: 'pi pi-video', label: 'modelVideo' },
 ]
 
 /**
- * The speech lab and transcriptions are occasional: their tiles only take room on the phone while they have something
- * in the works.
+ * The speech lab, covers, transcriptions and videos are occasional: their tiles only take room on the phone while they
+ * have something in the works.
  */
 const shown = computed(() =>
   models.filter((m) => {
     switch (m.model) {
       case 'speech':
         return props.takes.some((take) => !take.finished)
+      case 'image':
       case 'transcription':
-        return running('transcription') + waiting('transcription') > 0
+      case 'video':
+        return running(m.model) + waiting(m.model) > 0
       default:
         return true
     }
@@ -47,7 +64,7 @@ const shown = computed(() =>
 )
 
 const holder = computed(() =>
-  holderOf(props.worker, props.lyricsDraft, props.versions, props.takes, props.transcriptions),
+  holderOf(props.worker, props.lyricsDraft, props.versions, props.takes, props.transcriptions, props.images),
 )
 
 function running(model: Model): number {
@@ -60,8 +77,12 @@ function running(model: Model): number {
       return props.versions.filter((v) => !v.finished && v.stage !== 'queued').length
     case 'speech':
       return props.takes.filter((take) => !take.finished && take.stage !== 'queued').length
+    case 'image':
+      return props.images.filter((i) => i.stage === 'loading' || i.stage === 'painting').length
     case 'transcription':
       return props.transcriptions.filter((tr) => !tr.finished).length
+    case 'video':
+      return props.videos.filter((v) => !v.finished && v.stage !== 'queued').length
   }
 }
 
@@ -71,14 +92,21 @@ function waiting(model: Model): number {
       return props.versions.filter((v) => v.stage === 'queued').length
     case 'speech':
       return props.takes.filter((take) => take.stage === 'queued').length
+    case 'image':
+      return props.images.filter((i) => i.stage === 'queued').length
+    case 'video':
+      return props.videos.filter((v) => v.stage === 'queued').length
     default:
       return props.jobs.filter((j) => modelOf(j) === model).length
   }
 }
 
-/** A transcription runs beside YuE2, so it is working even when YuE2 is the one that holds the memory. */
+/**
+ * A transcription runs beside YuE2 and a video beside everything, so they are working even when another model holds
+ * the memory.
+ */
 function working(model: Model): boolean {
-  return holder.value === model || (model === 'transcription' && running(model) > 0)
+  return holder.value === model || ((model === 'transcription' || model === 'video') && running(model) > 0)
 }
 
 function state(model: Model): string {
@@ -99,8 +127,8 @@ function state(model: Model): string {
 </script>
 
 <template>
-  <!-- Four tiles in a row leave a phone only their first letters, so the speech lab's or a transcription's makes two
-       rows there. -->
+  <!-- Four tiles in a row leave a phone only their first letters, so an occasional tile (speech lab, cover,
+       transcription, video) makes two rows there. -->
   <div
     :class="['gap-1 mb-3', shown.length > 3 ? 'grid grid-cols-2 sm:flex' : 'flex']"
     role="list"

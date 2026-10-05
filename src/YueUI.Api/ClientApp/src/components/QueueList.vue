@@ -114,7 +114,7 @@ onBeforeUnmount(() => clearInterval(timer))
 
 const voiceWork = computed(() => [...props.versions, ...props.stems, ...props.swaps])
 const holder = computed(() =>
-  holderOf(props.worker, props.lyricsDraft, voiceWork.value, props.takes, props.transcriptions),
+  holderOf(props.worker, props.lyricsDraft, voiceWork.value, props.takes, props.transcriptions, props.images),
 )
 
 /** The one transcription in the worker (SheetSage2 takes one at a time). */
@@ -238,6 +238,9 @@ function voiceReason(item: VoiceItem): string {
   if (holder.value === 'lyrics') {
     return t('waitLyrics')
   }
+  if (holder.value === 'image') {
+    return t('waitImage')
+  }
   if (holder.value === 'transcription') {
     return t('waitTranscription')
   }
@@ -332,6 +335,8 @@ watch(
       :versions="voiceWork"
       :takes="takes"
       :transcriptions="transcriptions"
+      :images="images"
+      :videos="videos"
     />
 
     <div v-if="runningTranscription" class="mb-4">

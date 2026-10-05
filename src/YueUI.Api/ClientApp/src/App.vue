@@ -682,6 +682,8 @@ async function useAsNewSong(songId: string): Promise<void> {
           :versions="[...versions, ...stemSets, ...swaps]"
           :takes="speechTakes"
           :transcriptions="transcriptions"
+          :images="images"
+          :videos="videos"
         />
       </a>
     </div>
