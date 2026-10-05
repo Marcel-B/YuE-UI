@@ -21,12 +21,12 @@ public sealed class VideoEndpointTests : IDisposable
 
         var response = await client.PostAsync(
             "/api/songs/20260101-120000-neon/song2/videos",
-            Form(VideoFormats.Landscape, VideoEffects.Bars, VideoMotions.Particles, showTitle: true));
+            Form(VideoFormats.Landscape, VideoEffects.Bars, VideoMotions.Particles, showTitle: true, color: "#A78BFA"));
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var queued = await response.Content.ReadFromJsonAsync<VideoState>(TestApp.Json);
-        Assert.Equal(("20260101-120000-neon/song2", "Neon Night", "landscape", "bars", "particles", true, true),
-            (queued!.SongId, queued.Title, queued.Format, queued.Effect, queued.Motion, queued.ShowCover, queued.ShowTitle));
+        Assert.Equal(("20260101-120000-neon/song2", "Neon Night", "landscape", "bars", "#a78bfa", "particles", true, true),
+            (queued!.SongId, queued.Title, queued.Format, queued.Effect, queued.Color, queued.Motion, queued.ShowCover, queued.ShowTitle));
 
         var done = await WaitForVideo(client, "20260101-120000-neon/song2", v => v.Finished);
         Assert.Equal(("done", (long?)FakeVideoRenderer.Mp4.Length), (done.Stage, done.Bytes));
@@ -83,12 +83,13 @@ public sealed class VideoEndpointTests : IDisposable
         _app.AddSong("20260101-120000-neon", "song1");
         var client = _app.CreateClient();
 
-        var response = await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form("square", "lasers", "fireworks", false));
+        var response = await client.PostAsync("/api/songs/20260101-120000-neon/song1/videos", Form("square", "lasers", "fireworks", false, color: "red;x"));
         var errors = (await response.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject();
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.True(errors.ContainsKey("format"));
         Assert.True(errors.ContainsKey("effect"));
         Assert.True(errors.ContainsKey("motion"));
+        Assert.True(errors.ContainsKey("color"));
 
         // A landscape background for a vertical video, a cover that is no PNG, no title although one was asked for and
         // a plasma ball of one frame, and that of the whole picture although it goes behind a cover.
@@ -171,13 +172,14 @@ public sealed class VideoEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/videos/{done.Id}/file")).StatusCode);
     }
 
-    private static MultipartFormDataContent Form(string format, string effect, string motion, bool showTitle, bool showCover = true)
+    private static MultipartFormDataContent Form(string format, string effect, string motion, bool showTitle, bool showCover = true, string? color = null)
     {
         var layout = VideoLayout.For(format);
         var form = new MultipartFormDataContent
         {
             { new StringContent(format), "format" },
             { new StringContent(effect), "effect" },
+            { new StringContent(color ?? ""), "color" },
             { new StringContent(motion), "motion" },
             { new StringContent(showCover ? "true" : "false"), "showCover" },
             { new StringContent(showTitle ? "true" : "false"), "showTitle" },

@@ -143,7 +143,11 @@ async function start(): Promise<void> {
   }
   sending.value = true
   try {
-    const video = await addVideo(target.songId, settings.value, await toPngs(layers.value))
+    const video = await addVideo(
+      target.songId,
+      { ...settings.value, color: layers.value.color },
+      await toPngs(layers.value),
+    )
     if (videoTarget.value === target) {
       loaded.value = [video, ...loaded.value.filter((v) => v.id !== video.id)]
     }
@@ -237,6 +241,7 @@ function close(): void {
         class="w-full"
         :pt="{ pcToggleButton: { root: { class: 'flex-1' } } }"
       />
+      <span class="caption">{{ t('videoEffect') }}</span>
       <SelectButton
         v-model="effect"
         :options="effectOptions"
@@ -247,6 +252,7 @@ function close(): void {
         class="w-full"
         :pt="{ pcToggleButton: { root: { class: 'flex-1' } } }"
       />
+      <span class="caption">{{ t('videoMotion') }}</span>
       <SelectButton
         v-model="motion"
         :options="motionOptions"
@@ -360,6 +366,11 @@ function close(): void {
 </template>
 
 <style scoped>
+.caption {
+  margin-bottom: -0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
 .preview {
   position: relative;
   margin: 0 auto;

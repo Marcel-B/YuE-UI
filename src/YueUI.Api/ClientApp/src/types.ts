@@ -466,6 +466,8 @@ export interface VideoState {
   title: string
   format: VideoFormat
   effect: VideoEffect
+  /** The analyzer's colour (`#rrggbb`), null for Tonwerk's emerald. */
+  color: string | null
   motion: VideoMotion
   showCover: boolean
   showTitle: boolean

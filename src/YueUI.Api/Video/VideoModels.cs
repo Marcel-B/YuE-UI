@@ -28,6 +28,12 @@ public sealed record VideoState
     /// <summary>The cover sits in the middle; without it only its blurred copy in the background is left.</summary>
     public bool ShowCover { get; init; } = true;
 
+    /// <summary>
+    /// The analyzer's or waveform's colour as <c>#rrggbb</c>, picked by the browser from the cover so it matches;
+    /// null for Tonwerk's own.
+    /// </summary>
+    public string? Color { get; init; }
+
     /// <summary>The title fades in under the cover.</summary>
     public bool ShowTitle { get; init; }
 
