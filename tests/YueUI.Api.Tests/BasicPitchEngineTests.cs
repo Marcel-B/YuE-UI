@@ -60,6 +60,54 @@ public sealed class BasicPitchEngineTests : IDisposable
         Assert.True(result.Notes >= Melody.Length);
     }
 
+    [Fact]
+    public async Task A_crash_after_the_file_is_written_still_delivers_it()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        var output = Path.Combine(_directory, "crash.mid");
+        // As on the Mac: the file and the done event are out, then the process aborts on its way out.
+        var python = Path.Combine(_directory, "python");
+        File.WriteAllText(python, $$"""
+            #!/bin/sh
+            printf 'MThd' > '{{output}}'
+            echo 'YUEUI {"event": "done", "notes": 488, "seconds": 9.86}'
+            echo 'libc++abi: terminating due to uncaught exception of type std::__1::system_error: recursive_mutex lock failed' >&2
+            exit 134
+            """);
+        File.SetUnixFileMode(python, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var engine = new BasicPitchEngine(Options.Create(new AudioMidiOptions { Python = python }), NullLogger<BasicPitchEngine>.Instance);
+
+        var result = await engine.ConvertAsync(
+            new AudioMidiJob("vocals.wav", output, "Vocal", new AudioMidiSettings(), 120, Voice: true), CancellationToken.None);
+
+        Assert.Equal(488, result.Notes);
+    }
+
+    [Fact]
+    public async Task A_crash_before_the_file_is_written_is_a_failure()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        var python = Path.Combine(_directory, "python");
+        File.WriteAllText(python, """
+            #!/bin/sh
+            echo 'Error: librosa could not read the file.'
+            exit 1
+            """);
+        File.SetUnixFileMode(python, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var engine = new BasicPitchEngine(Options.Create(new AudioMidiOptions { Python = python }), NullLogger<BasicPitchEngine>.Instance);
+
+        var failure = await Assert.ThrowsAsync<AudioMidiException>(() => engine.ConvertAsync(
+            new AudioMidiJob("vocals.wav", Path.Combine(_directory, "none.mid"), "Vocal", new AudioMidiSettings(), 120, Voice: true), CancellationToken.None));
+
+        Assert.Contains("librosa could not read", failure.Message);
+    }
+
     private static BasicPitchEngine? Engine()
     {
         var options = new AudioMidiOptions { Python = Environment.GetEnvironmentVariable("YUEUI_BASICPITCH_PYTHON") };

@@ -14,6 +14,7 @@ Answers one `YUEUI {json}` line when done; Basic Pitch's own output goes around 
 
 import json
 import logging
+import os
 import sys
 import time
 
@@ -116,3 +117,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # Leave without Python's shutdown: on the Mac, a library's static destructors (onnxruntime's, at one
+    # interpreter's exit beside numba and scikit-learn) ran into a mutex already torn down and aborted with
+    # "recursive_mutex lock failed" after the file was written. Nothing is left to clean up at this point.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
