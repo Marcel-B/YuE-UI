@@ -14,6 +14,7 @@ import {
   playerSource,
   playing,
   previous,
+  refreshLockScreen,
   toggle,
   updateTime,
 } from '../player'
@@ -50,6 +51,7 @@ async function rateCurrent(rating: number | null | undefined): Promise<void> {
 /** Also a start from the element's own controls or the lock screen, which bypass player.ts. */
 function onPlay(): void {
   playing.value = true
+  refreshLockScreen()
   listen(false)
   guardSilence()
 }

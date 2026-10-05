@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { coverUrl, streamUrl, versionStreamUrl } from './api'
+import { drawCover, exportTargetFor } from './export'
 import { t } from './i18n'
 import { createSpectrumAnalyser, registerSource, visuals, type SpectrumSource } from './spectrum'
 import type { RunInfo, SongInfo, VersionState } from './types'
@@ -232,6 +233,13 @@ export function previous(): void {
   }
 }
 
+/** The element started playing, from wherever: the lock screen gets title and cover once more. */
+export function refreshLockScreen(): void {
+  if (current.value) {
+    showOnLockScreen(current.value)
+  }
+}
+
 /** Jumps within the playing song. */
 export function seek(seconds: number): void {
   if (audio && Number.isFinite(seconds)) {
@@ -271,18 +279,66 @@ function start(): void {
   showOnLockScreen(track)
 }
 
-/** The title on the lock screen and in Control Center, with skip buttons that follow the list. */
+/**
+ * The drawn covers given to the lock screen, by song id, as data URLs: the lock screen fetches artwork outside the
+ * page, where a blob URL means nothing, and the drawn cover exists only in the browser.
+ */
+const drawnArtwork = new Map<string, string>()
+
+/**
+ * The cover for the lock screen: the song's own, else the drawn one the export would put in (made once per song),
+ * so the lock screen never falls back to the app icon.
+ */
+async function artworkOf(track: Track): Promise<MediaImage[]> {
+  if (track.cover) {
+    // An absolute address: the lock screen fetches it outside the page.
+    return [{ src: new URL(track.cover, location.href).href }]
+  }
+  let src = drawnArtwork.get(track.songId)
+  if (!src) {
+    const blob = await drawCover(exportTargetFor(track.songId, track.title))
+    src = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => reject(reader.error ?? new Error('cover'))
+      reader.readAsDataURL(blob)
+    })
+    if (drawnArtwork.size > 20) {
+      drawnArtwork.clear()
+    }
+    drawnArtwork.set(track.songId, src)
+  }
+  return [{ src, sizes: '1000x1000', type: 'image/jpeg' }]
+}
+
+/**
+ * The title on the lock screen and in Control Center, with skip buttons that follow the list. Set again when the
+ * song starts playing (`refreshLockScreen`): iOS keeps what it was given only once the element plays, and a home-screen
+ * app otherwise shows its own icon.
+ */
 function showOnLockScreen(track: Track): void {
   if (!('mediaSession' in navigator)) {
     return
   }
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: track.title,
-    artist: track.detail,
-    album: 'Tonwerk',
-    // An absolute address: the lock screen fetches it outside the page.
-    artwork: track.cover ? [{ src: new URL(track.cover, location.href).href }] : [],
-  })
+  const describe = (artwork: MediaImage[]) =>
+    new MediaMetadata({ title: track.title, artist: track.detail, album: 'Tonwerk', artwork })
+  const drawn = drawnArtwork.get(track.songId)
+  navigator.mediaSession.metadata = describe(
+    track.cover
+      ? [{ src: new URL(track.cover, location.href).href }]
+      : drawn
+        ? [{ src: drawn, sizes: '1000x1000', type: 'image/jpeg' }]
+        : [],
+  )
+  if (!track.cover && !drawn) {
+    void artworkOf(track)
+      .then((artwork) => {
+        if (current.value?.id === track.id && 'mediaSession' in navigator) {
+          navigator.mediaSession.metadata = describe(artwork)
+        }
+      })
+      .catch(() => undefined)
+  }
   navigator.mediaSession.setActionHandler('nexttrack', hasNext.value ? () => void next() : null)
   navigator.mediaSession.setActionHandler('previoustrack', () => previous())
   try {
