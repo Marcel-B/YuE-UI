@@ -119,6 +119,27 @@ Der Server legt beim ersten Mal ein VAPID-Schlüsselpaar an und speichert es mit
 
 Jeder Song belegt mit FLAC, Tokens und Zwischendateien einiges an Platz. Die Bibliothek zeigt deshalb, was jeder Lauf belegt und wie viel auf dem Datenträger noch frei ist. Über den Papierkorb lassen sich einzelne Songs, ganze Läufe und Transkriptionen löschen; mit dem letzten Song eines Laufs verschwindet auch sein Ordner. Gelöscht wird nach einer Rückfrage endgültig und nicht in den Papierkorb von macOS, denn dort würde der Platz erst beim Leeren frei. Songs, an denen der Worker von Tonwerk noch arbeitet, lassen sich erst nach dem Abbrechen löschen; was YuE Studio gerade erzeugt, erkennt Tonwerk nicht.
 
+### Auf eine externe Platte verlegen
+
+Modelle, Songs und was Tonwerk sonst an großen Ordnern anlegt, lassen sich auf eine externe Platte verlegen. `deploy/move-to-volume.sh` ohne Angaben zeigt, was sich verlegen lässt, wie groß es ist und wo es liegt: `yue2` (die Modelle von YuE2, auch die von YuE Studio), `ane`, `songs`, `lmstudio`, `speech`, `images`, `separator`, `seedvc`, `versions`, `stems` und `videos`.
+
+```sh
+deploy/move-to-volume.sh                              # Übersicht
+deploy/move-to-volume.sh /Volumes/SSD yue2 lmstudio   # nach /Volumes/SSD/Tonwerk/<Teil>
+deploy/move-to-volume.sh --back yue2                  # zurück auf die interne Platte
+```
+
+Das Skript wartet nicht, sondern bricht ab, solange Tonwerk rechnet oder YuE Studio offen ist. Sonst hält es Tonwerk und die Updates an, kopiert, vergleicht die Kopie mit dem Original und legt erst dann am alten Ort einen symbolischen Link an. Danach startet es Tonwerk wieder. Einstellungen ändern sich nicht, und Updates, YuE Studio, LM Studio und die Sicherung finden alles am gewohnten Ort.
+
+Damit es klappt:
+
+- **Festplattenvollzugriff für `dotnet`.** macOS lässt einen LaunchAgent nicht ohne Weiteres auf externe Platten, er bekommt nur „Operation not permitted“. Einmal am Mac unter Systemeinstellungen → Datenschutz & Sicherheit → Festplattenvollzugriff das Programm hinzufügen, das `realpath "$(command -v dotnet)"` nennt, dann Tonwerk neu starten (`launchctl kickstart -k gui/$(id -u)/de.bvelop.yueui`).
+- **APFS.** NTFS kann macOS nur lesen, exFAT kennt keine symbolischen Links, die der Modell-Cache braucht. Das Skript prüft das.
+- **Eine SSD für Modelle.** Jedes Modell wird bei jeder Benutzung neu geladen; für Songs reicht auch eine Festplatte.
+- **Nicht in einen Nextcloud-Ordner.** Sonst lädt der Client Gigabytes an Modellen hoch.
+
+Externe Platten werden beim Anmelden eingehängt, zusammen mit dem Start von Tonwerk. Fehlt die Platte, fehlt nur, was auf ihr liegt, bis sie wieder da ist.
+
 ## YuE Studio und Tonwerk gleichzeitig
 
 Beide haben einen eigenen Worker und damit ein eigenes Modell im Speicher. Rechnen beide gleichzeitig, kann der Speicher knapp werden. Die Oberfläche zeigt deshalb einen Hinweis, solange die App geöffnet ist. **Worker beenden** in der Warteschlange gibt den Speicher von Tonwerk sofort frei. Ansonsten entlädt der Worker das Modell nach zehn Minuten Leerlauf von selbst.
