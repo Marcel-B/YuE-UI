@@ -1,12 +1,13 @@
 import { formatDuration, t } from './i18n'
-import type { LyricsState, QueuedJob, SpeechTake, TranscriptionState, WorkerInfo } from './types'
+import type { ImageState, LyricsState, QueuedJob, SpeechTake, TranscriptionState, WorkerInfo } from './types'
 
 /**
  * The large models that take turns in the memory (Queue/JobQueue.cs): YuE2 for songs and renders, the lyrics model in
  * LM Studio, separation plus Seed-VC for voice versions and stems, and the speech lab's text-to-speech models. A
- * transcription is small and runs beside YuE2, but inside the worker, so the other three wait for it.
+ * transcription is small and runs beside YuE2, but inside the worker, so the other three wait for it. FLUX.2 Klein
+ * paints covers in the same memory (Images/ImageMaker.cs); a music video is ffmpeg on the CPU and runs beside them all.
  */
-export type Model = 'yue' | 'lyrics' | 'voice' | 'speech' | 'transcription'
+export type Model = 'yue' | 'lyrics' | 'voice' | 'speech' | 'image' | 'transcription' | 'video'
 
 export function modelOf(job: QueuedJob): Model {
   return job.kind === 'lyrics' ? 'lyrics' : job.kind === 'transcription' ? 'transcription' : 'yue'
@@ -32,6 +33,11 @@ export function speaking(takes: SpeechTake[]): boolean {
   return takes.some((take) => take.stage === 'loading' || take.stage === 'speaking')
 }
 
+/** A cover that is loading its model or being painted holds the memory (ImageActivity.IsPainting). */
+export function painting(images: ImageState[]): boolean {
+  return images.some((image) => image.stage === 'loading' || image.stage === 'painting')
+}
+
 /** Which model holds the memory now, or null while none works. */
 export function holderOf(
   worker: WorkerInfo,
@@ -39,9 +45,13 @@ export function holderOf(
   versions: VoiceWork[],
   takes: SpeechTake[] = [],
   transcriptions: TranscriptionState[] = [],
+  images: ImageState[] = [],
 ): Model | null {
   if (speaking(takes)) {
     return 'speech'
+  }
+  if (painting(images)) {
+    return 'image'
   }
   if (lyrics?.stage === 'writing') {
     return 'lyrics'
@@ -75,6 +85,10 @@ export function waitReason(
   if (holder === 'speech') {
     // While a take speaks, JobQueue starts nothing (SpeechActivity.IsSpeaking).
     return t('waitSpeech')
+  }
+  if (holder === 'image') {
+    // Likewise while a cover is painted (ImageActivity.IsPainting).
+    return t('waitImage')
   }
   const left = (since: string) => (windowSeconds ?? 0) - (now - new Date(since).getTime()) / 1000
   const oldest = versions.filter((v) => v.stage === 'queued').sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
@@ -156,6 +170,8 @@ export function speechWaitReason(index: number, holder: Model | null): string {
       return t('waitLyrics')
     case 'voice':
       return t('waitVoice')
+    case 'image':
+      return t('waitImage')
     case 'transcription':
       return t('waitTranscription')
     default:
