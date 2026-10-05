@@ -44,18 +44,24 @@ public sealed record StemRequest(string? Model = null, bool Dereverb = false)
 public sealed record StemFile(string Name, string File, double Seconds, IReadOnlyList<double>? Peaks);
 
 /// <summary>
-/// A song split into its stems by StemMyWav. The files are this app's own, in <c>stems/</c> next to its database;
-/// the song's folder stays as YuE Studio wrote it.
+/// A song (or an uploaded recording) split into its stems by StemMyWav. The files are this app's own, in
+/// <c>stems/</c> next to its database; the song's folder stays as YuE Studio wrote it.
 /// <see cref="Stage"/>: queued, separating, done, failed or cancelled.
 /// </summary>
 public sealed record StemSetState
 {
     public required string Id { get; init; }
 
-    /// <summary><c>run/songN</c>, the song the stems were separated from.</summary>
+    /// <summary>
+    /// <c>run/songN</c>, the song the stems were separated from; empty for an uploaded file, which waits in the set's
+    /// folder as <c>source.*</c> until it is separated.
+    /// </summary>
     public required string SongId { get; init; }
 
-    /// <summary>The run's title when the separation was asked for, for the list and the notification.</summary>
+    /// <summary>
+    /// The run's title when the separation was asked for, for the list and the notification; an upload's file name
+    /// without its ending.
+    /// </summary>
     public string Title { get; init; } = "";
 
     public required string Model { get; init; }
@@ -76,9 +82,13 @@ public sealed record StemSetState
 
     public bool Finished => Stage is "done" or "failed" or "cancelled";
 
+    /// <summary>Separated from a file someone uploaded rather than from a song of the library.</summary>
+    public bool Upload => SongId.Length == 0;
+
+    /// <summary>Empty for an upload, which no run name matches.</summary>
     [JsonIgnore]
-    public string Run => SongId[..SongId.IndexOf('/')];
+    public string Run => Upload ? "" : SongId[..SongId.IndexOf('/')];
 
     [JsonIgnore]
-    public string Song => SongId[(SongId.IndexOf('/') + 1)..];
+    public string Song => Upload ? "" : SongId[(SongId.IndexOf('/') + 1)..];
 }

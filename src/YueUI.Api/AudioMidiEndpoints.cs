@@ -30,7 +30,15 @@ public static partial class AudioMidiEndpoints
             .DisableAntiforgery()
             .WithFormOptions(multipartBodyLengthLimit: MaxUploadBytes)
             .WithMetadata(new RequestSizeLimitAttribute(MaxUploadBytes));
-        api.MapPost("/songs/{run}/{song}/stems/{id}/{name}/midi", ConvertStemAsync);
+        api.MapPost("/stems/{id}/{name}/midi", (string id, string name, AudioMidiSettings? settings, SqliteStemStore store, SongLibrary library, IAudioMidiEngine engine, HttpResponse response, CancellationToken cancellationToken) =>
+            store.Get(id) is { } set
+                ? ConvertStemAsync(set, name, settings, store, library, engine, response, cancellationToken)
+                : Task.FromResult(Results.NotFound()));
+        // The song's route, for pages loaded before the one above.
+        api.MapPost("/songs/{run}/{song}/stems/{id}/{name}/midi", (string run, string song, string id, string name, AudioMidiSettings? settings, SqliteStemStore store, SongLibrary library, IAudioMidiEngine engine, HttpResponse response, CancellationToken cancellationToken) =>
+            store.Get(id) is { } set && set.SongId == $"{run}/{song}"
+                ? ConvertStemAsync(set, name, settings, store, library, engine, response, cancellationToken)
+                : Task.FromResult(Results.NotFound()));
         return api;
     }
 
@@ -86,10 +94,9 @@ public static partial class AudioMidiEndpoints
         }
     }
 
+    /// <summary>A song's stem at the song's tempo; an uploaded file's at the one given, or 120.</summary>
     private static async Task<IResult> ConvertStemAsync(
-        string run,
-        string song,
-        string id,
+        StemSetState set,
         string name,
         AudioMidiSettings? settings,
         SqliteStemStore store,
@@ -98,14 +105,20 @@ public static partial class AudioMidiEndpoints
         HttpResponse response,
         CancellationToken cancellationToken)
     {
-        if (store.Get(id) is not { Stage: "done" } set || set.SongId != $"{run}/{song}"
-            || store.FilePath(set, name) is not { } path || !File.Exists(path)
-            || library.SongDirectory(run, song) is not { } directory)
+        if (set.Stage != "done" || store.FilePath(set, name) is not { } path || !File.Exists(path))
         {
             return Results.NotFound();
         }
+        double? songTempo = null;
+        if (!set.Upload)
+        {
+            if (library.SongDirectory(set.Run, set.Song) is not { } directory)
+            {
+                return Results.NotFound();
+            }
+            songTempo = SongTempo(directory);
+        }
         settings ??= new AudioMidiSettings();
-        var songTempo = SongTempo(directory);
         var errors = settings.Validate(tempoKnown: songTempo is not null);
         if (errors.Count > 0)
         {
@@ -118,7 +131,7 @@ public static partial class AudioMidiEndpoints
         var folder = Directory.CreateTempSubdirectory("yueui-midi-").FullName;
         try
         {
-            var fileName = $"{LibraryEndpoints.FileName(library.TitleOf(run, directory), run)}-{song}-{LibraryEndpoints.FileName(name, "stem")}.mid";
+            var fileName = $"{StemEndpoints.DownloadPrefix(set, library)}-{LibraryEndpoints.FileName(name, "stem")}.mid";
             return await ConvertAsync(
                 engine, response, path, folder, TrackName(name), settings with { Tempo = settings.Tempo ?? songTempo }, IsVoice(name), fileName, cancellationToken);
         }

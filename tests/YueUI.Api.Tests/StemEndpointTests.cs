@@ -217,6 +217,71 @@ public sealed class StemEndpointTests : IDisposable
         Assert.Contains("Unbekanntes Modell", failed.Message);
     }
 
+    [Fact]
+    public async Task An_uploaded_file_is_decoded_split_and_its_upload_dropped()
+    {
+        _app.Stems.Files = ["vocals.wav", "instrumental.wav"];
+        var client = _app.CreateClient();
+
+        var response = await client.PostAsync("/api/stems", Upload("Mein Mix.m4a", ("model", "htdemucs"), ("dereverb", "false")));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var queued = await response.Content.ReadFromJsonAsync<StemSetState>(TestApp.Json);
+        Assert.Equal(("", "Mein Mix", "htdemucs", true), (queued!.SongId, queued.Title, queued.Model, queued.Upload));
+
+        var done = await WaitForStems(client, s => s.Finished);
+        Assert.Equal("done", done.Stage);
+        Assert.Equal(["song.flac"], _app.Mixer.Decoded);
+        Assert.Equal("?model=htdemucs&dereverb=false", _app.Stems.RequestUri!.Query);
+        Assert.Equal(["vocals", "instrumental"], done.Stems.Select(s => s.Name));
+        var folder = Path.Combine(_app.Root, "stems", done.Id);
+        Assert.Equal(["instrumental.flac", "vocals.flac"], Directory.GetFiles(folder).Select(Path.GetFileName).Order());
+
+        var audio = await client.GetAsync($"/api/stems/{done.Id}/vocals?download=true");
+        Assert.Equal(HttpStatusCode.OK, audio.StatusCode);
+        Assert.Equal(FakeMixer.Flac, await audio.Content.ReadAsByteArrayAsync());
+        Assert.Equal("Mein Mix-vocals.flac", audio.Content.Headers.ContentDisposition!.FileNameStar);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/stems/{done.Id}/drums")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/stems/{done.Id}")).StatusCode);
+        Assert.False(Directory.Exists(folder));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.DeleteAsync($"/api/stems/{done.Id}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task An_upload_without_a_file_or_with_an_odd_model_is_refused()
+    {
+        var client = _app.CreateClient();
+
+        var noFile = await client.PostAsync("/api/stems", new MultipartFormDataContent { { new StringContent("htdemucs"), "model" } });
+        var odd = await client.PostAsync("/api/stems", Upload("take.wav", ("model", "a b")));
+
+        Assert.Equal(HttpStatusCode.BadRequest, noFile.StatusCode);
+        Assert.Contains("file", (await noFile.Content.ReadFromJsonAsync<JsonObject>())!["errors"]!.AsObject().Select(e => e.Key));
+        Assert.Equal(HttpStatusCode.BadRequest, odd.StatusCode);
+        Assert.Empty((await client.GetFromJsonAsync<StemSetState[]>("/api/stems", TestApp.Json))!);
+    }
+
+    [Fact]
+    public async Task Without_a_separator_an_upload_is_refused()
+    {
+        _app.StemsBaseUrl = null;
+
+        var response = await _app.CreateClient().PostAsync("/api/stems", Upload("take.wav"));
+
+        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
+    }
+
+    internal static MultipartFormDataContent Upload(string name, params (string Name, string Value)[] fields)
+    {
+        var form = new MultipartFormDataContent { { new ByteArrayContent("recording"u8.ToArray()), "file", name } };
+        foreach (var (field, value) in fields)
+        {
+            form.Add(new StringContent(value), field);
+        }
+        return form;
+    }
+
     /// <summary>The newest set, as the page lists it.</summary>
     private static async Task<StemSetState> WaitForStems(HttpClient client, Func<StemSetState, bool> condition)
     {

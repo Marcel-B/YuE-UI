@@ -429,9 +429,12 @@ export type StemStage = 'queued' | 'separating' | 'done' | 'failed' | 'cancelled
 /** A song split into stems (Voices/StemModels.cs); live changes arrive as `stems` events. */
 export interface StemSetState {
   id: string
-  /** `run/songN` */
+  /** `run/songN`; empty for an uploaded file. */
   songId: string
+  /** The run's title, or an upload's file name without its ending. */
   title: string
+  /** Separated from an uploaded file rather than a song of the library. */
+  upload: boolean
   model: string
   dereverb: boolean
   stage: StemStage

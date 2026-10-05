@@ -177,14 +177,14 @@ const voiceItems = computed<VoiceItem[]>(() =>
       .filter((s) => !s.finished)
       .map((s) => ({
         key: `stems:${s.id}`,
-        songId: s.songId,
+        songId: s.upload ? null : s.songId,
         title: s.title,
         detail: t('queueStems', { model: s.model }),
         stage: s.stage,
         stageLabel: t(`stemsStage_${s.stage}`),
         createdAt: s.createdAt,
         icon: 'pi pi-sliders-v',
-        remove: () => deleteStems(s.songId, s.id),
+        remove: () => deleteStems(s.id),
       })),
     ...props.swaps
       .filter((s) => !s.finished)

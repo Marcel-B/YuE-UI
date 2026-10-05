@@ -117,6 +117,25 @@ public sealed class AudioMidiEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task A_stem_of_an_uploaded_file_takes_the_tempo_given_and_its_name()
+    {
+        _app.Stems.Files = ["vocals.wav", "bass.wav"];
+        var client = _app.CreateClient();
+        await client.PostAsync("/api/stems", StemEndpointTests.Upload("Demo.mp3"));
+        var set = await DoneSet(client);
+
+        var noGrid = await client.PostAsJsonAsync($"/api/stems/{set.Id}/bass/midi", new { quantize = true });
+        var response = await client.PostAsJsonAsync($"/api/stems/{set.Id}/bass/midi", new { quantize = true, tempo = 96 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, noGrid.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("Demo-bass.mid", response.Content.Headers.ContentDisposition!.FileNameStar);
+        var job = Assert.Single(_app.AudioMidi.Jobs);
+        Assert.Equal(("Bass", false, 96.0), (job.TrackName, job.Voice, job.Tempo));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync($"/api/stems/{set.Id}/drums/midi", new { })).StatusCode);
+    }
+
+    [Fact]
     public async Task A_track_without_notes_or_a_failing_model_is_answered_with_why()
     {
         var client = _app.CreateClient();
@@ -139,6 +158,11 @@ public sealed class AudioMidiEndpointTests : IDisposable
         _app.Stems.Files = ["vocals.wav", "drums.wav"];
         var client = _app.CreateClient();
         await client.PostAsJsonAsync($"/api/songs/{Run}/song2/stems", new { model = "htdemucs" });
+        return await DoneSet(client);
+    }
+
+    private static async Task<StemSetState> DoneSet(HttpClient client)
+    {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (true)
         {

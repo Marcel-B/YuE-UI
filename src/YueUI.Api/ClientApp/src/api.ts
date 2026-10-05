@@ -347,16 +347,19 @@ export async function audioToMidi(file: File, settings: AudioMidiSettings): Prom
   return midiTrack(await send('/api/audio-midi', { method: 'POST', body: form }), 'recording.mid')
 }
 
-/** A separated stem to MIDI, at its song's tempo. */
+/**
+ * A separated stem to MIDI, at its song's tempo; an uploaded file has none, so `tempo` (null for 120 bpm without a
+ * grid).
+ */
 export async function stemToMidi(
-  songId: string,
   setId: string,
   stem: string,
   settings: AudioMidiSettings,
+  tempo: number | null = null,
 ): Promise<MidiTrack> {
   const response = await send(
-    `/api/songs/${songId}/stems/${setId}/${encodeURIComponent(stem)}/midi`,
-    json('POST', { mono: settings.mono, quantize: settings.quantize, bends: settings.bends }),
+    `/api/stems/${setId}/${encodeURIComponent(stem)}/midi`,
+    json('POST', { mono: settings.mono, quantize: settings.quantize, bends: settings.bends, tempo }),
   )
   return midiTrack(response, `${stem}.mid`)
 }
@@ -600,13 +603,24 @@ export async function separateSong(songId: string, model: string | null, derever
   return (await send(`/api/songs/${songId}/stems`, json('POST', { model, dereverb }))).json() as Promise<StemSetState>
 }
 
-/** Stops a separation in the works, or removes a finished one with its files. */
-export async function deleteStems(songId: string, id: string): Promise<void> {
-  await send(`/api/songs/${songId}/stems/${id}`, { method: 'DELETE' })
+/** Queues an uploaded recording to be split into stems like a song. */
+export async function separateFile(file: File, model: string | null, dereverb: boolean): Promise<StemSetState> {
+  const form = new FormData()
+  form.append('file', file)
+  if (model) {
+    form.append('model', model)
+  }
+  form.append('dereverb', String(dereverb))
+  return (await send('/api/stems', { method: 'POST', body: form })).json() as Promise<StemSetState>
 }
 
-export function stemAudioUrl(songId: string, id: string, name: string, download = false): string {
-  return `${apiBase}/api/songs/${songId}/stems/${id}/${encodeURIComponent(name)}${download ? '?download=true' : ''}`
+/** Stops a separation in the works, or removes a finished one with its files. */
+export async function deleteStems(id: string): Promise<void> {
+  await send(`/api/stems/${id}`, { method: 'DELETE' })
+}
+
+export function stemAudioUrl(id: string, name: string, download = false): string {
+  return `${apiBase}/api/stems/${id}/${encodeURIComponent(name)}${download ? '?download=true' : ''}`
 }
 
 /** The speech lab's models, recorded voices and takes. */
