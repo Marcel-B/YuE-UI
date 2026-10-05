@@ -5,10 +5,12 @@ import { ApiError, draftLyrics, generate, getLyricsModels, listVoices, reviseLyr
 import { defaultFormState, toGenerateRequest, type FormState } from '../form'
 import { formatBytes, t } from '../i18n'
 import { photoDataUrl } from '../photo'
+import { insertSectionTag } from '../lyricsTags'
 import { hasTag } from '../styleTags'
 import type { LyricsModels, LyricsState, ReferenceVoice } from '../types'
 import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
 import FieldHelp from './FieldHelp.vue'
+import SectionTags from './SectionTags.vue'
 import StyleBlocks from './StyleBlocks.vue'
 import TextActions from './TextActions.vue'
 import Checkbox from 'primevue/checkbox'
@@ -28,6 +30,25 @@ const fieldErrors = defineModel<Record<string, string[]>>('errors', { required: 
 
 const sending = ref(false)
 const blocksOpen = ref(false)
+const sectionsOpen = ref(false)
+/**
+ * Where the caret last was in the lyrics, with the text it belongs to: tapping a tag blurs the field first, and a
+ * draft or "use everything" replacing the text makes the position meaningless, so a tag then goes to the end.
+ */
+const lyricsCaret = ref<{ text: string; at: number } | null>(null)
+
+function rememberCaret(event: Event): void {
+  const field = event.target as HTMLTextAreaElement
+  lyricsCaret.value = { text: field.value, at: field.selectionEnd }
+}
+
+function insertTag(tag: string): void {
+  const caret = lyricsCaret.value?.text === form.value.lyrics ? lyricsCaret.value.at : null
+  const inserted = insertSectionTag(form.value.lyrics, tag, caret)
+  form.value.lyrics = inserted.text
+  // Not focused again: on a phone that would raise the keyboard after every tag. The next tag follows this one.
+  lyricsCaret.value = { text: inserted.text, at: inserted.caret }
+}
 const message = ref<{ text: string; error: boolean } | null>(null)
 
 // The API refuses this too; saying so before sending saves a round trip from the phone.
@@ -470,12 +491,28 @@ const batchOptions = [
         spellcheck="false"
         :placeholder="t('lyricsPlaceholder')"
         aria-describedby="gen-lyrics-help"
+        @blur="rememberCaret"
+        @select="rememberCaret"
+        @keyup="rememberCaret"
+        @click="rememberCaret"
       />
       <label for="gen-lyrics">{{ form.instrumental ? t('lyricsOptional') : t('lyrics') }}</label>
       <TextActions v-model="form.lyrics" />
       <FieldHelp id="gen-lyrics-help" :hint="t('lyricsHint')" :more="t('lyricsMore')" />
       <small v-if="fieldErrors.lyrics" class="danger">{{ fieldErrors.lyrics.join(' ') }}</small>
     </FloatLabel>
+    <Button
+      type="button"
+      class="mt-1"
+      size="small"
+      text
+      :icon="sectionsOpen ? 'pi pi-chevron-up' : 'pi pi-bars'"
+      :label="t('sectionTags')"
+      :aria-expanded="sectionsOpen"
+      aria-controls="gen-section-tags"
+      @click="sectionsOpen = !sectionsOpen"
+    />
+    <SectionTags v-if="sectionsOpen" id="gen-section-tags" @pick="insertTag" />
     <!-- Enter here revises; it must not submit the form and start a song. -->
     <div v-if="form.lyrics.trim() !== '' && !form.instrumental" class="mt-2 flex items-center gap-2">
       <InputText
