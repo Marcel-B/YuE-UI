@@ -44,7 +44,7 @@ public sealed class VideoRendererTests : IDisposable
                 VideoMotions.Plasma => await PlasmaFrames(ffmpeg, layout.PlasmaArea(cover)),
                 _ => [],
             });
-        var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "Neon Night", Format = format, Effect = effect, Motion = motion, ShowCover = cover, ShowTitle = title };
+        var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "Neon Night", Format = format, Effect = effect, Color = cover ? null : "#a78bfa", Motion = motion, ShowCover = cover, ShowTitle = title };
         var output = Path.Combine(_directory, "video.mp4");
         var progress = new List<double>();
 
@@ -64,6 +64,15 @@ public sealed class VideoRendererTests : IDisposable
         Assert.False(File.Exists(output + ".part.mp4"));
         Assert.NotEmpty(progress);
         Assert.True(progress[^1] > 0.9, $"Last progress {progress[^1]}");
+    }
+
+    [Fact]
+    public void The_band_takes_the_videos_colour_or_Tonwerks()
+    {
+        var video = new VideoState { Id = "v1", SongId = "run/song1", Title = "", Format = VideoFormats.Landscape, Effect = VideoEffects.Bars };
+
+        Assert.Contains("color=0xa78bfa:", FfmpegVideoRenderer.Graph(video with { Color = "#a78bfa" }, 3, true, false, 0));
+        Assert.Contains($"color={FfmpegVideoRenderer.Accent}:", FfmpegVideoRenderer.Graph(video, 3, true, false, 0));
     }
 
     [Fact]

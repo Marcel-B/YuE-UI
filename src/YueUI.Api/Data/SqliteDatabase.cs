@@ -437,6 +437,17 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     PRAGMA user_version = 17;
                     """);
             }
+            if (current < 18)
+            {
+                // The analyzer's colour, picked from the cover; null for older videos, which used Tonwerk's.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    ALTER TABLE song_videos ADD COLUMN color TEXT NULL;
+                    PRAGMA user_version = 18;
+                    """);
+            }
             _ready = true;
         }
     }

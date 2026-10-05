@@ -461,6 +461,8 @@ export interface VideoRequest {
   motion: VideoMotion
   showCover: boolean
   showTitle: boolean
+  /** The analyzer's colour, `#rrggbb`. */
+  color: string
 }
 
 /**

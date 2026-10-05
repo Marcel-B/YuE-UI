@@ -16,8 +16,14 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
     /// <summary>A long song with particles takes a few minutes on the Mac mini; anything beyond this is hanging.</summary>
     private static readonly TimeSpan Timeout = TimeSpan.FromHours(2);
 
-    /// <summary>The analyzer's colour, Tonwerk's emerald a shade lighter so it stands out on a dark background.</summary>
+    /// <summary>
+    /// The analyzer's colour when the browser picked none from the cover: Tonwerk's emerald a shade lighter, so it
+    /// stands out on a dark background.
+    /// </summary>
     public const string Accent = "0x34d399";
+
+    /// <summary>How much of a bar's height is left a frame later once the music falls quiet.</summary>
+    public const double BarFall = 0.82;
 
     /// <summary>How fast the particles drift up, in pixels a second.</summary>
     public const int ParticleSpeed = 40;
@@ -180,12 +186,18 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
         {
             if (video.Effect == VideoEffects.Bars)
             {
-                // Constant-Q bars are spaced like the notes; thresholded, averaged per bar and thresholded again,
-                // they become solid columns of the bar's width, cut apart by the gap mask.
+                // Constant-Q bars are spaced like the notes. Thresholded and averaged into one pixel per bar, each
+                // bar's height becomes a number between 0 and 255; that number is smoothed over time (tmix eases the
+                // rise over three frames, lagfun lets it fall back slowly like a meter's needle instead of dropping
+                // from one frame to the next) and drawn again as a column with a soft top edge, cut apart by the gap
+                // mask.
+                var bars = w / VideoLayout.BarPitch;
                 chains.Add(
                     $"[ae]showcqt=s={w}x{bandH}:fps={rate}:sono_h=0:bar_h={bandH}:axis=0:bar_g=2,format=gray,"
-                    + $"lut=y='if(gt(val,6),255,0)',scale={w / VideoLayout.BarPitch}:{bandH}:flags=area,"
-                    + $"scale={w}:{bandH}:flags=neighbor,lut=y='if(gt(val,110),255,0)'[bh]");
+                    + $"lut=y='if(gt(val,6),255,0)',scale={bars}:1:flags=area,"
+                    + $"tmix=frames=3:weights='1 2 3',lagfun=decay={BarFall.ToString(CultureInfo.InvariantCulture)},"
+                    + $"scale={bars}:{bandH}:flags=neighbor,geq=lum='clip((p(X,Y)*{bandH}/255-({bandH}-1-Y))*255,0,255)',"
+                    + $"scale={w}:{bandH}:flags=neighbor[bh]");
                 chains.Add(
                     $"color=black:s={w}x{bandH}:r={rate}:d=1,format=gray,"
                     + $"geq=lum='if(lt(mod(X,{VideoLayout.BarPitch}),{VideoLayout.BarWidth}),255,0)',loop=loop=-1:size=1[bm]");
@@ -197,7 +209,7 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
                     $"[ae]showwaves=s={w}x{bandH}:mode=cline:rate={rate}:scale=sqrt:draw=full:colors=white,format=gray,"
                     + "lut=y='if(gt(val,40),255,0)'[ba]");
             }
-            chains.Add($"color={Accent}:s={w}x{bandH}:r={rate},format=rgba[bc]");
+            chains.Add($"color={Colour(video)}:s={w}x{bandH}:r={rate},format=rgba[bc]");
             chains.Add("[bc][ba]alphamerge[band]");
             chains.Add($"[{current}][band]overlay=0:{bandY}:format=auto[withband]");
             current = "withband";
@@ -253,6 +265,10 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
             return null;
         }
     }
+
+    /// <summary>The video's colour as ffmpeg writes it; the endpoint only accepts <c>#rrggbb</c>.</summary>
+    private static string Colour(VideoState video) =>
+        video.Color is { Length: 7 } colour && colour[0] == '#' ? $"0x{colour[1..]}" : Accent;
 
     private static string Number(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 }

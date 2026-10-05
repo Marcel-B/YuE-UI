@@ -54,6 +54,7 @@ public static class VideoEndpoints
         [FromForm] string? format,
         [FromForm] string? effect,
         [FromForm] string? motion,
+        [FromForm] string? color,
         [FromForm] bool? showCover,
         [FromForm] bool? showTitle,
         IFormFileCollection files,
@@ -79,6 +80,11 @@ public static class VideoEndpoints
         if (!VideoEffects.All.Contains(effect ?? ""))
         {
             errors["effect"] = [$"One of {string.Join(", ", VideoEffects.All)}."];
+        }
+        // Goes into the filter graph, so nothing but #rrggbb.
+        if (!string.IsNullOrEmpty(color) && !System.Text.RegularExpressions.Regex.IsMatch(color, @"^#[0-9a-fA-F]{6}\z"))
+        {
+            errors["color"] = ["A colour as #rrggbb."];
         }
         motion ??= VideoMotions.None;
         if (!VideoMotions.All.Contains(motion))
@@ -136,6 +142,7 @@ public static class VideoEndpoints
             Title = library.TitleOf(run, directory),
             Format = format!,
             Effect = effect!,
+            Color = string.IsNullOrEmpty(color) ? null : color.ToLowerInvariant(),
             Motion = motion,
             ShowCover = withCover,
             ShowTitle = showTitle == true,

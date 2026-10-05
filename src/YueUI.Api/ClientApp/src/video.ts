@@ -124,6 +124,8 @@ export function saveVideoSettings(settings: VideoSettings): void {
 
 /** The layers as canvases; `toPngs` turns them into what the server takes. */
 export interface VideoLayers {
+  /** The analyzer's colour, picked from the cover (`#rrggbb`). */
+  color: string
   background: HTMLCanvasElement
   cover: HTMLCanvasElement | null
   title: HTMLCanvasElement | null
@@ -144,6 +146,7 @@ export async function drawVideoLayers(
   const layout = videoLayouts[settings.format]
   const image = await coverImage(target)
   return {
+    color: coverColour(image),
     background: drawBackground(layout, image),
     cover: settings.showCover ? drawCoverLayer(layout, image) : null,
     title: settings.showTitle ? drawTitle(layout, target.title || 'Tonwerk', subtitle) : null,
@@ -185,7 +188,7 @@ export function drawPreview(layers: VideoLayers, settings: VideoSettings): strin
     context.drawImage(layers.plasma.frames[0]!, layers.plasma.x, layers.plasma.y)
   }
   if (settings.effect !== 'none') {
-    context.fillStyle = accent
+    context.fillStyle = layers.color
     const random = seeded(7)
     if (settings.effect === 'bars') {
       for (let x = 0; x + barWidth <= layout.width; x += barPitch) {
@@ -202,7 +205,7 @@ export function drawPreview(layers: VideoLayers, settings: VideoSettings): strin
         context.lineTo(x, middle - amplitude * (x % 12 === 0 ? 1 : -1))
       }
       context.lineWidth = 3
-      context.strokeStyle = accent
+      context.strokeStyle = layers.color
       context.stroke()
     }
   }
@@ -219,6 +222,54 @@ export function drawPreview(layers: VideoLayers, settings: VideoSettings): strin
 const accent = '#34d399'
 const barPitch = 20
 const barWidth = 14
+
+/**
+ * The cover's most vivid hue as a light colour that stands out on the darkened background: the hues of a small copy
+ * are counted weighted by saturation and brightness, so a few bright pixels outweigh a large grey area. A grey cover
+ * keeps Tonwerk's emerald.
+ */
+export function coverColour(image: CanvasImageSource): string {
+  const size = 24
+  const { context } = frame(size, size)
+  context.drawImage(image, 0, 0, size, size)
+  const pixels = context.getImageData(0, 0, size, size).data
+  const bins = new Array<number>(36).fill(0)
+  const sums = new Array<number>(36).fill(0)
+  let total = 0
+  for (let i = 0; i < pixels.length; i += 4) {
+    const [r, g, b] = [pixels[i]! / 255, pixels[i + 1]! / 255, pixels[i + 2]! / 255]
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    const chroma = max - min
+    if (chroma < 0.08) {
+      continue
+    }
+    const hue = (max === r ? ((g - b) / chroma + 6) % 6 : max === g ? (b - r) / chroma + 2 : (r - g) / chroma + 4) * 60
+    // Chroma is saturation times brightness; squared, vivid pixels count far more than dull ones.
+    const weight = chroma * chroma
+    const bin = Math.floor(hue / 10) % 36
+    bins[bin]! += weight
+    sums[bin]! += weight * hue
+    total += weight
+  }
+  if (total < 0.5) {
+    return accent
+  }
+  const best = bins.indexOf(Math.max(...bins))
+  return hslToHex(sums[best]! / bins[best]!, 0.75, 0.65)
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const a = saturation * Math.min(lightness, 1 - lightness)
+  const channel = (n: number) => {
+    const k = (n + hue / 30) % 12
+    const value = lightness - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))
+    return Math.round(value * 255)
+      .toString(16)
+      .padStart(2, '0')
+  }
+  return `#${channel(0)}${channel(8)}${channel(4)}`
+}
 
 async function coverImage(target: ExportTarget): Promise<HTMLImageElement> {
   const url = target.cover ?? URL.createObjectURL(await drawCover(target))

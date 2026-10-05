@@ -43,14 +43,15 @@ public sealed class SqliteVideoStore(SqliteDatabase database)
             connection,
             null,
             """
-            INSERT INTO song_videos (id, song_id, title, format, effect, motion, show_cover, show_title, stage, message, bytes, created_at, updated_at)
-            VALUES ($id, $song, $title, $format, $effect, $motion, $showCover, $showTitle, $stage, $message, $bytes, $created, $updated)
+            INSERT INTO song_videos (id, song_id, title, format, effect, color, motion, show_cover, show_title, stage, message, bytes, created_at, updated_at)
+            VALUES ($id, $song, $title, $format, $effect, $color, $motion, $showCover, $showTitle, $stage, $message, $bytes, $created, $updated)
             """,
             ("$id", video.Id),
             ("$song", video.SongId),
             ("$title", video.Title),
             ("$format", video.Format),
             ("$effect", video.Effect),
+            ("$color", (object?)video.Color ?? DBNull.Value),
             ("$motion", video.Motion),
             ("$showCover", video.ShowCover ? 1 : 0),
             ("$showTitle", video.ShowTitle ? 1 : 0),
@@ -144,6 +145,7 @@ public sealed class SqliteVideoStore(SqliteDatabase database)
         Title = reader.GetString(reader.GetOrdinal("title")),
         Format = reader.GetString(reader.GetOrdinal("format")),
         Effect = reader.GetString(reader.GetOrdinal("effect")),
+        Color = reader.IsDBNull(reader.GetOrdinal("color")) ? null : reader.GetString(reader.GetOrdinal("color")),
         Motion = reader.GetString(reader.GetOrdinal("motion")),
         ShowCover = reader.GetInt64(reader.GetOrdinal("show_cover")) != 0,
         ShowTitle = reader.GetInt64(reader.GetOrdinal("show_title")) != 0,
