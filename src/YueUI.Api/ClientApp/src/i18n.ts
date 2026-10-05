@@ -42,6 +42,12 @@ const messages = {
     styleBlocksMore:
       'Eigene Begriffe im Stil bleiben stehen. YuE2 empfiehlt Genre, Instrumente, Stimme, Sprache und Tempo und beschreibt sie in seinen Beispielen mit kurzen Wendungen („expressive female voice, acoustic piano, rounded bass and light drums“); eine feste Tag-Liste hat es nicht. Die einzelnen Wörter stammen aus der Liste der 200 häufigsten Tags des Vorgängers YuE v1 (top_200_tags.json), es sind schlichte englische Begriffe, die YuE2 genauso liest; die Wendungen aus YuE2s Beispielen stehen bei Instrumente und Gestaltung. Genauer wird es, wenn man Wörter verbindet, etwa „warm piano pop“ statt „warm vocal, piano, pop“. Sprache kommt nach vorn, Tempo ans Ende, der Rest in der Reihenfolge der Reiter dazwischen.',
     styleBlocksInstrumental: 'Bei „Instrumental“ ohne Wirkung.',
+    sectionTags: 'Abschnitte',
+    sectionTagsIntro:
+      'Antippen setzt den Abschnitt in eine eigene Zeile an der Stelle, an der zuletzt der Cursor im Text stand, sonst ans Ende.',
+    sectionTagsMore:
+      'YuE2 liest die Form des Songs aus diesen Marken; sie bleiben englisch, auch bei deutschem Text. Eine feste Liste hat YuE2 nicht, es reicht den Text als Ganzes ans Modell. Die oberen Marken benennt YuE2 selbst als Abschnitte seiner geplanten Partitur (intro, verse, pre-chorus, chorus, interlude, bridge, outro). [Intro] gelingt oft schlecht, ein Song beginnt sicherer mit [Verse]. Ein Abschnitt wird in etwa 30 Sekunden gesungen, 4 bis 6 Zeilen. Bei „Instrumental“ zählen nur die Marken.',
+    sectionTagsOther: 'Nicht von YuE2 dokumentiert: das Modell liest sie als Wörter, die Wirkung ist offen.',
     styleBlocks_language: 'Sprache',
     styleBlocks_languageHint:
       'Die Sprache des Gesangs, eine pro Song; sie steht vorn wie in den YuE2-Beispielen. Englisch ist am besten trainiert, Mandarin und Kantonesisch unterscheidet YuE ausdrücklich.',
@@ -820,6 +826,12 @@ const messages = {
     styleBlocksMore:
       'Your own words in the style stay. YuE2 recommends genre, instruments, voice, language and tempo, and its examples describe them in short phrases (“expressive female voice, acoustic piano, rounded bass and light drums”); it has no fixed tag list. The single words come from the list of the 200 most common tags of its predecessor YuE v1 (top_200_tags.json), plain English terms that YuE2 reads just the same; the phrases from YuE2’s examples are under Instruments and Arrangement. Joining words is more precise, e.g. “warm piano pop” instead of “warm vocal, piano, pop”. Language goes first, tempo last, the rest in between in the order of the tabs.',
     styleBlocksInstrumental: 'No effect with “Instrumental”.',
+    sectionTags: 'Sections',
+    sectionTagsIntro:
+      'Tap to put the section on a line of its own where the caret last was in the lyrics, else at the end.',
+    sectionTagsMore:
+      'YuE2 reads the song’s form from these tags; they stay English, also for German lyrics. YuE2 has no fixed list, it hands the lyrics to the model as a whole. The upper tags are the sections YuE2 itself names in its planned score (intro, verse, pre-chorus, chorus, interlude, bridge, outro). [Intro] often comes out poorly; a song starts more reliably with [Verse]. A section is sung in about 30 seconds, 4 to 6 lines. With “Instrumental” only the tags count.',
+    sectionTagsOther: 'Not documented by YuE2: the model reads them as words, their effect is open.',
     styleBlocks_language: 'Language',
     styleBlocks_languageHint:
       'The language of the vocals, one per song; it goes first as in the YuE2 examples. English is trained best, and YuE tells Mandarin and Cantonese apart explicitly.',
