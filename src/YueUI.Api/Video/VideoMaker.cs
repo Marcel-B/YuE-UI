@@ -58,6 +58,7 @@ public sealed class VideoMaker(
             }
         }
         store.Remove(video.Id);
+        host.LibraryChanged();
         // Finished ones too: an open dialog lays the stream's states over its list and would bring a done one back.
         host.UpdateVideo(video with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
     }
@@ -123,6 +124,8 @@ public sealed class VideoMaker(
                 },
                 cancel.Token);
             Save(current with { Stage = "done", Fraction = 1, Bytes = new FileInfo(store.VideoPath(video.Id)).Length });
+            ReplaceOlder(video);
+            host.LibraryChanged();
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
         {
@@ -145,6 +148,24 @@ public sealed class VideoMaker(
             {
                 _running = null;
                 _cancel = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// A video is reproducible from its song and settings, so a new one replaces the song's older ones in the same
+    /// format, done or failed, once it is finished itself; until then the old one stays to be watched. The other
+    /// format is kept, since YouTube and Shorts want both. Ones still waiting or rendering are left alone.
+    /// </summary>
+    private void ReplaceOlder(VideoState video)
+    {
+        foreach (var older in store.ForSong(video.SongId))
+        {
+            if (older.Id != video.Id && older.Format == video.Format && older.CreatedAt <= video.CreatedAt
+                && older.Stage is "done" or "failed")
+            {
+                store.Remove(older.Id);
+                host.UpdateVideo(older with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
             }
         }
     }

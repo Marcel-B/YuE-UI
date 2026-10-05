@@ -261,6 +261,8 @@ export interface SongInfo {
   coverUpdatedAt: string | null
   /** A note written to the song in this app, null while there is none. */
   note: string | null
+  /** The formats the song has a finished music video in; empty while it has none. */
+  videoFormats: VideoFormat[]
 }
 
 /**

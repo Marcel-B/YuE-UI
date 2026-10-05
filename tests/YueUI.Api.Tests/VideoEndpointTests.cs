@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using YueUI.Api.Library;
 using YueUI.Api.Video;
 using YueUI.Api.Worker;
 
@@ -155,6 +156,38 @@ public sealed class VideoEndpointTests : IDisposable
         await _app.WaitForStatus(client, s => s.Videos is [{ Stage: "cancelled" }]);
         await TestApp.WaitUntil(() => !Directory.Exists(Path.Combine(_app.Root, "videos", rendering.Id)));
         Assert.False((await client.GetFromJsonAsync<BusyInfo>("/api/busy", TestApp.Json))!.Busy);
+    }
+
+    [Fact]
+    public async Task A_new_video_replaces_the_older_one_in_its_format_and_the_library_shows_which_there_are()
+    {
+        _app.AddSong("20260101-120000-neon", "song1");
+        var client = _app.CreateClient();
+        const string song = "20260101-120000-neon/song1";
+
+        await client.PostAsync($"/api/songs/{song}/videos", Form(VideoFormats.Landscape, VideoEffects.Bars, VideoMotions.None, false));
+        var first = await WaitForVideo(client, song, v => v.Finished);
+        await client.PostAsync($"/api/songs/{song}/videos", Form(VideoFormats.Portrait, VideoEffects.Bars, VideoMotions.None, false));
+        var portrait = await WaitForVideo(client, song, v => v.Id != first.Id && v.Finished);
+        Assert.Equal(["landscape", "portrait"], await FormatsInLibrary(client));
+
+        await client.PostAsync($"/api/songs/{song}/videos", Form(VideoFormats.Landscape, VideoEffects.Wave, VideoMotions.None, false));
+        var second = await WaitForVideo(client, song, v => v.Id != portrait.Id && v.Id != first.Id && v.Finished);
+
+        var videos = await client.GetFromJsonAsync<VideoState[]>($"/api/songs/{song}/videos", TestApp.Json);
+        Assert.Equal([second.Id, portrait.Id], videos!.Select(v => v.Id));
+        Assert.False(Directory.Exists(Path.Combine(_app.Root, "videos", first.Id)));
+        Assert.Equal(["landscape", "portrait"], await FormatsInLibrary(client));
+
+        await client.DeleteAsync($"/api/videos/{second.Id}");
+        await client.DeleteAsync($"/api/videos/{portrait.Id}");
+        Assert.Empty(await FormatsInLibrary(client));
+    }
+
+    private static async Task<IReadOnlyList<string>> FormatsInLibrary(HttpClient client)
+    {
+        var runs = await client.GetFromJsonAsync<List<RunInfo>>("/api/library", TestApp.Json);
+        return Assert.Single(Assert.Single(runs!).Songs).VideoFormats!;
     }
 
     [Fact]

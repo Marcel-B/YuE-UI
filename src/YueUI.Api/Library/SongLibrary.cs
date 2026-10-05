@@ -34,6 +34,7 @@ public sealed record RunInfo(
 /// <param name="Versions">The song sung with other voices, oldest first; cancelled ones are left out.</param>
 /// <param name="CoverUpdatedAt">When the song's cover was chosen, null while it has the drawn one.</param>
 /// <param name="Note">A note written to the song in this app, null while there is none.</param>
+/// <param name="VideoFormats">The formats the song has a finished music video in; empty while it has none.</param>
 public sealed record SongInfo(
     string Id,
     int Index,
@@ -47,7 +48,8 @@ public sealed record SongInfo(
     int? Rating,
     IReadOnlyList<VersionState> Versions,
     DateTimeOffset? CoverUpdatedAt = null,
-    string? Note = null);
+    string? Note = null,
+    IReadOnlyList<string>? VideoFormats = null);
 
 /// <summary>
 /// What a song was generated with, from its <c>request.json</c>, in the terms of <see cref="GenerateRequest"/>, so the
@@ -104,6 +106,7 @@ public sealed partial class SongLibrary(
         var rated = Read(ratings.All) ?? new Dictionary<string, int>();
         var covered = Read(covers.All) ?? new Dictionary<string, DateTimeOffset>();
         var noted = Read(notes.All) ?? new Dictionary<string, string>();
+        var filmed = Read(videos.FinishedFormats) ?? new Dictionary<string, IReadOnlyList<string>>();
         var sung = (Read(versions.All) ?? [])
             .Where(v => v.Stage != "cancelled")
             .GroupBy(v => v.SongId)
@@ -113,7 +116,7 @@ public sealed partial class SongLibrary(
             .. root.EnumerateDirectories()
                 .Where(d => RunName().IsMatch(d.Name))
                 .OrderByDescending(d => d.Name, StringComparer.Ordinal)
-                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated, covered, noted, sung))
+                .Select(d => ReadRun(d, renamed.GetValueOrDefault(d.Name), rated, covered, noted, sung, filmed))
                 // A run still tokenizing has no song folders yet; the queue shows it.
                 .Where(r => r.Songs.Count > 0),
         ];
@@ -415,7 +418,8 @@ public sealed partial class SongLibrary(
         IReadOnlyDictionary<string, int> rated,
         IReadOnlyDictionary<string, DateTimeOffset> covered,
         IReadOnlyDictionary<string, string> noted,
-        IReadOnlyDictionary<string, IReadOnlyList<VersionState>> sung)
+        IReadOnlyDictionary<string, IReadOnlyList<VersionState>> sung,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> filmed)
     {
         var songs = new List<SongInfo>();
         string title = "", style = "", lyrics = "";
@@ -449,7 +453,8 @@ public sealed partial class SongLibrary(
                 rated.TryGetValue(id, out var rating) ? rating : null,
                 sung.GetValueOrDefault(id) ?? [],
                 covered.TryGetValue(id, out var cover) ? cover : null,
-                noted.GetValueOrDefault(id)));
+                noted.GetValueOrDefault(id),
+                filmed.GetValueOrDefault(id) ?? []));
         }
 
         var original = title.Length > 0 ? title : TitleFromName(run.Name);

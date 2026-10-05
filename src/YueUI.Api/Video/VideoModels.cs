@@ -100,10 +100,16 @@ public sealed record VideoLayout(int Width, int Height, int BandY, int BandHeigh
     /// <summary>YouTube and the phones' apps play 30 frames a second; more only makes the file bigger.</summary>
     public const int FrameRate = 30;
 
-    /// <summary>One analyzer bar and the gap after it, in pixels.</summary>
-    public const int BarPitch = 20;
+    /// <summary>
+    /// One analyzer bar and the gap after it, in pixels: 48 bars across a landscape frame, 27 in portrait, about as
+    /// many as the app's full-screen player shows (40), and the gap a fifth as there.
+    /// </summary>
+    public const int BarPitch = 40;
 
-    public const int BarWidth = 14;
+    public const int BarWidth = 32;
+
+    /// <summary>How many analyzer bars fit across the frame.</summary>
+    public int Bars => Width / BarPitch;
 
     /// <summary>
     /// The plasma ball comes as this many pictures of its area (<see cref="PlasmaArea"/>), which the renderer stacks

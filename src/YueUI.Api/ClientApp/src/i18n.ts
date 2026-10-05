@@ -393,6 +393,7 @@ const messages = {
     zip: 'ZIP',
     shareOrExport: 'Teilen / Exportieren',
     musicVideo: 'Musikvideo',
+    songHasVideo: 'Hat ein Musikvideo',
     videoDialogTitle: 'Musikvideo: {title}',
     videoPreview: 'Vorschau',
     videoFormat: 'Format',
@@ -410,7 +411,7 @@ const messages = {
     videoWithoutCover: 'ohne Cover',
     videoShowTitle: 'Titel einblenden',
     videoHint:
-      'Der Mac rechnet das Video im Hintergrund (1080p, 30 fps, H.264 mit AAC 320 kbit/s) und meldet sich, wenn es fertig ist. Die Vorschau zeigt Balken und Welle nur angedeutet, im Video tanzen sie zur Musik.',
+      'Der Mac rechnet das Video im Hintergrund (1080p, 30 fps, H.264 mit AAC 320 kbit/s) und meldet sich, wenn es fertig ist. Die Vorschau zeigt Balken und Welle nur angedeutet, im Video tanzen sie zur Musik. Ist es fertig, ersetzt es das bisherige Video des Songs im selben Format.',
     videoStart: 'Video erstellen',
     videoList: 'Videos dieses Songs',
     videoFailed: 'Fehlgeschlagen: {message}',
@@ -1188,6 +1189,7 @@ const messages = {
     zip: 'ZIP',
     shareOrExport: 'Share / export',
     musicVideo: 'Music video',
+    songHasVideo: 'Has a music video',
     videoDialogTitle: 'Music video: {title}',
     videoPreview: 'Preview',
     videoFormat: 'Format',
@@ -1205,7 +1207,7 @@ const messages = {
     videoWithoutCover: 'without cover',
     videoShowTitle: 'Show title',
     videoHint:
-      'The Mac renders the video in the background (1080p, 30 fps, H.264 with AAC 320 kbit/s) and lets you know when it is done. The preview only hints at the bars and the wave; in the video they move to the music.',
+      "The Mac renders the video in the background (1080p, 30 fps, H.264 with AAC 320 kbit/s) and lets you know when it is done. The preview only hints at the bars and the wave; in the video they move to the music. Once done, it replaces the song's earlier video in the same format.",
     videoStart: 'Make video',
     videoList: "This song's videos",
     videoFailed: 'Failed: {message}',

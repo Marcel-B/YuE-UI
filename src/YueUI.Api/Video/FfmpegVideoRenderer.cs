@@ -22,9 +22,6 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
     /// </summary>
     public const string Accent = "0x34d399";
 
-    /// <summary>How much of a bar's height is left a frame later once the music falls quiet.</summary>
-    public const double BarFall = 0.82;
-
     /// <summary>How fast the particles drift up, in pixels a second.</summary>
     public const int ParticleSpeed = 40;
 
@@ -45,11 +42,16 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
         var ffmpeg = AacEncoder.FindFfmpeg() ?? throw new VideoException("ffmpeg is not installed.");
         var duration = await ProbeAsync(ffmpeg, flac, cancellationToken) ?? seconds;
         var temp = output + ".part.mp4";
+        var spectrum = video.Effect == VideoEffects.Bars ? output + ".bars" : null;
         try
         {
+            if (spectrum is not null)
+            {
+                await SpectrumBands.WriteAsync(ffmpeg, flac, VideoLayout.For(video.Format).Bars, spectrum, cancellationToken);
+            }
             var result = await ToolProcess.RunAsync(
                 ffmpeg,
-                Arguments(video, flac, duration, layers, temp),
+                Arguments(video, flac, duration, layers, temp, spectrum),
                 Timeout,
                 cancellationToken,
                 line: line =>
@@ -76,11 +78,16 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
         finally
         {
             File.Delete(temp);
+            if (spectrum is not null)
+            {
+                File.Delete(spectrum);
+            }
         }
     }
 
     /// <summary>The whole command line; the graph is in <see cref="Graph"/>.</summary>
-    public static IReadOnlyList<string> Arguments(VideoState video, string flac, double? seconds, VideoLayers layers, string output)
+    /// <param name="spectrum">The bars' heights from <see cref="SpectrumBands"/>, when the video has bars.</param>
+    public static IReadOnlyList<string> Arguments(VideoState video, string flac, double? seconds, VideoLayers layers, string output, string? spectrum = null)
     {
         var rate = VideoLayout.FrameRate.ToString(CultureInfo.InvariantCulture);
         List<string> arguments = ["-nostdin", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y"];
@@ -90,6 +97,11 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
         foreach (var layer in new[] { layers.Cover, layers.Title }.OfType<string>().Concat(layers.Motion))
         {
             arguments.AddRange(["-framerate", rate, "-i", layer]);
+        }
+        if (spectrum is not null)
+        {
+            var bars = VideoLayout.For(video.Format).Bars;
+            arguments.AddRange(["-f", "rawvideo", "-pix_fmt", "gray", "-video_size", $"{bars}x1", "-framerate", rate, "-i", spectrum]);
         }
         arguments.AddRange(["-filter_complex", Graph(video, seconds, layers.Cover is not null, layers.Title is not null, layers.Motion.Count)]);
         arguments.AddRange(["-map", "[v]", "-map", "[a]"]);
@@ -127,7 +139,7 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
 
         List<string> chains = [];
         List<string> audio = ["a"];
-        if (effect)
+        if (video.Effect == VideoEffects.Wave)
         {
             audio.Add("ae");
         }
@@ -186,16 +198,12 @@ public sealed class FfmpegVideoRenderer(ILogger<FfmpegVideoRenderer> logger) : I
         {
             if (video.Effect == VideoEffects.Bars)
             {
-                // Constant-Q bars are spaced like the notes. Thresholded and averaged into one pixel per bar, each
-                // bar's height becomes a number between 0 and 255; that number is smoothed over time (tmix eases the
-                // rise over three frames, lagfun lets it fall back slowly like a meter's needle instead of dropping
-                // from one frame to the next) and drawn again as a column with a soft top edge, cut apart by the gap
-                // mask.
-                var bars = w / VideoLayout.BarPitch;
+                // The bars' heights come from SpectrumBands, computed as the app's analyzer computes them, as a
+                // raw grey video one pixel high: one pixel per bar, drawn here as a column with a soft top edge and
+                // cut apart by the gap mask.
+                var bars = layout.Bars;
                 chains.Add(
-                    $"[ae]showcqt=s={w}x{bandH}:fps={rate}:sono_h=0:bar_h={bandH}:axis=0:bar_g=2,format=gray,"
-                    + $"lut=y='if(gt(val,6),255,0)',scale={bars}:1:flags=area,"
-                    + $"tmix=frames=3:weights='1 2 3',lagfun=decay={BarFall.ToString(CultureInfo.InvariantCulture)},"
+                    $"[{motionInput + motion}:v]format=gray,"
                     + $"scale={bars}:{bandH}:flags=neighbor,geq=lum='clip((p(X,Y)*{bandH}/255-({bandH}-1-Y))*255,0,255)',"
                     + $"scale={w}:{bandH}:flags=neighbor[bh]");
                 chains.Add(
