@@ -239,13 +239,17 @@ function pullEnd(): void {
   pullFrom = null
 }
 
+let scrolledTo = 0
+
 onMounted(() => {
   history.pushState({ ...(history.state as object | null), nowPlaying: true }, '')
   window.addEventListener('popstate', onPopState)
   window.addEventListener('hashchange', onHashChange)
   window.addEventListener('keydown', onKey)
   document.addEventListener('visibilitychange', updateEffects)
-  document.documentElement.style.overflow = 'hidden'
+  // No overflow: hidden on the page to keep it still: on iOS, toggling it left the fixed mini player stuck halfway up
+  // the screen afterwards. The page may scroll behind the opaque player; closing returns it to where it was.
+  scrolledTo = window.scrollY
   updateEffects()
 })
 
@@ -255,7 +259,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('hashchange', onHashChange)
   window.removeEventListener('keydown', onKey)
   document.removeEventListener('visibilitychange', updateEffects)
-  document.documentElement.style.overflow = ''
+  window.scrollTo(0, scrolledTo)
   if (drawn.value) {
     URL.revokeObjectURL(drawn.value.url)
   }
@@ -438,6 +442,7 @@ onBeforeUnmount(() => {
   color: #fff;
   background: #0b0d12;
   color-scheme: dark;
+  overscroll-behavior: contain;
   transition: transform 0.15s ease-out;
 }
 
