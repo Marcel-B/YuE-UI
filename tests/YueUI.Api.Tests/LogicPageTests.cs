@@ -4,6 +4,9 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using YueUI.Api.Data;
+using YueUI.Api.Voices;
 
 namespace YueUI.Api.Tests;
 
@@ -302,6 +305,55 @@ public sealed class LogicPageTests : IDisposable
     }
 
     [Fact]
+    public async Task The_songs_vocal_stems_go_onto_the_projects_vocal_tracks()
+    {
+        AddSong("song1");
+        var set = AddStems($"{Run}/song1", "vocals", "vocals_dry", "instrumental");
+
+        var response = await _client.PostAsync("/api/logic/export", new MultipartFormDataContent
+        {
+            { new StringContent($"{Run}/song1"), "song" },
+            { new StringContent(set), "stems" },
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(["vocals.flac", "vocals_dry.flac"], _app.Mixer.Waves);
+        using var zip = new ZipArchive(await response.Content.ReadAsStreamAsync());
+        var audio = zip.Entries.Where(e => e.FullName.Contains("/Media/Audio Files/", StringComparison.Ordinal)).Select(e => e.Name).Order(StringComparer.Ordinal);
+        Assert.Equal(["audio.flac", "vocals.wav", "vocals_dry.wav"], audio);
+    }
+
+    [Fact]
+    public async Task Stems_of_another_song_or_without_vocals_are_refused()
+    {
+        AddSong("song1");
+        AddSong("song2");
+        var other = AddStems($"{Run}/song2", "vocals");
+        var drums = AddStems($"{Run}/song1", "drums");
+
+        var wrongSong = await _client.PostAsync("/api/logic/export", new MultipartFormDataContent
+        {
+            { new StringContent($"{Run}/song1"), "song" },
+            { new StringContent(other), "stems" },
+        });
+        var noVocals = await _client.PostAsync("/api/logic/export", new MultipartFormDataContent
+        {
+            { new StringContent($"{Run}/song1"), "song" },
+            { new StringContent(drums), "stems" },
+        });
+        var upload = await _client.PostAsync("/api/logic/export", new MultipartFormDataContent
+        {
+            { new ByteArrayContent(Encoding.UTF8.GetBytes(LogicEndpointTests.SampleScore)), "file", "My Song.abc" },
+            { new StringContent(other), "stems" },
+        });
+
+        Assert.Equal(HttpStatusCode.NotFound, wrongSong.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, noVocals.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, upload.StatusCode);
+        Assert.Empty(_app.Mixer.Waves);
+    }
+
+    [Fact]
     public async Task An_uploaded_score_is_exported_without_audio()
     {
         var response = await _client.PostAsync("/api/logic/export", new MultipartFormDataContent
@@ -348,6 +400,29 @@ public sealed class LogicPageTests : IDisposable
         var directory = _app.AddSong(Run, song);
         File.WriteAllText(Path.Combine(directory, "score.abc"), LogicEndpointTests.SampleScore);
         File.WriteAllBytes(Path.Combine(directory, "audio.flac"), audio ?? LogicEndpointTests.Flac(48000, 1_047_273));
+    }
+
+    /// <summary>A finished stem set of the song, its files stored as the voices page stores them.</summary>
+    private string AddStems(string songId, params string[] names)
+    {
+        var store = _app.Services.GetRequiredService<SqliteStemStore>();
+        var set = new StemSetState
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            SongId = songId,
+            Model = "htdemucs",
+            Stage = "done",
+            Stems = [.. names.Select(name => new StemFile(name, $"{name}.flac", 1, null))],
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        Directory.CreateDirectory(store.Folder(set.Id));
+        foreach (var name in names)
+        {
+            File.WriteAllBytes(Path.Combine(store.Folder(set.Id), $"{name}.flac"), FakeMixer.Flac);
+        }
+        store.Add(set);
+        return set.Id;
     }
 
     private static async Task<JsonNode> Json(HttpResponseMessage response) =>

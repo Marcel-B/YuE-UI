@@ -750,6 +750,16 @@ public sealed class FakeMixer : IAudioMixer
         return Task.CompletedTask;
     }
 
+    /// <summary>What <see cref="DecodeWaveAsync"/> was given, by file name; it writes a second of 48 kHz WAV.</summary>
+    public List<string> Waves { get; } = [];
+
+    public Task DecodeWaveAsync(string input, string output, CancellationToken cancellationToken)
+    {
+        Waves.Add(Path.GetFileName(input));
+        File.WriteAllBytes(output, FakeStems.Wav(0.5, 48000));
+        return Task.CompletedTask;
+    }
+
     public Task EncodeFlacAsync(string input, string output, CancellationToken cancellationToken)
     {
         var name = Path.GetFileName(input);

@@ -22,9 +22,10 @@ import { deletePreset, loadPresets, savePreset, type Preset } from '../logic/pre
 import { clearFormState, defaultFormState, loadFormState, saveFormState, toConversionOptions } from '../logic/options'
 import { baseName, download } from '../logic/score'
 import type { Assignments, ConversionResult, Diagnostic } from '../logic/types'
-import { audioUrl } from '../api'
-import type { RunInfo, SongInfo } from '../types'
-import { handedMidi, logicSong, replaceLogicSong } from '../view'
+import { audioUrl, listStems } from '../api'
+import { locale } from '../i18n'
+import type { RunInfo, SongInfo, StemSetState } from '../types'
+import { handedMidi, logicSong, openStems, replaceLogicSong } from '../view'
 import FileDropZone from './logic/FileDropZone.vue'
 import OptionsForm from './logic/OptionsForm.vue'
 import ResultView from './logic/ResultView.vue'
@@ -35,7 +36,13 @@ import ScorePreview from './logic/ScorePreview.vue'
  * every arrangement option, the instrument library and a MIDI preview. The score is a song of the library, which the
  * server reads itself, or a score.abc brought along, as on the original page.
  */
-const props = defineProps<{ runs: RunInfo[] }>()
+const props = defineProps<{
+  runs: RunInfo[]
+  /** Stem sets in the works, as the event stream reports them; laid over the list loaded here. */
+  stems: StemSetState[]
+  /** Whether this server can separate stems at all; without it there is no button to ask for them. */
+  stemsConfigured: boolean
+}>()
 
 type SourceMode = 'library' | 'upload'
 /** A song of the library is the usual source here; a score.abc from elsewhere is the exception. */
@@ -131,6 +138,83 @@ const recording = computed<string | File | null>(() =>
 const hasAudio = computed(() => (mode.value === 'library' ? !!chosen.value?.song.hasAudio : audio.value !== null))
 
 watch(mode, () => forgetResult())
+
+// ---- Stems ------------------------------------------------------------------------------------------
+
+/**
+ * The template has two audio tracks for the vocals beside the mix, which yue-to-logic-pro's page filled from
+ * StemMyWav; here a set made on the voices page fills them. The list is loaded when a song is picked, the live
+ * sets from the event stream win, since they are at least as new.
+ */
+const loadedStems = ref<StemSetState[]>([])
+const stemSetId = ref<string | null>(null)
+const vocalStems = new Set(['vocals', 'vocals_dry'])
+
+const songStems = computed(() => {
+  const id = chosen.value?.song.id
+  if (!id) {
+    return []
+  }
+  const sets = new Map(loadedStems.value.map((set) => [set.id, set]))
+  for (const set of props.stems) {
+    sets.set(set.id, set)
+  }
+  return [...sets.values()].filter((set) => set.songId === id)
+})
+/** Finished sets with vocals, newest first: only those have anything for the project's vocal tracks. */
+const usableStems = computed(() =>
+  songStems.value
+    .filter((set) => set.stage === 'done' && set.stems.some((stem) => vocalStems.has(stem.name)))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+)
+const stemsRunning = computed(() => songStems.value.some((set) => !set.finished))
+const stemOptions = computed(() => [
+  { label: t('stemsNone'), value: null },
+  ...usableStems.value.map((set) => ({
+    label: t('stemsSet', {
+      model: set.model,
+      date: new Date(set.createdAt).toLocaleString(locale.value, { dateStyle: 'short', timeStyle: 'short' }),
+    }),
+    value: set.id,
+  })),
+])
+
+async function loadStems(): Promise<void> {
+  try {
+    loadedStems.value = await listStems()
+  } catch {
+    // Without the list the export simply has no stems to offer.
+    loadedStems.value = []
+  }
+}
+
+watch(
+  () => chosen.value?.song.id,
+  (id) => {
+    stemSetId.value = null
+    if (id) {
+      void loadStems()
+    }
+  },
+  { immediate: true },
+)
+
+// The newest set is taken, also one that finishes while the page is open; one deleted meanwhile is let go.
+watch(usableStems, (sets, before) => {
+  const known = new Set((before ?? []).map((set) => set.id))
+  const fresh = sets.find((set) => !known.has(set.id))
+  if (fresh) {
+    stemSetId.value = fresh.id
+  } else if (stemSetId.value !== null && !sets.some((set) => set.id === stemSetId.value)) {
+    stemSetId.value = null
+  }
+})
+
+function createStems(): void {
+  if (chosen.value) {
+    openStems(chosen.value.song.id)
+  }
+}
 
 // Waits for the library as well, which may arrive after the page when it is opened by address.
 watch(
@@ -352,6 +436,7 @@ async function exportLogic(): Promise<void> {
       outputName.value,
       form.value.splitSections,
       instrumentsForExport(assignments.value, instruments.value),
+      mode.value === 'library' ? stemSetId.value : null,
       (progress) => (logicProgress.value = progress),
     )
     logicWarnings.value = exported.warnings
@@ -480,6 +565,36 @@ watch(
           <p v-if="songMissing" class="hint warning">{{ t('librarySongMissing') }}</p>
           <p v-else-if="chosen && !chosen.song.hasAudio" class="hint muted">{{ t('librarySongNoAudio') }}</p>
           <p v-else class="hint muted">{{ t('librarySongHint') }}</p>
+
+          <div
+            v-if="chosen?.song.hasAudio && (stemsConfigured || usableStems.length > 0)"
+            class="flex flex-col gap-2 mt-2"
+          >
+            <label for="logic-stems" class="text-sm text-muted-color">{{ t('stemsForLogic') }}</label>
+            <div class="flex flex-wrap items-center gap-2">
+              <Select
+                v-if="usableStems.length > 0"
+                v-model="stemSetId"
+                input-id="logic-stems"
+                :options="stemOptions"
+                option-label="label"
+                option-value="value"
+                class="flex-[1_1_14rem]"
+              />
+              <Button
+                v-if="stemsConfigured"
+                :label="t('stemsCreate')"
+                icon="pi pi-clone"
+                severity="secondary"
+                outlined
+                v-tooltip.bottom="t('stemsCreateTitle')"
+                @click="createStems"
+              />
+            </div>
+            <p v-if="stemsRunning" class="hint muted mt-0">{{ t('stemsRunning') }}</p>
+            <p v-else-if="usableStems.length === 0" class="hint muted mt-0">{{ t('stemsMissing') }}</p>
+            <p v-else-if="stemSetId" class="hint muted mt-0">{{ t('stemsHint') }}</p>
+          </div>
         </div>
 
         <!-- Score and audio side by side; on a phone each one takes the whole row. -->

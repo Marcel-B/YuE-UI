@@ -25,6 +25,12 @@ public interface IAudioMixer
     /// 48 kHz to <paramref name="output"/>, as 16-bit WAV or FLAC by the output's ending.
     /// </summary>
     Task DecodeAsync(string input, string output, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Writes <paramref name="input"/> (a stored stem) as a 48 kHz 24-bit WAV to <paramref name="output"/>, the format
+    /// the Logic template's vocal tracks hold.
+    /// </summary>
+    Task DecodeWaveAsync(string input, string output, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -115,6 +121,12 @@ public sealed partial class FfmpegMixer(ILogger<FfmpegMixer> logger) : IAudioMix
         {
             throw new VoiceServiceException($"The file could not be read as audio: {exception.Message}", System.Net.HttpStatusCode.UnprocessableEntity);
         }
+    }
+
+    public async Task DecodeWaveAsync(string input, string output, CancellationToken cancellationToken)
+    {
+        var ffmpeg = AacEncoder.FindFfmpeg() ?? throw new VoiceServiceException("ffmpeg is not installed.", System.Net.HttpStatusCode.NotImplemented);
+        await RunAsync(ffmpeg, ["-nostdin", "-loglevel", "error", "-y", "-i", input, "-map", "0:a:0", "-vn", "-ar", "48000", "-c:a", "pcm_s24le", output], cancellationToken);
     }
 
     /// <summary>ffmpeg's volumedetect in dBFS.</summary>

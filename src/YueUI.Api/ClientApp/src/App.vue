@@ -842,7 +842,7 @@ async function useAsNewSong(songId: string): Promise<void> {
   </main>
 
   <main v-if="logicOpened" v-show="view === 'logic'">
-    <LogicPage :runs="runs" />
+    <LogicPage :runs="runs" :stems="stemSets" :stems-configured="voiceInfo.stemsConfigured" />
   </main>
 
   <main v-if="harmonyOpened" v-show="view === 'harmony'">
