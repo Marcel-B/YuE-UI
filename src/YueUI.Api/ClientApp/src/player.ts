@@ -107,6 +107,16 @@ let stale = false
 let pausedAt = 0
 const LONG_PAUSE_MS = 20_000
 
+/**
+ * The silent graph is an iPhone and iPad matter, and so is the cure: Safari on the Mac played nothing through a context
+ * made after an earlier one was closed (its analyzer moving, its tab showing sound), so elsewhere the element keeps its
+ * one context, as before. An iPad reports itself as a Mac, but with touch.
+ */
+const touchWebKit =
+  typeof navigator !== 'undefined' &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1))
+
 /** What the player's analyzer and the background listen to; empty until the analyzer first routed the element. */
 export const playerSource: SpectrumSource = { analysers: () => (analyser ? [analyser] : []), playing }
 registerSource(playerSource)
@@ -147,7 +157,7 @@ export function listen(create = true): void {
         if (created !== context || created.state === 'running') {
           return
         }
-        stale = true
+        stale = touchWebKit
         // Interrupted by a call or Siri: the element would go on silently, so the context follows it back.
         if (audio && !audio.paused) {
           void created.resume().catch(() => undefined)
@@ -169,14 +179,13 @@ export function listen(create = true): void {
  * Before a start from our own buttons, which is a gesture: a graph that may have died is given up, with its element,
  * and routed afresh. That is what left the player silent with its clock running after the lock screen, for the paused
  * song and every new one, since waking the old context made it say `running` without sounding.
- * A new song started while nothing plays gets a new graph in any case, since that costs nothing but a context.
+ * Only on iPhone and iPad (`touchWebKit`); the caller routes the element afterwards (`listen`).
  * @param keep The song goes on where it stopped; a new song brings its own address.
  */
 function freshStart(keep: boolean): void {
-  if (context && audio && (stale || context.state !== 'running' || (audio.paused && (!keep || longPaused())))) {
+  if (touchWebKit && context && audio && (stale || context.state !== 'running' || (audio.paused && longPaused()))) {
     unroute(keep)
   }
-  listen()
 }
 
 function longPaused(): boolean {
@@ -211,7 +220,7 @@ if (typeof document !== 'undefined') {
   }
   // Locked or sent to the background while paused: iOS may take the context away without telling it.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && context && audio?.paused) {
+    if (touchWebKit && document.visibilityState === 'hidden' && context && audio?.paused) {
       stale = true
     }
   })
@@ -235,7 +244,12 @@ function onPlay(): void {
   if (context) {
     setTimeout(() => {
       if (context && context.state !== 'running' && audio && !audio.paused) {
-        playUnrouted()
+        // Elsewhere a paused song starts with sound on the next tap, without a second context.
+        if (touchWebKit) {
+          playUnrouted()
+        } else {
+          audio.pause()
+        }
       }
     }, 1500)
   }
@@ -347,6 +361,7 @@ export function toggle(): void {
   }
   if (audio.paused) {
     freshStart(true)
+    listen()
     void audio.play().catch(() => undefined)
   } else {
     audio.pause()
@@ -415,13 +430,14 @@ function start(gesture: boolean): void {
   }
   if (gesture) {
     freshStart(false)
-  } else if (context && (stale || context.state !== 'running')) {
+  } else if (touchWebKit && context && (stale || context.state !== 'running')) {
     // The song ended on the lock screen, or was skipped there, with a graph that may not sound: go on unrouted.
     unroute(false)
   }
   audio.src = track.src ?? streamUrl(track.id)
   elapsed.value = 0
   duration.value = 0
+  listen()
   // A refusal (autoplay rules, a deleted file) leaves the player paused with its own controls to try again.
   void audio!.play().catch(() => undefined)
   showOnLockScreen(track)
