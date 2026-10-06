@@ -356,7 +356,7 @@ onBeforeUnmount(() => {
           size="large"
           :disabled="!hasPrevious && !playing"
           :aria-label="t('previousTrack')"
-          @click="previous"
+          @click="previous()"
         />
         <Button
           :icon="playing ? 'pi pi-pause' : 'pi pi-play'"
@@ -372,7 +372,7 @@ onBeforeUnmount(() => {
           size="large"
           :disabled="!hasNext"
           :aria-label="t('nextTrack')"
-          @click="next"
+          @click="next()"
         />
       </div>
 

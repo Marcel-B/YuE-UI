@@ -6,7 +6,6 @@ import {
   close,
   current,
   expanded,
-  guardSilence,
   hasNext,
   hasPrevious,
   listen,
@@ -14,9 +13,7 @@ import {
   playerSource,
   playing,
   previous,
-  refreshLockScreen,
   toggle,
-  updateTime,
 } from '../player'
 import { rate, ratingOf } from '../ratings'
 import NowPlaying from './NowPlaying.vue'
@@ -33,8 +30,9 @@ defineProps<{
 
 const emit = defineEmits<{ error: [message: string]; useScore: [songId: string]; newSong: [songId: string] }>()
 
-const audio = useTemplateRef<HTMLAudioElement>('audio')
-watch(audio, (element) => attach(element), { immediate: true })
+// player.ts makes the audio element in here, since only a new element sounds again once iOS silenced its graph.
+const audioHost = useTemplateRef<HTMLElement>('audioHost')
+watch(audioHost, (element) => attach(element), { immediate: true })
 onBeforeUnmount(() => attach(null))
 
 async function rateCurrent(rating: number | null | undefined): Promise<void> {
@@ -48,24 +46,10 @@ async function rateCurrent(rating: number | null | undefined): Promise<void> {
   }
 }
 
-/** Also a start from the element's own controls or the lock screen, which bypass player.ts. */
-function onPlay(): void {
-  playing.value = true
-  refreshLockScreen()
-  listen(false)
-  guardSilence()
-}
-
 /** Opens the full-screen player; the tap also routes the audio for its analyzer, which iOS allows only in one. */
 function expand(): void {
   expanded.value = true
   listen()
-}
-
-function ended(): void {
-  if (!next()) {
-    playing.value = false
-  }
 }
 </script>
 
@@ -105,7 +89,7 @@ function ended(): void {
         rounded
         :disabled="!hasPrevious && !playing"
         :aria-label="t('previousTrack')"
-        @click="previous"
+        @click="previous()"
       />
       <!-- A play button of our own: its click is the gesture iOS wants for waking the analyzer's audio context,
            which the element's controls do not hand on. -->
@@ -116,7 +100,14 @@ function ended(): void {
         :aria-label="playing ? t('pause') : t('play')"
         @click="toggle"
       />
-      <Button icon="pi pi-step-forward" text rounded :disabled="!hasNext" :aria-label="t('nextTrack')" @click="next" />
+      <Button
+        icon="pi pi-step-forward"
+        text
+        rounded
+        :disabled="!hasNext"
+        :aria-label="t('nextTrack')"
+        @click="next()"
+      />
       <SongMenu
         v-if="current"
         :song-id="current.songId"
@@ -126,17 +117,7 @@ function ended(): void {
       />
       <Button icon="pi pi-times" text rounded severity="secondary" :aria-label="t('closePlayer')" @click="close" />
     </div>
-    <audio
-      ref="audio"
-      controls
-      preload="none"
-      @play="onPlay"
-      @pause="playing = false"
-      @ended="ended"
-      @timeupdate="updateTime"
-      @durationchange="updateTime"
-      @loadedmetadata="updateTime"
-    />
+    <div ref="audioHost" class="audio-host" />
     <Transition name="sheet">
       <NowPlaying
         v-if="expanded && current"
@@ -198,7 +179,8 @@ function ended(): void {
   }
 }
 
-audio {
+.audio-host :deep(audio) {
+  display: block;
   width: 100%;
   height: 2.5rem;
 }
