@@ -1,44 +1,21 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import DataView from 'primevue/dataview'
 import Dialog from 'primevue/dialog'
-import Checkbox from 'primevue/checkbox'
 import Fieldset from 'primevue/fieldset'
-import Message from 'primevue/message'
-import type Menu from 'primevue/menu'
 import { useConfirm } from 'primevue/useconfirm'
-import {
-  addVersion,
-  audioUrl,
-  coverUrl,
-  deleteCover,
-  deleteVersion,
-  deleteRun,
-  deleteSong,
-  listVoices,
-  midiToAbc,
-  putCover,
-  renameRun,
-  render,
-  scoreUrl,
-  songScore,
-  versionAudioUrl,
-} from '../api'
-import { formatBytes, formatDateTime, formatDuration, t, versionProgress } from '../i18n'
-import { current, libraryTracks, play, playing, trackOf, versionTrack } from '../player'
-import { pickMidiFile } from '../midi'
-import { rate, ratingOf, ratings } from '../ratings'
-import { openExport, photoCover, pickImage } from '../export'
-import { openVideo } from '../video'
-import { openImages } from '../images'
+import { deleteRun, deleteSong, renameRun } from '../api'
+import { formatBytes, formatDateTime, t } from '../i18n'
+import { libraryTracks, play, trackOf } from '../player'
+import { rate, ratings } from '../ratings'
 import { matchesRun, matchingLines, parseQuery, type SearchScope } from '../search'
-import { librarySort, sortRuns, type LibrarySort, type SortedRun } from '../sort'
-import { needsReview, reviewCount, reviewDayChoices, reviewDays } from '../review'
-import type { ReferenceVoice, RunInfo, SongInfo, VersionState } from '../types'
-import { octaveOptions, stepOptions, strengthOptions } from '../voiceChoices'
-import { focusedSong, focusRequest, openOnLogicPage, openStems, view } from '../view'
-import PlaylistToggle from './PlaylistToggle.vue'
-import SongNote from './SongNote.vue'
+import { librarySort, sortRuns, type SortedRun } from '../sort'
+import { needsReview, reviewDays } from '../review'
+import type { RunInfo, SongInfo, VersionState } from '../types'
+import { focusedSong, focusRequest, view } from '../view'
+import LibraryFilters from './LibraryFilters.vue'
+import SingDialog from './SingDialog.vue'
+import SongRow from './SongRow.vue'
 import TextActions from './TextActions.vue'
 
 const props = defineProps<{
@@ -70,31 +47,18 @@ const emit = defineEmits<{
 
 const confirm = useConfirm()
 
-/** What the search field holds; the list shows only the runs that match. */
+function failed(caught: unknown): void {
+  emit('error', caught instanceof Error ? caught.message : String(caught))
+}
+
+// ---- Filters (LibraryFilters.vue shows them; kept here, since the list filters by them) ---------------
+
 const query = ref('')
 const scope = ref<SearchScope>('titleStyle')
-const scopes = computed(() => [
-  { value: 'titleStyle', label: t('searchTitleStyle') },
-  { value: 'lyrics', label: t('searchLyrics') },
-])
 const terms = computed(() => parseQuery(query.value))
-
-/**
- * Only songs with at least this many stars (5: only those with five); 0 shows every song. `review` shows the songs
- * left unrated for longer than `reviewDays`, to be heard again and rated or deleted.
- */
+const searching = computed(() => terms.value.length > 0)
 const minRating = ref<number | 'review'>(0)
-const ratingFilters = computed(() => [
-  { value: 0, label: t('ratingAll') },
-  { value: 5, label: t('ratingOnly', { n: 5 }) },
-  ...[4, 3, 2, 1].map((n) => ({ value: n, label: t('ratingAtLeast', { n }) })),
-  { value: 'review', label: t('ratingReview') },
-])
 const reviewing = computed(() => minRating.value === 'review')
-const toReview = computed(() => reviewCount(props.runs, ratings.value, reviewDays.value))
-const dayOptions = computed(() =>
-  reviewDayChoices.map((days) => ({ value: days, label: t('reviewDays', { n: days }) })),
-)
 
 /**
  * Songs rated while going through the unrated ones stay in the list until it is left, so a song does not vanish from
@@ -116,19 +80,6 @@ function shownSongs(run: RunInfo): SongInfo[] {
   return filter === 0 ? run.songs : run.songs.filter((song) => (stars[song.id] ?? 0) >= filter)
 }
 
-function startReview(): void {
-  query.value = ''
-  minRating.value = 'review'
-}
-
-/** The order of the list, beside search and rating filter. */
-const sortOptions = computed(() =>
-  (['newest', 'oldest', 'rating', 'longest', 'shortest'] as LibrarySort[]).map((value) => ({
-    value,
-    label: t(`sort_${value}`),
-  })),
-)
-
 /** The runs the search and the rating filter let through, in the chosen order, each with the songs to list. */
 const shownRuns = computed(() =>
   sortRuns(
@@ -138,14 +89,8 @@ const shownRuns = computed(() =>
     shownSongs,
   ).filter((entry) => entry.songs.length > 0),
 )
-const searching = computed(() => terms.value.length > 0)
-/** Some runs are hidden, by the search or the rating filter; the count of hits shows. */
-const filtering = computed(() => searching.value || minRating.value !== 0)
 
-function clearSearch(): void {
-  query.value = ''
-  minRating.value = 0
-}
+// ---- Pages and a song's address ------------------------------------------------------------------------
 
 const pageSize = 8
 /** Index of the first run on the current page (DataView's `first`). */
@@ -210,6 +155,8 @@ watch(
   { immediate: true },
 )
 
+// ---- Songs -----------------------------------------------------------------------------------------------
+
 /**
  * The player goes on with the songs below this one, as the library lists them, so a search, the rating filter or the
  * order is also a play queue ("everything with four stars", "the best first").
@@ -218,277 +165,21 @@ function playSong(run: RunInfo, song: SongInfo): void {
   play(trackOf(run, song), libraryTracks(shownRuns.value.map((shown) => ({ ...shown.run, songs: shown.songs }))))
 }
 
-async function rateSong(song: SongInfo, rating: number | null | undefined): Promise<void> {
+async function rateSong(song: SongInfo, rating: number | null): Promise<void> {
   if (reviewing.value) {
     reviewed.value.add(song.id)
   }
   try {
-    await rate(song.id, rating ?? null)
+    await rate(song.id, rating)
   } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
+    failed(caught)
   }
 }
 
-function isPlaying(song: SongInfo): boolean {
-  return current.value?.id === song.id && playing.value
-}
+/** The song the voice dialog is for; it shows while set. */
+const singing = ref<{ run: RunInfo; song: SongInfo } | null>(null)
 
-async function renderFull(song: SongInfo): Promise<void> {
-  try {
-    await render(song.id, 'full')
-  } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
-  }
-}
-
-/** Scores opened with "View ABC" or used, by song id; a song's score does not change once it is written. */
-const scores = ref<Record<string, string>>({})
-
-async function score(song: SongInfo): Promise<string> {
-  scores.value[song.id] ??= await songScore(song.id)
-  return scores.value[song.id]!
-}
-
-async function useScore(run: RunInfo, song: SongInfo): Promise<void> {
-  try {
-    emit('useScore', run, song, await score(song))
-  } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
-  }
-}
-
-/** Songs whose MIDI file is being read back into a score. */
-const importing = ref(new Set<string>())
-
-/** The song edited in Logic: its MIDI file as the score, with the song's style, lyrics and seed. */
-function useMidi(run: RunInfo, song: SongInfo): void {
-  pickMidiFile(async (file) => {
-    importing.value.add(song.id)
-    try {
-      const midi = await midiToAbc(file)
-      emit('useScore', run, song, midi.abc, midi.warnings)
-    } catch (caught) {
-      emit('error', caught instanceof Error ? caught.message : String(caught))
-    } finally {
-      importing.value.delete(song.id)
-    }
-  })
-}
-
-function openVideoOf(run: RunInfo, song: SongInfo): void {
-  openVideo({
-    songId: song.id,
-    title: run.title,
-    style: run.style,
-    cover: song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined,
-  })
-}
-
-/** Songs whose note is open; closed by default, the button shows whether one is written. */
-const notesOpen = ref(new Set<string>())
-/** Notes saved here before the library's reload brings them; a note on another song's field must not wait for it. */
-const savedNotes = ref<Record<string, string>>({})
-
-function noteOf(song: SongInfo): string {
-  return savedNotes.value[song.id] ?? song.note ?? ''
-}
-
-function toggleNote(song: SongInfo): void {
-  if (!notesOpen.value.delete(song.id)) {
-    notesOpen.value.add(song.id)
-  }
-}
-
-// Once the server lists what was saved here, its copy (which another browser may change later) is the one shown.
-watch(
-  () => props.runs,
-  (runs) => {
-    for (const song of runs.flatMap((run) => run.songs)) {
-      if (song.id in savedNotes.value && (song.note ?? '') === savedNotes.value[song.id]) {
-        delete savedNotes.value[song.id]
-      }
-    }
-  },
-)
-
-/** Songs whose cover is being saved. */
-const covering = ref(new Set<string>())
-
-/** A photo as the song's cover; the server's library event brings it into the list and the player. */
-function chooseCover(song: SongInfo): void {
-  pickImage(async (file) => {
-    covering.value.add(song.id)
-    try {
-      let photo: Blob
-      try {
-        photo = await photoCover(file)
-      } catch {
-        throw new Error(t('photoUnreadable'))
-      }
-      await putCover(song.id, photo)
-    } catch (caught) {
-      emit('error', t('coverSaveFailed', { message: caught instanceof Error ? caught.message : String(caught) }))
-    } finally {
-      covering.value.delete(song.id)
-    }
-  })
-}
-
-async function removeCover(song: SongInfo): Promise<void> {
-  try {
-    await deleteCover(song.id)
-  } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
-  }
-}
-
-/** A song action beyond play, render, FLAC and ABC: an icon on a wide screen, a line of the "…" menu on a phone. */
-interface SongAction {
-  key: string
-  label: string
-  icon: string
-  /** A download: a link rather than a command. */
-  url?: string
-  command?: () => void
-  danger?: boolean
-  disabled?: boolean
-  loading?: boolean
-}
-
-function songActions(run: RunInfo, song: SongInfo): SongAction[] {
-  const actions: SongAction[] = []
-  if (song.hasAudio) {
-    actions.push({
-      key: 'export',
-      label: t('shareOrExport'),
-      icon: 'pi pi-share-alt',
-      command: () =>
-        openExport({
-          songId: song.id,
-          title: run.title,
-          style: run.style,
-          cover: song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined,
-        }),
-    })
-  }
-  if (song.hasAudio) {
-    actions.push({
-      key: 'video',
-      label: t('musicVideo'),
-      icon: 'pi pi-video',
-      command: () => openVideoOf(run, song),
-    })
-  }
-  actions.push({
-    key: 'cover',
-    label: t('songCover'),
-    icon: covering.value.has(song.id) ? 'pi pi-spin pi-spinner' : 'pi pi-image',
-    command: () => chooseCover(song),
-    disabled: covering.value.has(song.id),
-    loading: covering.value.has(song.id),
-  })
-  actions.push({
-    key: 'paintCover',
-    label: t('paintCover'),
-    icon: 'pi pi-palette',
-    command: () =>
-      openImages({
-        songId: song.id,
-        title: run.title,
-        style: run.style,
-        cover: song.coverUpdatedAt ? coverUrl(song.id, song.coverUpdatedAt) : undefined,
-      }),
-  })
-  if (song.coverUpdatedAt) {
-    actions.push({
-      key: 'coverRemove',
-      label: t('songCoverRemove'),
-      icon: 'pi pi-eraser',
-      command: () => void removeCover(song),
-    })
-  }
-  actions.push({
-    key: 'newSong',
-    label: t('useAsNewSong'),
-    icon: 'pi pi-clone',
-    command: () => emit('newSong', song.id),
-  })
-  if (song.hasScore) {
-    actions.push({
-      key: 'score',
-      label: t('useScore'),
-      icon: 'pi pi-file-import',
-      command: () => void useScore(run, song),
-    })
-  }
-  const importingMidi = importing.value.has(song.id)
-  actions.push({
-    key: 'midi',
-    label: t('useMidi'),
-    icon: importingMidi ? 'pi pi-spin pi-spinner' : 'pi pi-file-arrow-up',
-    command: () => useMidi(run, song),
-    disabled: importingMidi,
-    loading: importingMidi,
-  })
-  if (song.hasScore) {
-    actions.push({
-      key: 'logic',
-      label: t('openInLogic'),
-      icon: 'pi pi-file-export',
-      command: () => openOnLogicPage(song.id),
-    })
-  }
-  if (props.voices && song.hasAudio) {
-    actions.push({
-      key: 'voice',
-      label: t('singWithVoice'),
-      icon: 'pi pi-user-edit',
-      command: () => void startSinging(run, song),
-    })
-  }
-  if (props.stems && song.hasAudio) {
-    actions.push({ key: 'stems', label: t('splitStems'), icon: 'pi pi-sliders-v', command: () => openStems(song.id) })
-  }
-  const busy = props.busyIds.has(song.id)
-  actions.push({
-    key: 'delete',
-    label: busy ? t('deleteBusy') : t('deleteSong'),
-    icon: 'pi pi-trash',
-    command: () => askDeleteSong(run, song),
-    danger: true,
-    disabled: busy,
-  })
-  return actions
-}
-
-/** One popup menu for every song; it takes the actions of the song whose "…" was tapped. */
-const actionMenu = useTemplateRef<InstanceType<typeof Menu>>('actionMenu')
-const menuActions = ref<SongAction[]>([])
-const menuItems = computed(() =>
-  menuActions.value.map((action) => ({
-    label: action.label,
-    icon: action.icon,
-    url: action.url,
-    command: action.command,
-    disabled: action.disabled,
-    danger: action.danger,
-  })),
-)
-
-function openActions(event: Event, run: RunInfo, song: SongInfo): void {
-  menuActions.value = songActions(run, song)
-  actionMenu.value?.toggle(event)
-}
-
-async function toggleScore(song: SongInfo, event: Event): Promise<void> {
-  if ((event.target as HTMLDetailsElement).open && !scores.value[song.id]) {
-    try {
-      await score(song)
-    } catch (caught) {
-      emit('error', caught instanceof Error ? caught.message : String(caught))
-    }
-  }
-}
+// ---- Runs: renaming and deleting -------------------------------------------------------------------------
 
 /** Also a song of the run the worker has not written a folder for yet. */
 function runBusy(run: RunInfo): boolean {
@@ -508,7 +199,7 @@ function askDelete(message: string, title: string, remove: () => Promise<void>):
         await remove()
         emit('deleted', title)
       } catch (caught) {
-        emit('error', caught instanceof Error ? caught.message : String(caught))
+        failed(caught)
       }
     },
   })
@@ -554,136 +245,10 @@ async function saveTitle(): Promise<void> {
     renaming.value = null
     emit('notice', t('renamed', { title: title || run.originalTitle || t('untitled') }))
   } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
+    failed(caught)
   } finally {
     savingTitle.value = false
   }
-}
-
-// ---- Versions: the song sung with another voice ------------------------------------------------------
-
-/** The song's versions, each in its latest state: the listing's, or the event stream's while one is in the works. */
-function versionsOf(song: SongInfo): VersionState[] {
-  const live = new Map(props.liveVersions.filter((v) => v.songId === song.id).map((v) => [v.id, v]))
-  const listed = song.versions.map((v) => live.get(v.id) ?? v)
-  const known = new Set(listed.map((v) => v.id))
-  // Asked for since the library loaded; it reloads when a version is queued, but the event may come first.
-  const added = [...live.values()].filter((v) => !known.has(v.id) && v.stage !== 'cancelled')
-  return [...listed, ...added]
-}
-
-function playVersion(run: RunInfo, song: SongInfo, version: VersionState): void {
-  play(versionTrack(run, song, version))
-}
-
-function isPlayingVersion(song: SongInfo, version: VersionState): boolean {
-  return current.value?.id === `${song.id}@${version.id}` && playing.value
-}
-
-/** The song the voice dialog is for; it shows while set. */
-const singing = ref<{ run: RunInfo; song: SongInfo } | null>(null)
-const voiceList = ref<ReferenceVoice[]>([])
-const voicesLoading = ref(false)
-const voiceChoice = ref<string | null>(null)
-const octave = ref(0)
-const strength = ref(0.7)
-const steps = ref(50)
-const keepReverb = ref(true)
-const queueing = ref(false)
-
-const octaves = computed(octaveOptions)
-const strengths = computed(strengthOptions)
-const stepChoices = computed(stepOptions)
-
-async function startSinging(run: RunInfo, song: SongInfo): Promise<void> {
-  singing.value = { run, song }
-  voicesLoading.value = true
-  try {
-    voiceList.value = await listVoices()
-    if (!voiceList.value.some((v) => v.id === voiceChoice.value)) {
-      voiceChoice.value = voiceList.value[0]?.id ?? null
-    }
-  } catch (caught) {
-    singing.value = null
-    emit('error', caught instanceof Error ? caught.message : String(caught))
-  } finally {
-    voicesLoading.value = false
-  }
-}
-
-async function sing(): Promise<void> {
-  const target = singing.value
-  if (!target || !voiceChoice.value) {
-    return
-  }
-  queueing.value = true
-  try {
-    const version = await addVersion(target.song.id, {
-      voiceId: voiceChoice.value,
-      semiToneShift: octave.value,
-      strength: strength.value,
-      diffusionSteps: steps.value,
-      keepReverb: keepReverb.value,
-    })
-    singing.value = null
-    emit('notice', t('versionQueued', { title: target.run.title || t('untitled'), voice: version.voiceLabel }))
-  } catch (caught) {
-    emit('error', caught instanceof Error ? caught.message : String(caught))
-  } finally {
-    queueing.value = false
-  }
-}
-
-/** Stops one in the works right away; a finished one is audio of its own, so that asks first. */
-function removeVersion(run: RunInfo, song: SongInfo, version: VersionState): void {
-  const remove = async () => {
-    try {
-      await deleteVersion(song.id, version.id)
-    } catch (caught) {
-      emit('error', caught instanceof Error ? caught.message : String(caught))
-    }
-  }
-  if (!version.finished) {
-    void remove()
-    return
-  }
-  confirm.require({
-    header: t('confirmDelete'),
-    message: t('confirmDeleteVersion', {
-      voice: version.voiceLabel,
-      song: t('songN', { n: song.index }),
-      title: run.title || t('untitled'),
-    }),
-    icon: 'pi pi-trash',
-    rejectProps: { label: t('keep'), severity: 'secondary', outlined: true },
-    acceptProps: { label: t('delete'), severity: 'danger' },
-    accept: remove,
-  })
-}
-
-/**
- * What the version was made with, so versions of one song can be told apart later: the choices of the dialog in its
- * words where they match one, else the number, then when and with which separation model.
- */
-function versionSettings(version: VersionState): string {
-  const shift = version.semiToneShift
-  const octave = octaves.value.find((o) => o.value === shift)
-  const strength = strengths.value.find((s) => s.value === version.strength)?.label ?? String(version.strength)
-  const quality =
-    stepChoices.value.find((s) => s.value === version.diffusionSteps)?.label ?? String(version.diffusionSteps)
-  return [
-    octave?.label ?? t('semitones', { n: shift > 0 ? `+${shift}` : String(shift).replace('-', '−') }),
-    t('settingStrength', { value: strength }),
-    t('settingSteps', { value: quality }),
-    version.keepReverb ? t('withReverb') : t('withoutReverb'),
-    ...(version.stemModel ? [t('stemModel', { model: version.stemModel })] : []),
-    formatDateTime(version.createdAt),
-  ].join(' · ')
-}
-
-const severityByQuality: Record<string, string> = {
-  draft: 'warning',
-  full: 'success',
 }
 </script>
 
@@ -691,79 +256,13 @@ const severityByQuality: Record<string, string> = {
   <section ref="list">
     <p v-if="error" class="danger">{{ t('libraryError', { message: error }) }}</p>
     <p v-else-if="!loading && runs.length === 0" class="muted">{{ t('libraryEmpty') }}</p>
-    <!-- Nothing is deleted by itself: songs left unrated for a while are only offered, to be heard, rated or deleted. -->
-    <div v-if="reviewing || toReview > 0" class="mb-3">
-      <Message v-if="!reviewing" severity="info" size="small">
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span class="flex-1 min-w-0">
-            <i class="pi pi-star mr-1" aria-hidden="true" />
-            {{ t(toReview === 1 ? 'reviewWaitingOne' : 'reviewWaiting', { count: toReview, n: reviewDays }) }}
-          </span>
-          <Button :label="t('reviewStart')" size="small" text class="shrink-0" @click="startReview" />
-        </div>
-      </Message>
-      <Message v-else severity="info" size="small">
-        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span>{{ t('reviewOlderThan') }}</span>
-          <Select
-            v-model="reviewDays"
-            :options="dayOptions"
-            option-label="label"
-            option-value="value"
-            :aria-label="t('reviewOlderThan')"
-            size="small"
-          />
-          <span class="basis-full muted">{{ t('reviewHint') }}</span>
-        </div>
-      </Message>
-    </div>
-    <form v-if="runs.length > 0" class="search" role="search" @submit.prevent>
-      <InputText
-        v-model="query"
-        type="search"
-        :placeholder="scope === 'lyrics' ? t('searchLyricsPlaceholder') : t('searchPlaceholder')"
-        :aria-label="t('search')"
-        enterkeyhint="search"
-        autocomplete="off"
-        class="min-w-0 basis-full sm:flex-1 sm:basis-0"
-      />
-      <SelectButton
-        v-model="scope"
-        :options="scopes"
-        option-label="label"
-        option-value="value"
-        :allow-empty="false"
-        :aria-label="t('searchScope')"
-        size="small"
-      />
-      <Select
-        v-model="minRating"
-        :options="ratingFilters"
-        option-label="label"
-        option-value="value"
-        :aria-label="t('ratingFilter')"
-        v-tooltip.top="t('ratingFilter')"
-        size="small"
-        class="shrink-0"
-      />
-      <Select
-        v-model="librarySort"
-        :options="sortOptions"
-        option-label="label"
-        option-value="value"
-        :aria-label="t('sortBy')"
-        v-tooltip.top="t('sortBy')"
-        size="small"
-        class="shrink-0"
-      />
-    </form>
-    <p v-if="filtering" class="muted text-sm mt-2 mb-0">
-      <template v-if="reviewing && shownRuns.length === 0">{{ t('reviewDone') }}</template>
-      <template v-else>{{
-        shownRuns.length === 0 ? t('searchNone') : t('searchHits', { count: shownRuns.length, total: runs.length })
-      }}</template>
-      <Button :label="t('searchClear')" text size="small" @click="clearSearch" />
-    </p>
+    <LibraryFilters
+      v-model:query="query"
+      v-model:scope="scope"
+      v-model:min-rating="minRating"
+      :runs="runs"
+      :shown="shownRuns.length"
+    />
     <DataView
       :value="shownRuns"
       data-key="id"
@@ -833,194 +332,30 @@ const severityByQuality: Record<string, string> = {
             </div>
 
             <ul class="songs">
-              <li
+              <SongRow
                 v-for="song in songs"
                 :id="anchor(song.id)"
                 :key="song.id"
-                :class="['song', { 'focused bg-emphasis': focusedSong === song.id }]"
-              >
-                <div class="flex flex-wrap gap-x-3 gap-y-1 items-center">
-                  <img
-                    v-if="song.coverUpdatedAt"
-                    :src="coverUrl(song.id, song.coverUpdatedAt)"
-                    alt=""
-                    loading="lazy"
-                    class="h-10 w-10 rounded-md object-cover"
-                  />
-                  <Button
-                    v-if="song.hasAudio"
-                    :icon="isPlaying(song) ? 'pi pi-pause' : 'pi pi-play'"
-                    rounded
-                    :outlined="current?.id !== song.id"
-                    size="small"
-                    :aria-label="isPlaying(song) ? t('pause') : t('play')"
-                    @click="playSong(run, song)"
-                  />
-                  <div>
-                    <strong>{{ t('songN', { n: song.index }) }}</strong>
-                  </div>
-                  <div v-if="song.seconds" class="muted">{{ formatDuration(song.seconds) }}</div>
-                  <Tag v-if="song.quality" :severity="severityByQuality[song.quality]">
-                    {{ song.quality === 'draft' ? t('qualityDraft') : t('qualityFull') }}
-                  </Tag>
-                  <!-- Here rather than among the actions, which a phone hides in its menu. -->
-                  <Button
-                    v-if="song.videoFormats?.length"
-                    icon="pi pi-video"
-                    text
-                    rounded
-                    size="small"
-                    v-tooltip="t('songHasVideo')"
-                    :aria-label="t('songHasVideo')"
-                    @click="openVideoOf(run, song)"
-                  />
-                  <div v-if="song.seed !== null" class="muted seed">#{{ song.seed }}</div>
-                  <Rating
-                    :model-value="ratingOf(song.id)"
-                    :aria-label="t('rating')"
-                    class="ml-auto"
-                    @update:model-value="rateSong(song, $event)"
-                  />
-                </div>
-                <div class="flex justify-between">
-                  <Button
-                    v-if="song.canRender && song.quality !== 'full'"
-                    :label="busyIds.has(song.id) ? t('rendering') : t('renderFull')"
-                    :loading="busyIds.has(song.id) ? true : false"
-                    text
-                    size="small"
-                    :disabled="busyIds.has(song.id)"
-                    class="whitespace-nowrap"
-                    @click="renderFull(song)"
-                  />
-                  <div class="ml-auto flex items-center justify-end">
-                    <Button as="a" text v-if="song.hasAudio" size="small" :href="audioUrl(song.id, true)">{{
-                      t('download')
-                    }}</Button>
-                    <Button as="a" text v-if="song.hasScore" size="small" :href="scoreUrl(song.id)">{{
-                      t('score')
-                    }}</Button>
-                    <!-- Filled while a note is written, so it shows with the note closed. -->
-                    <Button
-                      icon="pi pi-comment"
-                      :text="!noteOf(song)"
-                      size="small"
-                      rounded
-                      :severity="noteOf(song) ? undefined : 'secondary'"
-                      v-tooltip="noteOf(song) ? t('songNoteHas') : t('songNote')"
-                      :aria-label="noteOf(song) ? t('songNoteHas') : t('songNote')"
-                      :aria-expanded="notesOpen.has(song.id)"
-                      @click="toggleNote(song)"
-                    />
-                    <PlaylistToggle
-                      v-if="song.hasAudio"
-                      :song-id="song.id"
-                      size="small"
-                      @error="emit('error', $event)"
-                    />
-                    <!-- On a phone the other actions would push the card past the screen's edge, so they go into a menu. -->
-                    <div class="hidden sm:flex">
-                      <Button
-                        v-for="action in songActions(run, song)"
-                        :key="action.key"
-                        :as="action.url ? 'a' : undefined"
-                        :href="action.url"
-                        :icon="action.icon"
-                        text
-                        size="small"
-                        rounded
-                        :severity="action.danger ? 'danger' : undefined"
-                        v-tooltip="action.label"
-                        :aria-label="action.label"
-                        :loading="action.loading"
-                        :disabled="action.disabled"
-                        @click="action.command?.()"
-                      />
-                    </div>
-                    <Button
-                      icon="pi pi-ellipsis-v"
-                      text
-                      size="small"
-                      rounded
-                      severity="secondary"
-                      class="sm:hidden"
-                      :aria-label="t('songActions')"
-                      aria-haspopup="true"
-                      @click="openActions($event, run, song)"
-                    />
-                  </div>
-                </div>
-                <SongNote
-                  v-if="notesOpen.has(song.id)"
-                  :song-id="song.id"
-                  :note="noteOf(song)"
-                  @saved="savedNotes[song.id] = $event"
-                  @error="emit('error', $event)"
-                />
-                <ul v-if="versionsOf(song).length > 0" class="versions">
-                  <li v-for="version in versionsOf(song)" :key="version.id" class="flex flex-wrap items-center gap-x-2">
-                    <Button
-                      v-if="version.stage === 'done'"
-                      :icon="isPlayingVersion(song, version) ? 'pi pi-pause' : 'pi pi-play'"
-                      rounded
-                      text
-                      size="small"
-                      :aria-label="isPlayingVersion(song, version) ? t('pause') : t('play')"
-                      @click="playVersion(run, song, version)"
-                    />
-                    <span class="pi pi-user muted px-2" v-else aria-hidden="true" />
-                    <span>{{ version.voiceLabel }}</span>
-                    <Tag v-if="version.stage !== 'done'" :severity="version.stage === 'failed' ? 'danger' : undefined">
-                      {{ t(`versionStage_${version.stage}`) }}
-                      {{ versionProgress(version) }}
-                    </Tag>
-                    <div class="ml-auto flex">
-                      <Button
-                        v-if="version.stage === 'done'"
-                        as="a"
-                        text
-                        size="small"
-                        :href="versionAudioUrl(song.id, version.id, true)"
-                        >{{ t('download') }}</Button
-                      >
-                      <Button
-                        :icon="version.finished ? 'pi pi-trash' : 'pi pi-times'"
-                        text
-                        rounded
-                        size="small"
-                        :severity="version.finished ? 'danger' : 'secondary'"
-                        v-tooltip="version.finished ? t('deleteVersion') : t('cancel')"
-                        :aria-label="version.finished ? t('deleteVersion') : t('cancel')"
-                        @click="removeVersion(run, song, version)"
-                      />
-                    </div>
-                    <span class="muted basis-full pb-1 text-xs">{{ versionSettings(version) }}</span>
-                    <span v-if="version.stage === 'failed' && version.message" class="danger basis-full text-sm">
-                      {{ version.message }}
-                    </span>
-                  </li>
-                </ul>
-                <!-- One player for the whole page (PlayerBar.vue), so the song keeps playing on the other pages. -->
-                <span v-if="!song.hasAudio" class="muted">{{ t('noAudio') }}</span>
-                <details v-if="song.hasScore" class="score" @toggle="toggleScore(song, $event)">
-                  <summary>{{ t('showScore') }}</summary>
-                  <pre>{{ scores[song.id] ?? '…' }}</pre>
-                </details>
-              </li>
+                :run="run"
+                :song="song"
+                :focused="focusedSong === song.id"
+                :busy="busyIds.has(song.id)"
+                :voices="voices"
+                :stems="stems ?? false"
+                :live-versions="liveVersions"
+                @play="playSong(run, song)"
+                @rate="rateSong(song, $event)"
+                @use-score="(abc, warnings) => emit('useScore', run, song, abc, warnings)"
+                @new-song="emit('newSong', song.id)"
+                @sing="singing = { run, song }"
+                @delete="askDeleteSong(run, song)"
+                @error="emit('error', $event)"
+              />
             </ul>
           </Fieldset>
         </div>
       </template>
     </DataView>
-    <Menu ref="actionMenu" :model="menuItems" popup>
-      <!-- Only so "delete" is red like its icon on a wide screen. -->
-      <template #item="{ item, props: link }">
-        <a v-bind="link.action" :href="item.url" :class="{ danger: item.danger }">
-          <span :class="[item.icon, 'p-menu-item-icon', { danger: item.danger }]" />
-          <span class="p-menu-item-label">{{ item.label }}</span>
-        </a>
-      </template>
-    </Menu>
     <Dialog
       :visible="renaming !== null"
       modal
@@ -1047,90 +382,11 @@ const severityByQuality: Record<string, string> = {
         </div>
       </form>
     </Dialog>
-    <Dialog
-      :visible="singing !== null"
-      modal
-      :header="t('singWithVoice')"
-      :draggable="false"
-      :style="{ width: 'min(30rem, calc(100vw - 2rem))' }"
-      @update:visible="(open: boolean) => !open && (singing = null)"
-    >
-      <form v-if="singing" class="flex flex-col gap-4" @submit.prevent="sing">
-        <p class="muted m-0 text-sm">
-          {{
-            t('singIntro', { title: singing.run.title || t('untitled'), song: t('songN', { n: singing.song.index }) })
-          }}
-        </p>
-        <p v-if="!voicesLoading && voiceList.length === 0" class="m-0">{{ t('singNoVoices') }}</p>
-        <div v-else class="flex flex-col gap-1">
-          <label for="sing-voice" class="muted text-sm">{{ t('voice') }}</label>
-          <Select
-            v-model="voiceChoice"
-            input-id="sing-voice"
-            :options="voiceList"
-            option-label="label"
-            option-value="id"
-            :loading="voicesLoading"
-            fluid
-          />
-        </div>
-        <div class="flex flex-col gap-1">
-          <span class="muted text-sm">{{ t('octave') }}</span>
-          <SelectButton
-            v-model="octave"
-            :options="octaves"
-            option-label="label"
-            option-value="value"
-            :allow-empty="false"
-            :aria-label="t('octave')"
-          />
-        </div>
-        <div class="flex flex-col gap-1">
-          <span class="muted text-sm">{{ t('strength') }}</span>
-          <SelectButton
-            v-model="strength"
-            :options="strengths"
-            option-label="label"
-            option-value="value"
-            :allow-empty="false"
-            :aria-label="t('strength')"
-          />
-        </div>
-        <div class="flex flex-col gap-1">
-          <span class="muted text-sm">{{ t('steps') }}</span>
-          <SelectButton
-            v-model="steps"
-            :options="stepChoices"
-            option-label="label"
-            option-value="value"
-            :allow-empty="false"
-            :aria-label="t('steps')"
-          />
-        </div>
-        <div class="flex items-center gap-2">
-          <Checkbox v-model="keepReverb" input-id="sing-reverb" binary />
-          <label for="sing-reverb">{{ t('keepReverb') }}</label>
-        </div>
-        <p class="muted m-0 text-sm">{{ t('singHint') }}</p>
-        <div class="flex justify-end gap-2">
-          <Button type="button" :label="t('cancel')" severity="secondary" text @click="singing = null" />
-          <Button type="submit" :label="t('sing')" :loading="queueing" :disabled="!voiceChoice || voicesLoading" />
-        </div>
-      </form>
-    </Dialog>
+    <SingDialog v-model="singing" @notice="emit('notice', $event)" @error="emit('error', $event)" />
   </section>
 </template>
 
 <style scoped>
-/* On a phone the field takes the first line, scope, rating filter and order share the second. */
-.search {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
 .hits {
   margin: 0.4rem 0 0;
   padding: 0 0 0 0.75rem;
@@ -1173,18 +429,12 @@ const severityByQuality: Record<string, string> = {
   flex: 0 1 auto;
 }
 
-.score {
-  font-size: 0.9rem;
-}
-
-.lyrics summary,
-.score summary {
+.lyrics summary {
   cursor: pointer;
   color: var(--accent);
 }
 
-.lyrics pre,
-.score pre {
+.lyrics pre {
   max-height: 20rem;
   margin: 0.5rem 0 0;
   padding: 0.5rem 0.75rem;
@@ -1204,33 +454,5 @@ const severityByQuality: Record<string, string> = {
   padding: 0.9rem 0 0;
   border-top: 1px solid var(--border);
   list-style: none;
-}
-
-.song {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.focused {
-  margin: -0.5rem;
-  padding: 0.5rem;
-  border-radius: var(--radius-small);
-}
-
-.versions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0 0 0 0.75rem;
-  border-left: 2px solid var(--border);
-  font-size: 0.9rem;
-  list-style: none;
-}
-
-.seed {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
 }
 </style>
