@@ -200,8 +200,8 @@ const trackIds = computed(() => voices.value.map((voice) => voice.id))
  */
 const routings = ref<Routing[]>(loadRoutings(trackIds.value, defaultRoutings(voices.value)))
 /**
- * Only Chromium drives MIDI ports; elsewhere the choice offers browser sounds only, and a track that has an
- * instrument (chosen in Chrome) keeps it, since it also decides the MIDI file's channel and the Logic project's
+ * Only browsers with Web MIDI (Chromium, Firefox) drive MIDI ports; elsewhere the choice offers browser sounds
+ * only, and a track that has an instrument (chosen in another browser) keeps it, since it also decides the MIDI file's channel and the Logic project's
  * hardware, but sounds in the browser.
  */
 const canDrivePorts = midiUsable()

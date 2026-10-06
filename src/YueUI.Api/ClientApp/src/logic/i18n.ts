@@ -272,7 +272,7 @@ const messages = {
     keyboardHint:
       'Mit Maus oder Finger spielen, auch mehrere Tasten und im Streichen. Am Computer spielen die Tasten A bis K die weißen und W, E, T, Y, U die schwarzen Tasten, wie Logics Musical Typing.',
     keyboardNoTarget: 'Das gewählte Instrument gibt es nicht mehr.',
-    keyboardMidiChromium: 'MIDI-Instrumente anspielen geht nur in Chrome oder Edge.',
+    keyboardMidiChromium: 'MIDI-Instrumente anspielen geht nur in Chrome, Edge oder Firefox.',
     instrumentsIntro:
       'Ein Instrument ist ein Name für einen MIDI-Ausgang und Kanal, etwa „Mother32“ für „MIDI4x4 Midi Out 1“, Kanal 12. Ein Drumcomputer bringt dazu die Noten seiner Trommeln mit. Die Liste liegt auf dem Server, jeder Browser sieht dieselbe.',
     instrumentsEmpty: 'Noch keine Instrumente.',
@@ -280,7 +280,7 @@ const messages = {
     instrumentPort: 'MIDI-Ausgang',
     instrumentPortOther: 'Anderer Ausgang (Name eingeben) …',
     instrumentPortHint:
-      'Der Name, wie Chrome ihn zeigt, z. B. „MIDI4x4 Midi Out 1“ – auch ohne angeschlossenes Gerät möglich.',
+      'Der Name, wie der Browser ihn zeigt, z. B. „MIDI4x4 Midi Out 1“ – auch ohne angeschlossenes Gerät möglich.',
     instrumentChannel: 'Kanal',
     instrumentKind: 'Art',
     instrumentKindSynth: 'Synthesizer',
@@ -306,13 +306,13 @@ const messages = {
     instrumentNameTaken: 'Diesen Namen gibt es schon.',
     instrumentsError: 'Instrumente sind gerade nicht erreichbar: {message}',
     instrumentsChromiumOnly:
-      'MIDI-Ausgänge lesen können nur Chrome und Edge. Anlegen und Zuordnen geht hier trotzdem: Beides liegt auf dem Server und bestimmt die Kanäle der MIDI-Datei und die Hardware im Logic-Projekt. Nur die Vorschau klingt hier über den eingebauten Ton statt über die Geräte.',
+      'MIDI-Ausgänge lesen können nur Chrome, Edge und Firefox. Anlegen und Zuordnen geht hier trotzdem: Beides liegt auf dem Server und bestimmt die Kanäle der MIDI-Datei und die Hardware im Logic-Projekt. Nur die Vorschau klingt hier über den eingebauten Ton statt über die Geräte.',
     instrumentsNeedPort:
-      'Zum Anlegen fehlt ein MIDI-Ausgang: Dieser Browser kann keinen lesen, und gespeichert ist noch keiner. Das erste Instrument also einmal in Chrome oder Edge anlegen – danach steht sein Ausgang auch hier zur Auswahl.',
+      'Zum Anlegen fehlt ein MIDI-Ausgang: Dieser Browser kann keinen lesen, und gespeichert ist noch keiner. Das erste Instrument also einmal in Chrome, Edge oder Firefox anlegen – danach steht sein Ausgang auch hier zur Auswahl.',
     instrumentPortStoredOnly:
-      'Zur Auswahl stehen die Ausgänge der bereits gespeicherten Instrumente. Einen neuen Namen eintragen geht nur in Chrome oder Edge.',
+      'Zur Auswahl stehen die Ausgänge der bereits gespeicherten Instrumente. Einen neuen Namen eintragen geht nur in Chrome, Edge oder Firefox.',
     midiUnsupported:
-      'Dieser Browser kennt kein Web MIDI – die Wiedergabe läuft über den Browser-Ton. Für die Ausgabe an Hardware Chrome verwenden.',
+      'Dieser Browser kennt kein Web MIDI – die Wiedergabe läuft über den Browser-Ton. Für die Ausgabe an Hardware Chrome oder Firefox verwenden (über HTTPS).',
     midiDenied: 'Kein Zugriff auf MIDI-Geräte – die Wiedergabe läuft über den Browser-Ton.',
     failedTitle: 'Konvertierung fehlgeschlagen',
     tempo: 'Tempo',
@@ -623,7 +623,7 @@ const messages = {
     keyboardHint:
       "Play with mouse or finger, several keys at once and by sliding. On a computer, A to K play the white keys and W, E, T, Y, U the black ones, like Logic's musical typing.",
     keyboardNoTarget: 'The chosen instrument is gone.',
-    keyboardMidiChromium: 'Playing MIDI instruments works in Chrome or Edge only.',
+    keyboardMidiChromium: 'Playing MIDI instruments works in Chrome, Edge or Firefox only.',
     instrumentsIntro:
       'An instrument is a name for a MIDI output and channel, say “Mother32” for “MIDI4x4 Midi Out 1”, channel 12. A drum machine also brings the notes of its drums. The list lives on the server; every browser sees the same one.',
     instrumentsEmpty: 'No instruments yet.',
@@ -631,7 +631,7 @@ const messages = {
     instrumentPort: 'MIDI output',
     instrumentPortOther: 'Another output (type its name) …',
     instrumentPortHint:
-      'The name as Chrome shows it, e.g. “MIDI4x4 Midi Out 1” – works without the device being connected.',
+      'The name as the browser shows it, e.g. “MIDI4x4 Midi Out 1” – works without the device being connected.',
     instrumentChannel: 'Channel',
     instrumentKind: 'Kind',
     instrumentKindSynth: 'Synthesizer',
@@ -657,12 +657,13 @@ const messages = {
     instrumentNameTaken: 'That name is taken already.',
     instrumentsError: 'The instruments cannot be reached right now: {message}',
     instrumentsChromiumOnly:
-      'Only Chrome and Edge can read MIDI outputs. Adding and assigning still work here: both live on the server and decide the channels of the MIDI file and the hardware the Logic project addresses. Only the preview sounds through the browser here instead of through the devices.',
+      'Only Chrome, Edge and Firefox can read MIDI outputs. Adding and assigning still work here: both live on the server and decide the channels of the MIDI file and the hardware the Logic project addresses. Only the preview sounds through the browser here instead of through the devices.',
     instrumentsNeedPort:
-      'Adding needs a MIDI output: this browser cannot read one, and none is stored yet. Add the first instrument in Chrome or Edge once — its output can then be picked here as well.',
+      'Adding needs a MIDI output: this browser cannot read one, and none is stored yet. Add the first instrument in Chrome, Edge or Firefox once — its output can then be picked here as well.',
     instrumentPortStoredOnly:
-      'The outputs to pick from are those of the instruments already stored. A new name can only be entered in Chrome or Edge.',
-    midiUnsupported: 'This browser has no Web MIDI - playback uses the browser sound. Use Chrome to send to hardware.',
+      'The outputs to pick from are those of the instruments already stored. A new name can only be entered in Chrome, Edge or Firefox.',
+    midiUnsupported:
+      'This browser has no Web MIDI - playback uses the browser sound. Use Chrome or Firefox (over HTTPS) to send to hardware.',
     midiDenied: 'No access to MIDI devices - playback uses the browser sound.',
     failedTitle: 'Conversion failed',
     tempo: 'Tempo',

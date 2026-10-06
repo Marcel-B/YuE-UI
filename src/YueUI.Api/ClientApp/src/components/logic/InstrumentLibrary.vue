@@ -19,7 +19,7 @@ const emit = defineEmits<{ /** Asks the page's keyboard to play this instrument.
 const OTHER_PORT = '\u0000other'
 
 /**
- * Whether the browser can read the MIDI outputs of this machine, which only Chromium can. Elsewhere the
+ * Whether the browser can read the MIDI outputs of this machine, which Chromium and Firefox can. Elsewhere the
  * library is still edited - it lives on the server and decides channels and Logic routing, not playback - but
  * the output can only be chosen among the names that are already stored, since none can be looked up.
  */

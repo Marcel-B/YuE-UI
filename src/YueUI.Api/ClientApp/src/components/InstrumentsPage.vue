@@ -28,7 +28,7 @@ watch(
 
 /** What the keyboard plays: `sound` for the editor's, or `midi:<id>` for an instrument. */
 const source = ref('sound')
-/** Only Chromium reaches MIDI ports; elsewhere the keyboard plays the browser sound only. */
+/** Only browsers with Web MIDI (Chromium, Firefox) reach MIDI ports; elsewhere the keyboard plays the browser sound only. */
 const canPlayMidi = midiUsable()
 
 const sources = computed(() => [
