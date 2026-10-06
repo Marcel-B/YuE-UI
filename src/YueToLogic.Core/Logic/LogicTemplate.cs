@@ -41,7 +41,11 @@ public sealed class LogicTemplate
         Files = files;
     }
 
-    /// <summary>The template shipped with this library (six tracks: audio, Vocal, Ins, Chords, Bass, Drums).</summary>
+    /// <summary>
+    /// The template shipped with this library: audio tracks for the mix and two vocal stems, and MIDI tracks for
+    /// Vocal, Vocal 8vb, Ins, Chords, Bass, Guide, Drums (and a kit split into Kick, Snare, HiHat, Crash) and the
+    /// eight backing vocals (Harmony 3rd up … Harmony Drone held). Saved by Logic Pro 12.4.
+    /// </summary>
     public static LogicTemplate Default => BuiltIn.Value;
 
     /// <summary>Package-relative path ('/' separators) → content.</summary>

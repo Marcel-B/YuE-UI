@@ -19,7 +19,11 @@ public class LogicProjectWriterTests
 
     /// <summary>The MIDI tracks of the bundled template, in the order its arrangement places them.</summary>
     private static readonly string[] TemplateTracks =
-        ["Ins", "Chords", "Bass", "Guide", "Drums", "Kick", "Snare", "HiHat", "Crash", "Vocal", "Vocal 8vb"];
+        [
+            "Ins", "Chords", "Bass", "Guide", "Drums", "Kick", "Snare", "HiHat", "Crash",
+            "Harmony 3rd up", "Harmony 3rd down", "Harmony 6th down", "Harmony Alto", "Harmony Tenor", "Harmony Bass",
+            "Harmony Drone", "Harmony Drone held", "Vocal", "Vocal 8vb",
+        ];
 
     [Fact]
     public void Embedded_template_round_trips_byte_for_byte()
@@ -419,6 +423,48 @@ public class LogicProjectWriterTests
     }
 
     [Fact]
+    public async Task The_m_vave_fm1_is_among_the_outputs()
+    {
+        // Saved in Logic 12.4 with the FM-1 connected, and added behind the outputs the earlier template knew, whose
+        // routing was checked in Logic; their positions in the list stay as they were.
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        var options = new LogicProjectOptions
+        {
+            Instruments = new Dictionary<string, LogicInstrument> { ["Vocal"] = new() { Name = "M-VAVE FM-1", Port = "FM-1", Channel = 1 } },
+        };
+
+        var sink = new MemorySink();
+        var result = await new LogicProjectWriter().WriteAsync(score, new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273))), sink, options);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.MidiPortUnknown);
+        var chunks = LogicProjectData.Parse(sink.Files[LogicTemplate.ProjectDataPath].ToArray()).Chunks;
+        var slot = InstrumentSlot(chunks, "Vocal");
+        Assert.Equal("External", PluginName(slot));
+        Assert.Equal("FM-1", Text(slot.Payload, 196, 128));
+        Assert.Equal(8u, ReadUInt32(slot.Payload, 336));
+        Assert.Equal("FM-1", Text(slot.Payload, 452, 64));
+    }
+
+    [Fact]
+    public async Task Backing_vocals_land_on_tracks_of_their_own()
+    {
+        var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
+        Assert.Equal(8, score.Voices.Count(v => v.Kind == TrackKind.Harmony));
+
+        var sink = new MemorySink();
+        var result = await new LogicProjectWriter().WriteAsync(score, new LogicAudio(new MemoryStream(Flac(48000, 2, 24, 1_047_273))), sink);
+
+        Assert.True(result.Success);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.LogicTemplateLimitation);
+        var events = RegionEvents(sink.Files[LogicTemplate.ProjectDataPath].ToArray());
+        foreach (var voice in score.Voices.Where(v => v.Kind == TrackKind.Harmony))
+        {
+            Assert.Equal(voice.Notes.Count, NoteRecords(events[voice.Id]).Count);
+        }
+    }
+
+    [Fact]
     public async Task An_output_the_template_does_not_know_leaves_the_instrument_and_says_so()
     {
         var score = Convert(File.ReadAllText(SamplePath), withAccompaniment: true);
@@ -596,16 +642,18 @@ public class LogicProjectWriterTests
     [Fact]
     public async Task The_project_carries_no_path_of_the_machine_the_template_was_built_on()
     {
-        // The template's instruments remember where their samples and impulse responses were found, which is
-        // the home folder of whoever saved it. Logic finds its own library content without being told.
-        Assert.Contains("/Users/"u8.ToArray(), TemplateProjectData);
+        // The template's instruments can remember where their samples and impulse responses were found, which is
+        // the home folder of whoever saved it. Logic finds its own library content without being told. The
+        // template Logic 12.4 saved carries no such path, the one before it did, so they are put back in here.
+        var template = TemplateWithUserPaths();
+        Assert.Contains("/Users/"u8.ToArray(), template.Files[LogicTemplate.ProjectDataPath]);
 
-        var package = await WriteAsync(Convert(File.ReadAllText(SamplePath), false), Flac(48000, 2, 24, 1_047_273));
+        var package = await WriteAsync(Convert(File.ReadAllText(SamplePath), false), Flac(48000, 2, 24, 1_047_273), template: template);
 
         Assert.DoesNotContain("/Users/"u8.ToArray(), package.ProjectData);
         // Paths outside a home folder say nothing about the machine and are left as they are.
         Assert.Equal(
-            CountOccurrences(TemplateProjectData, "/Library/"u8.ToArray()),
+            CountOccurrences(template.Files[LogicTemplate.ProjectDataPath], "/Library/"u8.ToArray()),
             CountOccurrences(package.ProjectData, "/Library/"u8.ToArray()));
     }
 
@@ -614,9 +662,10 @@ public class LogicProjectWriterTests
     {
         // The paths sit among the plug-ins' own data. Clearing more than the text of a path destroys a patch,
         // which is why every byte that differs has to have been readable text in the template.
-        var package = await WriteAsync(Convert(File.ReadAllText(SamplePath), false), Flac(48000, 2, 24, 1_047_273));
+        var source = TemplateWithUserPaths();
+        var package = await WriteAsync(Convert(File.ReadAllText(SamplePath), false), Flac(48000, 2, 24, 1_047_273), template: source);
 
-        var template = LogicProjectData.Parse(TemplateProjectData).Chunks.Where(c => c.Tag == "AuCU").ToList();
+        var template = LogicProjectData.Parse(source.Files[LogicTemplate.ProjectDataPath]).Chunks.Where(c => c.Tag == "AuCU").ToList();
         var written = LogicProjectData.Parse(package.ProjectData).Chunks.Where(c => c.Tag == "AuCU").ToList();
         Assert.Equal(template.Count, written.Count);
 
@@ -805,9 +854,10 @@ public class LogicProjectWriterTests
         var midi = placements.Where(p => p.Head == 0x20).ToList();
         Assert.Equal(midi.Count, midi.Select(p => p.Region).Distinct().Count());
 
-        // Placements of the same track share its track record; the template's regions keep their ids,
+        // Regions of the same track lie on its channel strip, which each region names (a placement's own field at
+        // byte 8 is not the track: Logic leaves it 0 on tracks added later); the template's regions keep their ids,
         // so each group can be recognized by the voice it grew out of.
-        var tracks = midi.GroupBy(p => p.Track).ToList();
+        var tracks = midi.GroupBy(p => StripOf(chunks, p.Region)).ToList();
         Assert.Equal(TemplateTracks.Length, tracks.Count);
         var sectionStarts = score.Sections.Select(section => 34_560u + (2 * (uint)section.StartTicks)).ToList();
 
@@ -864,6 +914,13 @@ public class LogicProjectWriterTests
     }
 
     private readonly record struct Placement(byte Head, uint Start, uint Track, uint Region);
+
+    /// <summary>The channel strip a region lies on: its id stands 204 bytes behind the end of the region's name.</summary>
+    private static uint StripOf(List<LogicChunk> chunks, uint regionId)
+    {
+        var region = chunks.Single(c => c.Tag == "MSeq" && c.Class == 23 && c.Id == regionId);
+        return ReadUInt32(region.Payload, region.SequenceLengthOffset - 60 + 204);
+    }
 
     private static uint ReadUInt32Sequence(List<LogicChunk> chunks, uint regionId)
     {
@@ -1034,6 +1091,7 @@ public class LogicProjectWriterTests
                     Drums = new DrumOptions { SeparateTracks = splitDrums },
                     GuideTones = new GuideToneOptions(),
                     Doubling = new DoublingOptions(),
+                    Harmony = new HarmonyOptions { Parts = Enum.GetValues<HarmonyPart>() },
                 }
                 : new ArrangementOptions(),
         };
@@ -1045,19 +1103,43 @@ public class LogicProjectWriterTests
     private static Task<(byte[] ProjectData, IReadOnlyDictionary<string, byte[]> Files)> WriteAsync(
         ScoreDocument score,
         byte[] flac,
-        LogicProjectOptions? options = null) =>
-        WriteAsync(score, new LogicAudio(new MemoryStream(flac)), options);
+        LogicProjectOptions? options = null,
+        LogicTemplate? template = null) =>
+        WriteAsync(score, new LogicAudio(new MemoryStream(flac)), options, template);
 
     private static async Task<(byte[] ProjectData, IReadOnlyDictionary<string, byte[]> Files)> WriteAsync(
         ScoreDocument score,
         LogicAudio audio,
-        LogicProjectOptions? options = null)
+        LogicProjectOptions? options = null,
+        LogicTemplate? template = null)
     {
         var sink = new MemorySink();
-        var result = await new LogicProjectWriter().WriteAsync(score, audio, sink, options);
+        var result = await new LogicProjectWriter(template ?? LogicTemplate.Default).WriteAsync(score, audio, sink, options);
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
         var files = sink.Files.ToDictionary(f => f.Key, f => f.Value.ToArray());
         return (files[LogicTemplate.ProjectDataPath], files);
+    }
+
+    /// <summary>
+    /// The default template with paths of a home folder among a plug-in's data, as the template saved by Logic 12.3
+    /// had them: an impulse response under Logic's library bundle and a sample inside a project package, each
+    /// between bytes that are not text.
+    /// </summary>
+    private static LogicTemplate TemplateWithUserPaths()
+    {
+        var project = LogicProjectData.Parse(TemplateProjectData);
+        var plugin = project.Chunks.First(c => c.Tag == "AuCU" && c.Payload.Length > 1000);
+        plugin.Payload =
+        [
+            .. plugin.Payload,
+            0x01,
+            .. "/Users/someone/Music/Logic Pro Library.bundle/Impulse Responses/01 Large Spaces/2.2s_Ramp Plate.SDIR"u8,
+            0x00, 0x02,
+            .. "/Users/someone/Music/Song.logicx/Media/Sampler Instruments/Pad.exs"u8,
+            0x00,
+        ];
+        var files = new Dictionary<string, byte[]>(LogicTemplate.Default.Files) { [LogicTemplate.ProjectDataPath] = project.Serialize() };
+        return new LogicTemplate(files);
     }
 
     /// <summary>The sample count an audio file object stores, behind the tag that names its format.</summary>

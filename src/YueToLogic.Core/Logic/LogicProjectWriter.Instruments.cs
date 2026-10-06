@@ -31,6 +31,12 @@ namespace YueToLogic.Core.Logic;
 /// 112 of its header and its first parameter are 1 while it is bypassed. Bit 0 of byte 32 of the environment
 /// object turns the track's MIDI input off, so that playing a keyboard does not reach the hardware through
 /// every routed track at once - set on the routed tracks of the reference project as well.
+///
+/// The CoreMIDI lists are what was connected when the template was saved. The template of Logic 12.4 was saved
+/// on a Mac with only the Scarlett and an M-VAVE FM-1 attached, so its lists are the earlier template's (CME WIDI,
+/// Scarlett, MIDI4x4, whose routing was checked in Logic) with the FM-1's entries added at the end, which keeps
+/// the earlier outputs at the positions they had. Logic finds an output by its unique id; the FM-1's routing
+/// has not yet been opened in Logic.
 /// </remarks>
 public sealed partial class LogicProjectWriter
 {

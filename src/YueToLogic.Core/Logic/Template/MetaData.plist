@@ -7,13 +7,9 @@
 		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Samples/Alchemy Samples/Bass/Custom/Agile Synth Bass-A-A01.aaz</string>
 	</array>
 	<key>AudioFiles</key>
-	<array>
-		<string>Audio Files/audio_1.flac</string>
-		<string>Audio Files/vocals.wav</string>
-		<string>Audio Files/vocals_1.wav</string>
-	</array>
+	<array/>
 	<key>BeatsPerMinute</key>
-	<real>133</real>
+	<real>133.0</real>
 	<key>FrameRateIndex</key>
 	<integer>1</integer>
 	<key>HasARAPlugins</key>
@@ -21,13 +17,9 @@
 	<key>HasGrid</key>
 	<false/>
 	<key>ImpulsResponsesFiles</key>
-	<array>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Impulse Responses/03 Small Spaces/03 Plate Reverbs/0.7s_Drum Plate.SDIR</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Impulse Responses/01 Large Spaces/03 Plate Reverbs/2.2s_Ramp Plate.SDIR</string>
-		<string>${CONTENT_iOS:Logic Pro Library.bundle}/Impulse Responses/03 Small Spaces/01 Rooms/00.8s Drum Booth One-OST.SDIR</string>
-	</array>
+	<array/>
 	<key>NumberOfTracks</key>
-	<integer>14</integer>
+	<integer>22</integer>
 	<key>PlaybackFiles</key>
 	<array/>
 	<key>QuicksamplerFiles</key>
@@ -63,9 +55,7 @@
 	<key>UltrabeatFiles</key>
 	<array/>
 	<key>UnusedAudioFiles</key>
-	<array>
-		<string>Audio Files/audio.flac</string>
-	</array>
+	<array/>
 	<key>Version</key>
 	<integer>3</integer>
 	<key>isTimeCodeBased</key>
