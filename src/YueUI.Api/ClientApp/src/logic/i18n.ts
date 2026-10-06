@@ -34,6 +34,9 @@ const messages = {
     logicHint:
       'Experimentell: Das Projekt entsteht aus einer Vorlage aus Logic Pro 12.3 mit Audiospuren für Mix und Stems und elf Instrumentenspuren.',
     logicWarnings: 'Hinweise zum Logic-Projekt',
+    logicMidiOnly: 'Ohne eigene Spur in der Logic-Vorlage, nur in der MIDI-Datei: {voices}.',
+    logicUnknownOutput:
+      '{track}: Den Ausgang „{port}“ ({instrument}) kennt die Logic-Vorlage nicht, die Spur behält ihr Software-Instrument.',
     logicFailed: 'Das Logic-Projekt konnte nicht erstellt werden',
     dropWhileDragging: 'Loslassen zum Übernehmen',
     notAbc: 'Die Datei endet weder auf .abc noch auf .mid – YuE2 schreibt den Score als score.abc.',
@@ -397,6 +400,9 @@ const messages = {
     logicHint:
       'Experimental: the project is built from a Logic Pro 12.3 template with audio tracks for the mix and its stems and eleven instrument tracks.',
     logicWarnings: 'Notes on the Logic project',
+    logicMidiOnly: 'No track of their own in the Logic template, only in the MIDI file: {voices}.',
+    logicUnknownOutput:
+      "{track}: the Logic template does not know the output '{port}' ({instrument}), so the track keeps its software instrument.",
     logicFailed: 'The Logic project could not be created',
     dropWhileDragging: 'Release to use this file',
     notAbc: 'The file ends in neither .abc nor .mid – YuE2 writes the score as score.abc.',

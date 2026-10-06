@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import { formatDuration, formatNumber, t, type MessageKey } from '../../logic/i18n'
 import { barAt, barCount, download, jsonBlob, midiBlob } from '../../logic/score'
 import type { LogicProgress } from '../../logic/api'
+import { logicNotes, type LogicNote } from '../../logic/logicNotes'
 import type { ConversionResult, Diagnostic, ScoreDocument } from '../../logic/types'
 
 const props = defineProps<{
@@ -47,6 +48,19 @@ const logicLabel = computed(() => {
 })
 
 const showInfos = ref(false)
+
+const notes = computed(() => logicNotes(props.logicWarnings))
+
+function noteText(note: LogicNote): string {
+  switch (note.kind) {
+    case 'midiOnly':
+      return t('logicMidiOnly', { voices: note.voices.join(', ') })
+    case 'unknownOutput':
+      return t('logicUnknownOutput', { track: note.track, port: note.port, instrument: note.instrument })
+    case 'other':
+      return note.diagnostic.message
+  }
+}
 
 const score = computed(() => props.result.score)
 const important = computed(() => props.result.diagnostics.filter((d) => d.severity !== 'Info'))
@@ -209,10 +223,12 @@ function downloadJson(): void {
         <div v-if="logicWarnings.length" class="logic-warnings">
           <h3>{{ t('logicWarnings') }}</h3>
           <ul class="diagnostics">
-            <li v-for="(diagnostic, index) in logicWarnings" :key="index" :class="diagnostic.severity.toLowerCase()">
-              <span class="badge">{{ severityLabel(diagnostic) }}</span>
-              <span class="code">{{ diagnostic.code }}</span>
-              <span class="message">{{ diagnostic.message }}</span>
+            <li
+              v-for="(note, index) in notes"
+              :key="index"
+              :class="note.kind === 'other' ? note.diagnostic.severity.toLowerCase() : 'warning'"
+            >
+              <span class="message">{{ noteText(note) }}</span>
             </li>
           </ul>
         </div>
