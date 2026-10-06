@@ -1,4 +1,5 @@
 import { createEffectsChain, type Effects, type EffectsChain } from './effects'
+import { midiAccess } from './midiPlayer'
 import { playSynthNote, type SynthPatch } from './synth'
 import type { Instrument } from './types'
 
@@ -89,10 +90,8 @@ function holdSound(patch: SynthPatch, pitch: number, level: number): Release {
   }
 }
 
-let access: MIDIAccess | null = null
-
 async function midiPort(name: string): Promise<MIDIOutput | null> {
-  access ??= await navigator.requestMIDIAccess()
+  const access = await midiAccess()
   const wanted = name.trim()
   return [...access.outputs.values()].find((port) => (port.name ?? port.id).trim() === wanted) ?? null
 }
