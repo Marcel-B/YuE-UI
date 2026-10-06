@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>BundleVersion</key>
-	<real>2</real>
+	<real>2.0</real>
 	<key>HasProjectFolder</key>
 	<false/>
 	<key>LastSavedFrom</key>
-	<string>Logic Pro 12.3.1 (6682)</string>
+	<string>Logic Pro 12.4 (6707)</string>
 	<key>VariantNames</key>
 	<dict>
 		<key>0</key>
-		<string>YuE-Vorlage</string>
+		<string>Tonwerk-Vorlage</string>
 	</dict>
 	<key>VariantNamesV2</key>
 	<dict>
