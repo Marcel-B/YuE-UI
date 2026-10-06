@@ -9,6 +9,7 @@ using YueToLogic.Core.Serialization;
 using YueUI.Api.Data;
 using YueUI.Api.Library;
 using YueUI.Api.Logic;
+using YueUI.Api.Voices;
 
 namespace YueUI.Api;
 
@@ -27,6 +28,9 @@ public static class LogicEndpoints
 {
     /// <summary>The warnings of an export (compact JSON array of <see cref="Diagnostic"/>), since the body is the ZIP.</summary>
     public const string DiagnosticsHeader = "X-YueToLogic-Diagnostics";
+
+    /// <summary>The stems the template has audio tracks for, in the order of <see cref="LogicAudio"/>'s vocals.</summary>
+    private static readonly string[] VocalStems = ["vocals", "vocals_dry"];
 
     /// <summary>A song's MIDI file is a few hundred kilobytes, even with every generated track in it.</summary>
     public const long MaxMidiBytes = 4 * 1024 * 1024;
@@ -93,7 +97,7 @@ public static class LogicEndpoints
         await using var score = File.OpenRead(Path.Combine(directory, "score.abc"));
         await using var audio = File.OpenRead(Path.Combine(directory, "audio.flac"));
         var built = await BuildAsync(
-            converter, writer, score, audio, new ConversionOptions(), name, options.Value.SplitSections, new Dictionary<string, LogicInstrument>(), cancellationToken);
+            converter, writer, score, new LogicAudio(audio), new ConversionOptions(), name, options.Value.SplitSections, new Dictionary<string, LogicInstrument>(), cancellationToken);
         return built.Zip is { } zip
             ? Package(zip, built.Diagnostics, name, context)
             : Results.Problem(
@@ -185,10 +189,13 @@ public static class LogicEndpoints
         [FromForm] string? name,
         [FromForm] bool? splitSections,
         [FromForm] string? instruments,
+        [FromForm] string? stems,
         SongLibrary library,
         IScoreConverter converter,
         ILogicProjectWriter writer,
         IMidiToAbcConverter midiConverter,
+        SqliteStemStore stemStore,
+        IAudioMixer mixer,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -220,8 +227,70 @@ public static class LogicEndpoints
         await using var audioStream = source.Directory is { } songDirectory
             ? File.Exists(Path.Combine(songDirectory, "audio.flac")) ? File.OpenRead(Path.Combine(songDirectory, "audio.flac")) : null
             : audio is { Length: > 0 } ? audio.OpenReadStream() : null;
-        var built = await BuildAsync(
-            converter, writer, score, audioStream, parsed, packageName, splitSections ?? false, logicInstruments, cancellationToken);
+
+        // The song's separated vocals go onto the template's two vocal tracks, as they did on yue-to-logic-pro's page
+        // with StemMyWav; here they come from a set made on the voices page.
+        StemSetState? stemSet = null;
+        if (!string.IsNullOrWhiteSpace(stems))
+        {
+            if (source.Directory is null)
+            {
+                return BadRequest("Stems need a song", "Stems can only go along with a song of the library.");
+            }
+            stemSet = stemStore.Get(stems);
+            if (stemSet is null || stemSet.SongId != $"{source.Run}/{source.Song}" || stemSet.Stage != "done")
+            {
+                return Results.Problem(title: "Unknown stems", detail: "These stems do not exist or are not finished for this song.", statusCode: StatusCodes.Status404NotFound);
+            }
+            if (!VocalStems.Any(name => stemSet.Stems.Any(s => s.Name == name)))
+            {
+                return BadRequest("No vocal stems", "The Logic project takes the vocals and the dry vocals; these stems have neither.");
+            }
+        }
+
+        var stemFolder = Path.Combine(Path.GetTempPath(), $"yueui-logic-stems-{Guid.NewGuid():N}");
+        var vocals = new Stream?[VocalStems.Length];
+        (FileStream? Zip, IReadOnlyList<Diagnostic> Diagnostics) built;
+        try
+        {
+            if (stemSet is not null)
+            {
+                Directory.CreateDirectory(stemFolder);
+                for (var i = 0; i < VocalStems.Length; i++)
+                {
+                    if (stemStore.FilePath(stemSet, VocalStems[i]) is { } stored && File.Exists(stored))
+                    {
+                        var wave = Path.Combine(stemFolder, $"{VocalStems[i]}.wav");
+                        await mixer.DecodeWaveAsync(stored, wave, cancellationToken);
+                        vocals[i] = File.OpenRead(wave);
+                    }
+                }
+            }
+            built = await BuildAsync(
+                converter, writer, score, new LogicAudio(audioStream, vocals[0], vocals[1]), parsed, packageName, splitSections ?? false, logicInstruments, cancellationToken);
+        }
+        catch (VoiceServiceException exception)
+        {
+            return Results.Problem(title: exception.Message, statusCode: (int)exception.Status);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return Results.Problem(title: "The stems could not be prepared for Logic.", detail: exception.Message, statusCode: StatusCodes.Status500InternalServerError);
+        }
+        finally
+        {
+            foreach (var stream in vocals)
+            {
+                if (stream is not null)
+                {
+                    await stream.DisposeAsync();
+                }
+            }
+            if (Directory.Exists(stemFolder))
+            {
+                Directory.Delete(stemFolder, recursive: true);
+            }
+        }
         IReadOnlyList<Diagnostic> diagnostics = [.. source.Read, .. built.Diagnostics];
         return built.Zip is { } zip
             ? Package(zip, diagnostics, packageName, context)
@@ -240,7 +309,7 @@ public static class LogicEndpoints
         IScoreConverter converter,
         ILogicProjectWriter writer,
         Stream score,
-        Stream? audio,
+        LogicAudio audio,
         ConversionOptions options,
         string name,
         bool splitSections,
@@ -266,7 +335,7 @@ public static class LogicEndpoints
             using var sink = new ZipLogicPackageSink(zip, name);
             logic = await writer.WriteAsync(
                 converted.Score!,
-                new LogicAudio(audio),
+                audio,
                 sink,
                 new LogicProjectOptions
                 {

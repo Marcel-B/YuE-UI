@@ -116,6 +116,8 @@ export async function exportLogicProject(
   splitSections: boolean,
   /** The instrument each track plays; the track then sits on its channel and is named after it. */
   instruments: Record<string, LogicInstrument> = {},
+  /** A finished stem set of the library song, whose vocals go onto the project's vocal tracks. */
+  stems: string | null = null,
   onProgress: (progress: LogicProgress) => void = () => {},
 ): Promise<LogicExport> {
   const form = new FormData()
@@ -125,6 +127,9 @@ export async function exportLogicProject(
   form.append('splitSections', String(splitSections))
   if (Object.keys(instruments).length > 0) {
     form.append('instruments', JSON.stringify(instruments))
+  }
+  if (stems && 'song' in source) {
+    form.append('stems', stems)
   }
 
   const xhr = await new Promise<XMLHttpRequest>((resolve, reject) => {
