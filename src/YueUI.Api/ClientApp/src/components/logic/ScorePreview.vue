@@ -492,12 +492,18 @@ async function loadPorts(): Promise<void> {
   note.value =
     found.reason === 'unsupported' ? t('midiUnsupported') : found.reason === 'denied' ? t('midiDenied') : null
 
-  if (found.access) {
-    // Ports come and go while the page is open.
-    found.access.onstatechange = async () => {
-      ports.value = (await listMidiPorts()).ports
-    }
+  if (found.access && !watchedAccess) {
+    // Ports come and go while the page is open. The access is shared with the rest of the page, so a listener
+    // rather than onstatechange, which would replace another component's.
+    watchedAccess = found.access
+    watchedAccess.addEventListener('statechange', refreshPorts)
   }
+}
+
+let watchedAccess: MIDIAccess | null = null
+
+async function refreshPorts(): Promise<void> {
+  ports.value = (await listMidiPorts()).ports
 }
 
 onMounted(async () => {
@@ -534,6 +540,7 @@ onBeforeUnmount(() => {
   observer.disconnect()
   release()
   pool.close()
+  watchedAccess?.removeEventListener('statechange', refreshPorts)
   recordingPlayer?.close()
   void recordingContext?.close().catch(() => {})
   window.removeEventListener('pagehide', stop)

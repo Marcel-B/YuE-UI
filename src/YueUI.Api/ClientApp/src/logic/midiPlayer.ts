@@ -378,6 +378,24 @@ export async function midiAlreadyAllowed(): Promise<boolean> {
   }
 }
 
+let sharedAccess: Promise<MIDIAccess> | null = null
+
+/**
+ * The one MIDIAccess of this page, asked for on first use. Firefox gives every requestMIDIAccess its own port
+ * objects, and when one of them is garbage-collected it closes the device by its id in the parent process (midir
+ * closes per port, not per object), so every other port object for that device stays "open" and sends into
+ * nothing: notes played at first and fell silent once an access the page had dropped was collected. One access
+ * keeps one set of port objects alive in its maps for the page's lifetime. A refusal is not kept, so asking again
+ * after the user allowed it works.
+ */
+export function midiAccess(): Promise<MIDIAccess> {
+  sharedAccess ??= navigator.requestMIDIAccess().catch((error: unknown) => {
+    sharedAccess = null
+    throw error
+  })
+  return sharedAccess
+}
+
 /** The MIDI outputs the browser offers, or an empty list where Web MIDI is missing or refused. */
 export async function listMidiPorts(): Promise<{ ports: MidiPort[]; access: MIDIAccess | null; reason?: string }> {
   if (!midiSupported()) {
@@ -385,7 +403,7 @@ export async function listMidiPorts(): Promise<{ ports: MidiPort[]; access: MIDI
     return { ports: [], access: null, reason: 'unsupported' }
   }
   try {
-    const access = await navigator.requestMIDIAccess()
+    const access = await midiAccess()
     const ports = [...access.outputs.values()].map((port) => ({ id: port.id, name: port.name ?? port.id }))
     return { ports, access }
   } catch {
