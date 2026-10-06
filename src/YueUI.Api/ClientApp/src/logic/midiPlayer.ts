@@ -348,29 +348,29 @@ export function midiSupported(): boolean {
 }
 
 /**
- * Whether MIDI hardware can actually be driven from this browser, which is the case under the Chromium engine
- * (Chrome, Edge). Safari has no Web MIDI; Firefox declares the API but routes every request through a
- * site-permission add-on, so a port never simply appears. This gates playing through a port and reading the
- * outputs of the machine - not the instrument library, which lives on the server and decides the channels of
- * the MIDI file and the hardware of the Logic project: that is edited everywhere, only with the outputs of
- * the stored instruments to choose from. `userAgentData` exists in Chromium only, which makes it a plain test
- * for the engine.
+ * Whether MIDI hardware can be driven from this browser: Chromium (Chrome, Edge) and Firefox since 108, which asks
+ * on the first request and installs a small site-permission add-on for it; both only over HTTPS, where the
+ * API exists at all. Safari has no Web MIDI. This gates playing through a port and reading the outputs of the
+ * machine - not the instrument library, which lives on the server and decides the channels of the MIDI file
+ * and the hardware of the Logic project: that is edited everywhere, only with the outputs of the stored
+ * instruments to choose from. A feature test rather than the engine, so every browser that has the API gets it.
  */
 export function midiUsable(): boolean {
-  return midiSupported() && 'userAgentData' in navigator
+  return midiSupported()
 }
 
 /**
- * Whether MIDI may be used without asking. Chrome prompts on the first requestMIDIAccess, and a prompt that
- * appears unasked right after a conversion is startling; the preview therefore only requests on demand,
- * unless permission was granted earlier.
+ * Whether MIDI may be used without asking. Chrome and Firefox prompt on the first requestMIDIAccess, and a prompt
+ * that appears unasked right after a conversion is startling; the preview therefore only requests on demand,
+ * unless permission was granted earlier. Where the browser cannot query the "midi" permission it is asked on
+ * demand as well.
  */
 export async function midiAlreadyAllowed(): Promise<boolean> {
   if (!midiSupported() || !navigator.permissions) {
     return false
   }
   try {
-    // "midi" is not among the TypeScript permission names, though Chrome implements it.
+    // "midi" is not among the TypeScript permission names, though Chrome and Firefox implement it.
     const status = await navigator.permissions.query({ name: 'midi' as PermissionName })
     return status.state === 'granted'
   } catch {

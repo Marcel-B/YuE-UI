@@ -161,7 +161,7 @@ function forgetResult(): void {
 /**
  * Which track plays which instrument. This is configuration, not playback: it decides the channel a track is
  * written on and the hardware the Logic project addresses, both of which the server produces. It therefore
- * applies in every browser - only sending the preview to a MIDI port needs Web MIDI, which Chromium alone has.
+ * applies in every browser - only sending the preview to a MIDI port needs Web MIDI, which Safari lacks.
  */
 const assignments = ref<Assignments>({})
 const instrumentsError = ref<string | null>(null)
