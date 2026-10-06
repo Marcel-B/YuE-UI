@@ -25,7 +25,7 @@ deploy/update.sh                 # one update round: new commits on main once GE
 deploy/move-to-volume.sh [/Volumes/X part…]   # big folders (models, songs, …) to an external volume, a symlink left behind; --back
 ```
 
-Frontend only, from `src/YueUI.Api/ClientApp`: `npm run dev`, `npm run build` (vue-tsc, then Vite), `npm run type-check`, `npm run format` (Prettier, config in `.prettierrc.json`; VS Code formats on save through `.vscode/settings.json`). Pass `-p:SkipClientAppBuild=true` to skip every npm step.
+Frontend only, from `src/YueUI.Api/ClientApp`: `npm run dev`, `npm run build` (vue-tsc, then Vite), `npm run type-check`, `npm run format` (Prettier, config in `.prettierrc.json`; VS Code formats on save through `.vscode/settings.json`), `npm test` (Vitest: the plain TypeScript next to its `src/*.test.ts`, fixtures in `src/test/`; no components), `npm run test:e2e` (Playwright on a phone viewport against the Vite dev server, `/api` and the event stream answered in the page by `e2e/fakeApi.ts`, so no .NET server is needed; set `PLAYWRIGHT_CHROMIUM` to a Chromium of another Playwright version, in the cloud container `/opt/pw-browsers/chromium`). CI runs both in the job `Frontend tests`. Pass `-p:SkipClientAppBuild=true` to skip every npm step.
 
 ## Architecture
 
