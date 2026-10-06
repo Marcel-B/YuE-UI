@@ -95,6 +95,17 @@ const harmonyKeys = computed(() => [
   { label: t('harmonyKeyAuto'), value: null },
   ...[...majorKeys, ...minorKeys].map((key) => ({ label: key, value: key })),
 ])
+// A closed select shows only the pattern's name; what it plays, in brackets, stays in the open list, so the
+// drum patterns fit a third of the card.
+const nameOf = (options: { label: string; value: unknown }[], value: unknown) =>
+  (options.find((option) => option.value === value)?.label ?? '').replace(/\s*\(.*\)$/, '')
+
+// The open list wraps its long options instead of reaching past a phone's edge.
+const wrapList = {
+  overlay: { style: { maxWidth: 'calc(100vw - 2rem)' } },
+  option: { style: { whiteSpace: 'normal' } },
+}
+
 const harmonyOn = computed(() => form.value.harmonyParts.length > 0)
 const channelOptions = computed(() => [
   { label: t('midiAuto'), value: 0 },
@@ -104,281 +115,305 @@ const channelOptions = computed(() => [
 
 <template>
   <div class="options">
-    <fieldset>
-      <legend>{{ t('tracks') }}</legend>
-      <div class="check">
-        <Checkbox v-model="form.includeChords" binary input-id="opt-chords" />
-        <label for="opt-chords">{{ t('includeChords') }}</label>
-      </div>
-      <Select
-        v-model="form.chordPattern"
-        :options="chordPatterns"
-        option-label="label"
-        option-value="value"
-        :aria-label="t('chordPattern')"
-        :disabled="!form.includeChords"
-        fluid
-      />
-      <div class="row">
-        <div class="field grow">
-          <label for="opt-inversion">{{ t('chordInversion') }}</label>
-          <Select
-            v-model="form.chordInversion"
-            input-id="opt-inversion"
-            :options="chordInversions"
-            option-label="label"
-            option-value="value"
-            :disabled="!form.includeChords"
-            fluid
+    <!-- One column per instrument on a wide screen, one below the other on a phone. -->
+    <section class="column">
+      <h3>{{ t('vocals') }}</h3>
+      <fieldset>
+        <legend>{{ t('harmony') }}</legend>
+        <div class="parts">
+          <div v-for="part in HARMONY_PARTS" :key="part" class="check">
+            <Checkbox v-model="form.harmonyParts" :value="part" :input-id="`opt-harmony-${part}`" />
+            <label :for="`opt-harmony-${part}`">{{ t(harmonyLabels[part]) }}</label>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field" :class="{ disabled: !harmonyOn }">
+            <label for="opt-harmony-key">{{ t('harmonyKey') }}</label>
+            <Select
+              v-model="form.harmonyKey"
+              input-id="opt-harmony-key"
+              :options="harmonyKeys"
+              option-label="label"
+              option-value="value"
+              :placeholder="t('harmonyKeyAuto')"
+              :disabled="!harmonyOn"
+              fluid
+            />
+          </div>
+        </div>
+        <div class="check" :class="{ disabled: !harmonyOn }">
+          <Checkbox v-model="form.harmonyChorusOnly" binary input-id="opt-harmony-chorus" :disabled="!harmonyOn" />
+          <label for="opt-harmony-chorus">{{ t('harmonyChorusOnly') }}</label>
+        </div>
+        <p class="hint muted m-0">{{ t('harmonyHint') }}</p>
+      </fieldset>
+      <fieldset>
+        <div class="check">
+          <Checkbox v-model="form.doubleVocal" binary input-id="opt-double" />
+          <label for="opt-double">{{ t('doubleVocal') }}</label>
+        </div>
+        <div class="row">
+          <div class="field" :class="{ disabled: !form.doubleVocal }">
+            <label for="opt-double-octave">{{ t('doubleOctave') }}</label>
+            <Select
+              v-model="form.doubleOctave"
+              input-id="opt-double-octave"
+              :options="smallOctaveOptions"
+              option-label="label"
+              option-value="value"
+              :disabled="!form.doubleVocal"
+              fluid
+            />
+          </div>
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="column">
+      <h3>{{ t('drums') }}</h3>
+      <fieldset>
+        <Select
+          v-model="form.drums"
+          :options="drumPatterns"
+          option-label="label"
+          option-value="value"
+          :aria-label="t('drums')"
+          :pt="wrapList"
+          fluid
+        >
+          <template #value="{ value }">{{ nameOf(drumPatterns, value) }}</template>
+        </Select>
+        <div class="check" :class="{ disabled: form.drums === 'off' }">
+          <Checkbox v-model="form.crash" binary input-id="opt-crash" :disabled="form.drums === 'off'" />
+          <label for="opt-crash">{{ t('crash') }}</label>
+        </div>
+        <div class="check" :class="{ disabled: form.drums === 'off' }">
+          <Checkbox v-model="form.splitDrums" binary input-id="opt-split-drums" :disabled="form.drums === 'off'" />
+          <label for="opt-split-drums">{{ t('splitDrums') }}</label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>{{ t('groove') }}</legend>
+        <div class="row">
+          <div class="field grow">
+            <span>{{ t('swing') }}</span>
+            <span class="slider">
+              <Slider v-model="form.swing" :min="0" :max="100" :step="5" :aria-label="t('swing')" class="flex-1" />
+              <output>{{ t('percentValue', { value: form.swing }) }}</output>
+            </span>
+          </div>
+          <div class="field">
+            <label for="opt-swing-unit">{{ t('swingUnit') }}</label>
+            <Select
+              v-model="form.swingUnit"
+              input-id="opt-swing-unit"
+              :options="swingUnits"
+              option-label="label"
+              option-value="value"
+              :disabled="form.swing === 0"
+              fluid
+            />
+          </div>
+        </div>
+        <div class="check" :class="{ disabled: form.swing === 0 || form.drums === 'off' }">
+          <Checkbox
+            v-model="form.straightDrums"
+            binary
+            input-id="opt-straight-drums"
+            :disabled="form.swing === 0 || form.drums === 'off'"
           />
+          <label for="opt-straight-drums">{{ t('straightDrums') }}</label>
         </div>
         <div class="field">
-          <label for="opt-chord-octave">{{ t('chordOctave') }}</label>
-          <Select
-            v-model="form.chordOctave"
-            input-id="opt-chord-octave"
-            :options="smallOctaveOptions"
-            option-label="label"
-            option-value="value"
-            :disabled="!form.includeChords"
-            fluid
-          />
-        </div>
-      </div>
-      <div class="check">
-        <Checkbox v-model="form.guideTones" binary input-id="opt-guide" />
-        <label for="opt-guide">{{ t('guideTones') }}</label>
-      </div>
-      <div class="check">
-        <Checkbox v-model="form.doubleVocal" binary input-id="opt-double" />
-        <label for="opt-double">{{ t('doubleVocal') }}</label>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>{{ t('harmony') }}</legend>
-      <div class="parts">
-        <div v-for="part in HARMONY_PARTS" :key="part" class="check">
-          <Checkbox v-model="form.harmonyParts" :value="part" :input-id="`opt-harmony-${part}`" />
-          <label :for="`opt-harmony-${part}`">{{ t(harmonyLabels[part]) }}</label>
-        </div>
-      </div>
-      <div class="row">
-        <div class="field" :class="{ disabled: !harmonyOn }">
-          <label for="opt-harmony-key">{{ t('harmonyKey') }}</label>
-          <Select
-            v-model="form.harmonyKey"
-            input-id="opt-harmony-key"
-            :options="harmonyKeys"
-            option-label="label"
-            option-value="value"
-            :placeholder="t('harmonyKeyAuto')"
-            :disabled="!harmonyOn"
-            fluid
-          />
-        </div>
-      </div>
-      <div class="check" :class="{ disabled: !harmonyOn }">
-        <Checkbox v-model="form.harmonyChorusOnly" binary input-id="opt-harmony-chorus" :disabled="!harmonyOn" />
-        <label for="opt-harmony-chorus">{{ t('harmonyChorusOnly') }}</label>
-      </div>
-      <p class="hint muted m-0">{{ t('harmonyHint') }}</p>
-    </fieldset>
-
-    <fieldset>
-      <legend>{{ t('octaves') }}</legend>
-      <div class="row">
-        <div class="field">
-          <label for="opt-octave">{{ t('octaveBoth') }}</label>
-          <Select
-            v-model="form.octave"
-            input-id="opt-octave"
-            :options="octaveOptions"
-            option-label="label"
-            option-value="value"
-            fluid
-          />
-        </div>
-        <div class="field">
-          <label for="opt-vocal-octave">{{ t('octaveVocal') }}</label>
-          <Select
-            v-model="form.vocalOctave"
-            input-id="opt-vocal-octave"
-            :options="partOctaveOptions"
-            option-label="label"
-            option-value="value"
-            :placeholder="t('sameAsBoth')"
-            fluid
-          />
-        </div>
-        <div class="field">
-          <label for="opt-ins-octave">{{ t('octaveIns') }}</label>
-          <Select
-            v-model="form.insOctave"
-            input-id="opt-ins-octave"
-            :options="partOctaveOptions"
-            option-label="label"
-            option-value="value"
-            :placeholder="t('sameAsBoth')"
-            fluid
-          />
-        </div>
-        <div class="field" :class="{ disabled: !form.guideTones }">
-          <label for="opt-guide-octave">{{ t('guideOctave') }}</label>
-          <Select
-            v-model="form.guideOctave"
-            input-id="opt-guide-octave"
-            :options="smallOctaveOptions"
-            option-label="label"
-            option-value="value"
-            :disabled="!form.guideTones"
-            fluid
-          />
-        </div>
-        <div class="field" :class="{ disabled: !form.doubleVocal }">
-          <label for="opt-double-octave">{{ t('doubleOctave') }}</label>
-          <Select
-            v-model="form.doubleOctave"
-            input-id="opt-double-octave"
-            :options="smallOctaveOptions"
-            option-label="label"
-            option-value="value"
-            :disabled="!form.doubleVocal"
-            fluid
-          />
-        </div>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>{{ t('bass') }}</legend>
-      <div class="row">
-        <div class="field grow">
-          <Select
-            v-model="form.bass"
-            :options="bassPatterns"
-            option-label="label"
-            option-value="value"
-            :aria-label="t('bass')"
-            fluid
-          />
-        </div>
-        <div class="field">
-          <label for="opt-bass-octave">{{ t('bassOctave') }}</label>
-          <Select
-            v-model="form.bassOctave"
-            input-id="opt-bass-octave"
-            :options="smallOctaveOptions"
-            option-label="label"
-            option-value="value"
-            :disabled="form.bass === 'off'"
-            fluid
-          />
-        </div>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>{{ t('drums') }}</legend>
-      <Select
-        v-model="form.drums"
-        :options="drumPatterns"
-        option-label="label"
-        option-value="value"
-        :aria-label="t('drums')"
-        fluid
-      />
-      <div class="check" :class="{ disabled: form.drums === 'off' }">
-        <Checkbox v-model="form.crash" binary input-id="opt-crash" :disabled="form.drums === 'off'" />
-        <label for="opt-crash">{{ t('crash') }}</label>
-      </div>
-      <div class="check" :class="{ disabled: form.drums === 'off' }">
-        <Checkbox v-model="form.splitDrums" binary input-id="opt-split-drums" :disabled="form.drums === 'off'" />
-        <label for="opt-split-drums">{{ t('splitDrums') }}</label>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>{{ t('groove') }}</legend>
-      <div class="row">
-        <div class="field grow">
-          <span>{{ t('swing') }}</span>
+          <span>{{ t('humanize') }}</span>
           <span class="slider">
-            <Slider v-model="form.swing" :min="0" :max="100" :step="5" :aria-label="t('swing')" class="flex-1" />
-            <output>{{ t('percentValue', { value: form.swing }) }}</output>
+            <Slider v-model="form.humanize" :min="0" :max="100" :step="5" :aria-label="t('humanize')" class="flex-1" />
+            <output>{{ t('percentValue', { value: form.humanize }) }}</output>
           </span>
         </div>
-        <div class="field">
-          <label for="opt-swing-unit">{{ t('swingUnit') }}</label>
-          <Select
-            v-model="form.swingUnit"
-            input-id="opt-swing-unit"
-            :options="swingUnits"
-            option-label="label"
-            option-value="value"
-            :disabled="form.swing === 0"
-            fluid
-          />
+      </fieldset>
+      <fieldset>
+        <legend>{{ t('countIn') }}</legend>
+        <div class="row">
+          <div class="field">
+            <label for="opt-count-in">{{ t('countInBars') }}</label>
+            <Select
+              v-model="form.countIn"
+              input-id="opt-count-in"
+              :options="countInOptions"
+              option-label="label"
+              option-value="value"
+              fluid
+            />
+          </div>
         </div>
-      </div>
-      <div class="check" :class="{ disabled: form.swing === 0 || form.drums === 'off' }">
-        <Checkbox
-          v-model="form.straightDrums"
-          binary
-          input-id="opt-straight-drums"
-          :disabled="form.swing === 0 || form.drums === 'off'"
-        />
-        <label for="opt-straight-drums">{{ t('straightDrums') }}</label>
-      </div>
-      <div class="field">
-        <span>{{ t('humanize') }}</span>
-        <span class="slider">
-          <Slider v-model="form.humanize" :min="0" :max="100" :step="5" :aria-label="t('humanize')" class="flex-1" />
-          <output>{{ t('percentValue', { value: form.humanize }) }}</output>
-        </span>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>{{ t('mono') }}</legend>
-      <div class="check">
-        <Checkbox v-model="form.mono" binary input-id="opt-mono" />
-        <label for="opt-mono">{{ t('monoPrepare') }}</label>
-      </div>
-      <div class="check" :class="{ disabled: !form.mono }">
-        <Checkbox v-model="form.legato" binary input-id="opt-legato" :disabled="!form.mono" />
-        <label for="opt-legato">{{ t('legato') }}</label>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>{{ t('countIn') }}</legend>
-      <div class="row">
-        <div class="field">
-          <label for="opt-count-in">{{ t('countInBars') }}</label>
-          <Select
-            v-model="form.countIn"
-            input-id="opt-count-in"
-            :options="countInOptions"
-            option-label="label"
-            option-value="value"
-            fluid
-          />
+        <div class="check" :class="{ disabled: form.countIn === 0 }">
+          <Checkbox v-model="form.countInClick" binary input-id="opt-count-in-click" :disabled="form.countIn === 0" />
+          <label for="opt-count-in-click">{{ t('countInClick') }}</label>
         </div>
-      </div>
-      <div class="check" :class="{ disabled: form.countIn === 0 }">
-        <Checkbox v-model="form.countInClick" binary input-id="opt-count-in-click" :disabled="form.countIn === 0" />
-        <label for="opt-count-in-click">{{ t('countInClick') }}</label>
-      </div>
-    </fieldset>
+      </fieldset>
+    </section>
 
-    <fieldset>
-      <legend>{{ t('logicProject') }}</legend>
-      <div class="check">
-        <Checkbox v-model="form.splitSections" binary input-id="opt-split-sections" />
-        <label for="opt-split-sections">{{ t('splitSections') }}</label>
+    <section class="column">
+      <h3>{{ t('bassAndChords') }}</h3>
+      <fieldset>
+        <legend>{{ t('bass') }}</legend>
+        <div class="row">
+          <div class="field grow">
+            <Select
+              v-model="form.bass"
+              :options="bassPatterns"
+              option-label="label"
+              option-value="value"
+              :aria-label="t('bass')"
+              :pt="wrapList"
+              fluid
+            >
+              <template #value="{ value }">{{ nameOf(bassPatterns, value) }}</template>
+            </Select>
+          </div>
+          <div class="field">
+            <label for="opt-bass-octave">{{ t('bassOctave') }}</label>
+            <Select
+              v-model="form.bassOctave"
+              input-id="opt-bass-octave"
+              :options="smallOctaveOptions"
+              option-label="label"
+              option-value="value"
+              :disabled="form.bass === 'off'"
+              fluid
+            />
+          </div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>{{ t('chordsGroup') }}</legend>
+        <div class="check">
+          <Checkbox v-model="form.includeChords" binary input-id="opt-chords" />
+          <label for="opt-chords">{{ t('includeChords') }}</label>
+        </div>
+        <Select
+          v-model="form.chordPattern"
+          :options="chordPatterns"
+          option-label="label"
+          option-value="value"
+          :aria-label="t('chordPattern')"
+          :disabled="!form.includeChords"
+          :pt="wrapList"
+          fluid
+        >
+          <template #value="{ value }">{{ nameOf(chordPatterns, value) }}</template>
+        </Select>
+        <div class="row">
+          <div class="field grow">
+            <label for="opt-inversion">{{ t('chordInversion') }}</label>
+            <Select
+              v-model="form.chordInversion"
+              input-id="opt-inversion"
+              :options="chordInversions"
+              option-label="label"
+              option-value="value"
+              :disabled="!form.includeChords"
+              fluid
+            />
+          </div>
+          <div class="field">
+            <label for="opt-chord-octave">{{ t('chordOctave') }}</label>
+            <Select
+              v-model="form.chordOctave"
+              input-id="opt-chord-octave"
+              :options="smallOctaveOptions"
+              option-label="label"
+              option-value="value"
+              :disabled="!form.includeChords"
+              fluid
+            />
+          </div>
+        </div>
+        <div class="check">
+          <Checkbox v-model="form.guideTones" binary input-id="opt-guide" />
+          <label for="opt-guide">{{ t('guideTones') }}</label>
+        </div>
+        <div class="row">
+          <div class="field" :class="{ disabled: !form.guideTones }">
+            <label for="opt-guide-octave">{{ t('guideOctave') }}</label>
+            <Select
+              v-model="form.guideOctave"
+              input-id="opt-guide-octave"
+              :options="smallOctaveOptions"
+              option-label="label"
+              option-value="value"
+              :disabled="!form.guideTones"
+              fluid
+            />
+          </div>
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="column general">
+      <h3>{{ t('general') }}</h3>
+      <div class="general-groups">
+        <fieldset>
+          <legend>{{ t('octaves') }}</legend>
+          <div class="row">
+            <div class="field">
+              <label for="opt-octave">{{ t('octaveBoth') }}</label>
+              <Select
+                v-model="form.octave"
+                input-id="opt-octave"
+                :options="octaveOptions"
+                option-label="label"
+                option-value="value"
+                fluid
+              />
+            </div>
+            <div class="field">
+              <label for="opt-vocal-octave">{{ t('octaveVocal') }}</label>
+              <Select
+                v-model="form.vocalOctave"
+                input-id="opt-vocal-octave"
+                :options="partOctaveOptions"
+                option-label="label"
+                option-value="value"
+                :placeholder="t('sameAsBoth')"
+                fluid
+              />
+            </div>
+            <div class="field">
+              <label for="opt-ins-octave">{{ t('octaveIns') }}</label>
+              <Select
+                v-model="form.insOctave"
+                input-id="opt-ins-octave"
+                :options="partOctaveOptions"
+                option-label="label"
+                option-value="value"
+                :placeholder="t('sameAsBoth')"
+                fluid
+              />
+            </div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>{{ t('mono') }}</legend>
+          <div class="check">
+            <Checkbox v-model="form.mono" binary input-id="opt-mono" />
+            <label for="opt-mono">{{ t('monoPrepare') }}</label>
+          </div>
+          <div class="check" :class="{ disabled: !form.mono }">
+            <Checkbox v-model="form.legato" binary input-id="opt-legato" :disabled="!form.mono" />
+            <label for="opt-legato">{{ t('legato') }}</label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>{{ t('logicProject') }}</legend>
+          <div class="check">
+            <Checkbox v-model="form.splitSections" binary input-id="opt-split-sections" />
+            <label for="opt-split-sections">{{ t('splitSections') }}</label>
+          </div>
+        </fieldset>
       </div>
-    </fieldset>
+    </section>
 
     <!-- Rarely needed, so it starts collapsed like the advanced parameters in YuE UI. -->
     <Panel :header="t('advanced')" toggleable collapsed class="advanced">
@@ -440,20 +475,52 @@ const channelOptions = computed(() => [
 </template>
 
 <style scoped>
-/* On a wide screen the groups stand next to each other instead of stretching across the whole card. */
+/* Phone first: the instruments one below the other; from tablet width three columns, one per instrument,
+   and what applies to every track in a row beneath them. */
 .options {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
-  gap: 1.25rem 2rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem 2rem;
   align-items: start;
 }
 
-.options > .advanced {
+.options > .advanced,
+.options > .general {
   grid-column: 1 / -1;
 }
 
+.column,
+.general-groups {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem 2rem;
+  align-items: start;
+  min-width: 0;
+}
+
+h3 {
+  margin: 0;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+@media (min-width: 52rem) {
+  .options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .general-groups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* minmax(0, …) rather than an auto column: a select is as wide as its longest option otherwise, which pushed the
+   drum patterns over the next column. The closed select cuts its label with an ellipsis, the list shows it whole. */
 fieldset {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   min-width: 0;
   margin: 0;
@@ -483,6 +550,8 @@ fieldset {
 legend {
   margin-bottom: 0.4rem;
   padding: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
