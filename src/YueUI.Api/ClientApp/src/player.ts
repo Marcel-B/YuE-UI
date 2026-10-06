@@ -93,9 +93,19 @@ export const current = computed<Track | null>(() => tracks.value[position.value]
 export const hasNext = computed(() => position.value >= 0 && position.value < tracks.value.length - 1)
 export const hasPrevious = computed(() => position.value > 0)
 
+let host: HTMLElement | null = null
 let audio: HTMLAudioElement | null = null
 let context: AudioContext | null = null
 let analyser: AnalyserNode | null = null
+/**
+ * The routed graph may have died: iOS suspended or interrupted the context (lock screen, a call, a long pause), and a
+ * context woken from that can report `running` while its element source stays silent for good. Only a new context on a
+ * new element sounds again, since an element cannot leave its source node.
+ */
+let stale = false
+/** When the element last stopped, to rebuild after a long pause too, since iOS does not reliably report suspending. */
+let pausedAt = 0
+const LONG_PAUSE_MS = 20_000
 
 /** What the player's analyzer and the background listen to; empty until the analyzer first routed the element. */
 export const playerSource: SpectrumSource = { analysers: () => (analyser ? [analyser] : []), playing }
@@ -134,13 +144,18 @@ export function listen(create = true): void {
       // The analyser passes its input through unchanged, so it can sit between the element and the speakers.
       created.createMediaElementSource(audio).connect(node).connect(created.destination)
       created.addEventListener('statechange', () => {
+        if (created !== context || created.state === 'running') {
+          return
+        }
+        stale = true
         // Interrupted by a call or Siri: the element would go on silently, so the context follows it back.
-        if (created.state !== 'running' && audio && !audio.paused) {
+        if (audio && !audio.paused) {
           void created.resume().catch(() => undefined)
         }
       })
       context = created
       analyser = node
+      stale = false
     } catch {
       return
     }
@@ -148,6 +163,34 @@ export function listen(create = true): void {
   if (context.state !== 'running') {
     void context.resume().catch(() => undefined)
   }
+}
+
+/**
+ * Before a start from our own buttons, which is a gesture: a graph that may have died is given up, with its element,
+ * and routed afresh. That is what left the player silent with its clock running after the lock screen, for the paused
+ * song and every new one, since waking the old context made it say `running` without sounding.
+ * A new song started while nothing plays gets a new graph in any case, since that costs nothing but a context.
+ * @param keep The song goes on where it stopped; a new song brings its own address.
+ */
+function freshStart(keep: boolean): void {
+  if (context && audio && (stale || context.state !== 'running' || (audio.paused && (!keep || longPaused())))) {
+    unroute(keep)
+  }
+  listen()
+}
+
+function longPaused(): boolean {
+  return pausedAt > 0 && performance.now() - pausedAt > LONG_PAUSE_MS
+}
+
+/** Closes the context and swaps in a new, unrouted element; the next start inside a gesture routes that one. */
+function unroute(keep: boolean): void {
+  const old = context
+  context = null
+  analyser = null
+  stale = false
+  void old?.close().catch(() => undefined)
+  replaceElement(keep)
 }
 
 /**
@@ -166,27 +209,124 @@ if (typeof document !== 'undefined') {
   for (const type of ['touchend', 'pointerup', 'click', 'keydown']) {
     document.addEventListener(type, wake, { capture: true, passive: true })
   }
+  // Locked or sent to the background while paused: iOS may take the context away without telling it.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && context && audio?.paused) {
+      stale = true
+    }
+  })
 }
 
 /**
- * Checks a start that came without a gesture of ours (the lock screen, the element's controls): when the context
- * could not be woken, the song is paused rather than left playing silently with its clock running, so the next tap
- * on play (a gesture) starts it with sound.
+ * A start that came without a gesture of ours (the lock screen, the element's own controls). A graph that may be dead
+ * cannot be rebuilt there, since a context made outside a gesture stays suspended, so the song goes on unrouted on a
+ * fresh element: it sounds, only the analyzer rests until the next start from our buttons. If iOS refuses that start
+ * too, the player is left paused, and the next tap on play (a gesture) starts it with sound.
  */
-export function guardSilence(): void {
-  if (!context) {
+function onPlay(): void {
+  playing.value = true
+  pausedAt = 0
+  refreshLockScreen()
+  if (context && stale) {
+    playUnrouted()
     return
   }
-  setTimeout(() => {
-    if (context && context.state !== 'running' && audio && !audio.paused) {
-      audio.pause()
-    }
-  }, 1500)
+  listen(false)
+  if (context) {
+    setTimeout(() => {
+      if (context && context.state !== 'running' && audio && !audio.paused) {
+        playUnrouted()
+      }
+    }, 1500)
+  }
 }
 
-/** PlayerBar hands over its audio element; play() then starts it right in the click, which iOS insists on. */
-export function attach(element: HTMLAudioElement | null): void {
-  audio = element
+function playUnrouted(): void {
+  unroute(true)
+  void audio?.play().catch(() => undefined)
+}
+
+/** The element, made here rather than in PlayerBar's template since a silent graph is only fixed by a new one. */
+function createElement(): HTMLAudioElement {
+  const element = document.createElement('audio')
+  element.controls = true
+  element.preload = 'none'
+  // Events of an element already replaced (its pause on the way out, above all) are not the player's any more.
+  const own = (handler: () => void) => () => {
+    if (element === audio) {
+      handler()
+    }
+  }
+  element.addEventListener('play', own(onPlay))
+  element.addEventListener(
+    'pause',
+    own(() => {
+      playing.value = false
+      pausedAt = performance.now()
+    }),
+  )
+  element.addEventListener('ended', own(ended))
+  for (const type of ['timeupdate', 'durationchange', 'loadedmetadata']) {
+    element.addEventListener(type, own(updateTime))
+  }
+  return element
+}
+
+function replaceElement(keep: boolean): void {
+  const old = audio
+  if (!old || !host) {
+    return
+  }
+  const fresh = createElement()
+  fresh.volume = old.volume
+  fresh.muted = old.muted
+  const src = old.getAttribute('src')
+  const at = old.currentTime
+  audio = fresh
+  playing.value = false
+  old.pause()
+  old.removeAttribute('src')
+  old.load()
+  old.replaceWith(fresh)
+  if (keep && src) {
+    fresh.src = src
+    if (at > 0) {
+      // Before the metadata this becomes the start position; the check after it covers a browser that drops it.
+      fresh.currentTime = at
+      fresh.addEventListener(
+        'loadedmetadata',
+        () => {
+          if (Math.abs(fresh.currentTime - at) > 1) {
+            fresh.currentTime = at
+          }
+        },
+        { once: true },
+      )
+    }
+  }
+}
+
+function ended(): void {
+  if (!next(false)) {
+    playing.value = false
+  }
+}
+
+/**
+ * PlayerBar hands over the place for the audio element, which player.ts makes and replaces; play() then starts it
+ * right in the click, which iOS insists on.
+ */
+export function attach(element: HTMLElement | null): void {
+  if (element === host) {
+    return
+  }
+  audio?.remove()
+  host = element
+  audio = null
+  if (host) {
+    audio = createElement()
+    host.append(audio)
+  }
 }
 
 /** Plays the track, and the tracks after it in `list` when it ends. Its own track again toggles pause. */
@@ -198,7 +338,7 @@ export function play(track: Track, list: Track[] = [track]): void {
   const index = list.findIndex((item) => item.id === track.id)
   tracks.value = index >= 0 ? list : [track]
   position.value = Math.max(index, 0)
-  start()
+  start(true)
 }
 
 export function toggle(): void {
@@ -206,30 +346,33 @@ export function toggle(): void {
     return
   }
   if (audio.paused) {
-    listen()
+    freshStart(true)
     void audio.play().catch(() => undefined)
   } else {
     audio.pause()
   }
 }
 
-/** @returns False at the end of the list. */
-export function next(): boolean {
+/**
+ * @param gesture Started by a tap on our buttons; the end of a song and the lock screen's skip buttons are not.
+ * @returns False at the end of the list.
+ */
+export function next(gesture = true): boolean {
   if (!hasNext.value) {
     return false
   }
   position.value++
-  start()
+  start(gesture)
   return true
 }
 
-export function previous(): void {
+export function previous(gesture = true): void {
   if (audio && audio.currentTime > 3) {
     // As every player does: back to the start of the song first, one more press for the one before.
     audio.currentTime = 0
   } else if (hasPrevious.value) {
     position.value--
-    start()
+    start(gesture)
   }
 }
 
@@ -248,7 +391,7 @@ export function seek(seconds: number): void {
   }
 }
 
-/** The audio element's clock, as PlayerBar hears it. */
+/** The audio element's clock. */
 export function updateTime(): void {
   if (audio) {
     elapsed.value = audio.currentTime
@@ -265,17 +408,22 @@ export function close(): void {
   position.value = -1
 }
 
-function start(): void {
+function start(gesture: boolean): void {
   const track = current.value
   if (!audio || !track) {
     return
   }
+  if (gesture) {
+    freshStart(false)
+  } else if (context && (stale || context.state !== 'running')) {
+    // The song ended on the lock screen, or was skipped there, with a graph that may not sound: go on unrouted.
+    unroute(false)
+  }
   audio.src = track.src ?? streamUrl(track.id)
   elapsed.value = 0
   duration.value = 0
-  listen()
   // A refusal (autoplay rules, a deleted file) leaves the player paused with its own controls to try again.
-  void audio.play().catch(() => undefined)
+  void audio!.play().catch(() => undefined)
   showOnLockScreen(track)
 }
 
@@ -339,8 +487,8 @@ function showOnLockScreen(track: Track): void {
       })
       .catch(() => undefined)
   }
-  navigator.mediaSession.setActionHandler('nexttrack', hasNext.value ? () => void next() : null)
-  navigator.mediaSession.setActionHandler('previoustrack', () => previous())
+  navigator.mediaSession.setActionHandler('nexttrack', hasNext.value ? () => void next(false) : null)
+  navigator.mediaSession.setActionHandler('previoustrack', () => previous(false))
   try {
     // The lock screen's progress bar can then be dragged, as the full-screen player's can.
     navigator.mediaSession.setActionHandler('seekto', (details) => seek(details.seekTime ?? 0))
