@@ -49,16 +49,16 @@ public static partial class LibraryEndpoints
             library.ReadRequest(run, song) is { } request ? Results.Ok(request) : Results.NotFound());
         // A version in the works reads the song's audio; it is cancelled with its song by deleting the version first.
         // Cover candidates go with the song; they are no use to anything else.
-        api.MapDelete("/songs/{run}/{song}", (string run, string song, SongLibrary library, WorkerHost host, Voices.VoiceConverter voices, Images.ImageMaker images) =>
-            Delete(host, host.IsWorkingOn(run, song) || voices.IsWorkingOn(run, song), () => library.DeleteSong(run, song) && images.DeleteOf(run, song)));
-        api.MapDelete("/runs/{run}", (string run, SongLibrary library, WorkerHost host, Voices.VoiceConverter voices, Images.ImageMaker images) =>
-            Delete(host, host.IsWorkingOn(run) || voices.IsWorkingOn(run), () => library.DeleteRun(run) && images.DeleteOf(run)));
+        api.MapDelete("/songs/{run}/{song}", (string run, string song, SongLibrary library, WorkerHost host, Status.StatusHub hub, Voices.VoiceConverter voices, Images.ImageMaker images) =>
+            Delete(hub, host.IsWorkingOn(run, song) || voices.IsWorkingOn(run, song), () => library.DeleteSong(run, song) && images.DeleteOf(run, song)));
+        api.MapDelete("/runs/{run}", (string run, SongLibrary library, WorkerHost host, Status.StatusHub hub, Voices.VoiceConverter voices, Images.ImageMaker images) =>
+            Delete(hub, host.IsWorkingOn(run) || voices.IsWorkingOn(run), () => library.DeleteRun(run) && images.DeleteOf(run)));
         api.MapPut("/runs/{run}/title", (string run, RenameRequest request, SongLibrary library, WorkerHost host) =>
             Rename(library, host, run, request.Title?.Trim() ?? ""));
-        api.MapPut("/songs/{run}/{song}/rating", (string run, string song, RatingRequest request, SongLibrary library, WorkerHost host) =>
-            Rate(library, host, run, song, request.Rating is 0 ? null : request.Rating));
-        api.MapPut("/songs/{run}/{song}/note", (string run, string song, NoteRequest request, SongLibrary library, WorkerHost host) =>
-            SetNote(library, host, run, song, request.Note ?? ""));
+        api.MapPut("/songs/{run}/{song}/rating", (string run, string song, RatingRequest request, SongLibrary library, Status.StatusHub hub) =>
+            Rate(library, hub, run, song, request.Rating is 0 ? null : request.Rating));
+        api.MapPut("/songs/{run}/{song}/note", (string run, string song, NoteRequest request, SongLibrary library, Status.StatusHub hub) =>
+            SetNote(library, hub, run, song, request.Note ?? ""));
         api.MapGet("/storage", (YuePaths paths) => Storage(paths.OutputDir));
         return api;
     }
@@ -91,7 +91,7 @@ public static partial class LibraryEndpoints
     /// Deleting what the worker still works on would pull the folder from under it; it would fail the song, or
     /// write it again half. Only this server's worker is known here, not the one in YuE Studio.
     /// </summary>
-    private static IResult Delete(WorkerHost host, bool working, Func<bool> delete)
+    private static IResult Delete(Status.StatusHub hub, bool working, Func<bool> delete)
     {
         if (working)
         {
@@ -101,7 +101,7 @@ public static partial class LibraryEndpoints
         {
             return Results.NotFound();
         }
-        host.LibraryChanged();
+        hub.LibraryChanged();
         return Results.NoContent();
     }
 
@@ -128,7 +128,7 @@ public static partial class LibraryEndpoints
     }
 
     /// <summary>Every open browser reloads its library, so the stars match on the phone and the Mac.</summary>
-    private static IResult Rate(SongLibrary library, WorkerHost host, string run, string song, int? rating)
+    private static IResult Rate(SongLibrary library, Status.StatusHub hub, string run, string song, int? rating)
     {
         if (rating is < 1 or > Data.SqliteSongRatingStore.MaxRating)
         {
@@ -141,7 +141,7 @@ public static partial class LibraryEndpoints
         {
             return Results.NotFound();
         }
-        host.LibraryChanged();
+        hub.LibraryChanged();
         return Results.NoContent();
     }
 
@@ -149,7 +149,7 @@ public static partial class LibraryEndpoints
     /// Whitespace around the text is dropped, so a note of only blank lines counts as none and the button by the
     /// song is not marked for it. Every open browser reloads its library, like for the stars.
     /// </summary>
-    private static IResult SetNote(SongLibrary library, WorkerHost host, string run, string song, string note)
+    private static IResult SetNote(SongLibrary library, Status.StatusHub hub, string run, string song, string note)
     {
         note = note.Trim();
         if (note.Length > MaxNoteLength)
@@ -163,7 +163,7 @@ public static partial class LibraryEndpoints
         {
             return Results.NotFound();
         }
-        host.LibraryChanged();
+        hub.LibraryChanged();
         return Results.NoContent();
     }
 

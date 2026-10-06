@@ -28,6 +28,7 @@ public sealed class VoiceConverter(
     SqliteSwapStore swapStore,
     SongLibrary library,
     WorkerHost host,
+    Status.StatusHub hub,
     Memory.ModelMemory memory,
     VoiceEngine voices,
     StemSeparator stems,
@@ -88,7 +89,7 @@ public sealed class VoiceConverter(
     public StemSetState EnqueueStems(StemSetState set)
     {
         stemStore.Add(set);
-        host.UpdateStems(set);
+        hub.UpdateStems(set);
         _queue.Writer.TryWrite(StemsKey + set.Id);
         return set;
     }
@@ -104,7 +105,7 @@ public sealed class VoiceConverter(
             }
         }
         stemStore.Remove(set.Id);
-        host.UpdateStems(set with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+        hub.UpdateStems(set with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
     }
 
     /// <summary>
@@ -113,7 +114,7 @@ public sealed class VoiceConverter(
     public SwapState EnqueueSwap(SwapState swap)
     {
         swapStore.Add(swap);
-        host.UpdateSwap(swap);
+        hub.UpdateSwap(swap);
         _queue.Writer.TryWrite(SwapKey + swap.Id);
         return swap;
     }
@@ -129,7 +130,7 @@ public sealed class VoiceConverter(
             }
         }
         swapStore.Remove(swap.Id);
-        host.UpdateSwap(swap with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+        hub.UpdateSwap(swap with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
     }
 
     public VersionState Enqueue(string songId, string title, ReferenceVoice voice, VersionRequest request)
@@ -151,9 +152,9 @@ public sealed class VoiceConverter(
             UpdatedAt = now,
         };
         store.Add(version);
-        host.UpdateVersion(version);
+        hub.UpdateVersion(version);
         // The library lists the version from now on, in every open browser.
-        host.LibraryChanged();
+        hub.LibraryChanged();
         _queue.Writer.TryWrite(version.Id);
         return version;
     }
@@ -169,8 +170,8 @@ public sealed class VoiceConverter(
             }
         }
         store.Remove(version.Id);
-        host.UpdateVersion(version with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
-        host.LibraryChanged();
+        hub.UpdateVersion(version with { Stage = "cancelled", UpdatedAt = time.GetUtcNow() });
+        hub.LibraryChanged();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -552,7 +553,7 @@ public sealed class VoiceConverter(
         {
             logger.LogWarning(exception, "Could not store the voice swap {Id}", swap.Id);
         }
-        host.UpdateSwap(updated);
+        hub.UpdateSwap(updated);
         return updated;
     }
 
@@ -598,7 +599,7 @@ public sealed class VoiceConverter(
         {
             logger.LogWarning(exception, "Could not store the stems {Id}", set.Id);
         }
-        host.UpdateStems(updated);
+        hub.UpdateStems(updated);
         return updated;
     }
 
@@ -617,10 +618,10 @@ public sealed class VoiceConverter(
         {
             logger.LogWarning(exception, "Could not store the version {Id}", version.Id);
         }
-        host.UpdateVersion(updated);
+        hub.UpdateVersion(updated);
         if (updated.Finished)
         {
-            host.LibraryChanged();
+            hub.LibraryChanged();
         }
         return updated;
     }

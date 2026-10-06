@@ -28,6 +28,7 @@ public sealed partial class LyricsWriter(
     IOptions<LyricsOptions> options,
     ILmStudioStarter starter,
     WorkerHost worker,
+    Status.StatusHub hub,
     ModelMemory memory,
     TimeProvider time,
     ILogger<LyricsWriter> logger)
@@ -107,7 +108,7 @@ public sealed partial class LyricsWriter(
                 : "Another model holds the memory.");
         }
         var state = new LyricsState { Id = id ?? NewId(), UpdatedAt = time.GetUtcNow() };
-        worker.UpdateLyrics(state);
+        hub.UpdateLyrics(state);
         var brief = new Brief(keywords?.Trim() ?? "", style, language, image, revision);
         _ = Task.Run(() => RunAsync(state, brief, string.IsNullOrWhiteSpace(model) ? options.Value.Model : model.Trim()));
         return state;
@@ -140,7 +141,7 @@ public sealed partial class LyricsWriter(
             // Before the result goes out, so that a song started in answer to it is not refused.
             memory.Release(LargeModel.Lyrics);
         }
-        worker.UpdateLyrics(result with { UpdatedAt = time.GetUtcNow() });
+        hub.UpdateLyrics(result with { UpdatedAt = time.GetUtcNow() });
     }
 
     /// <exception cref="LyricsUnavailableException">LM Studio could not be reached or refused.</exception>
@@ -152,7 +153,7 @@ public sealed partial class LyricsWriter(
         using var http = CreateClient();
         try
         {
-            if (worker.Snapshot().Worker.Status != WorkerStatus.Stopped)
+            if (worker.Info().Status != WorkerStatus.Stopped)
             {
                 logger.LogInformation("Stopping the idle YuE worker to make room for the lyrics model");
                 await worker.ShutdownWorkerAsync();

@@ -52,7 +52,7 @@ public sealed class LogReport(
         text.AppendLine($"Updater: deployed {Short(deployed) ?? "unknown"}"
             + (failed is null ? "" : $", failed {Short(failed)}")
             + (waiting is null ? "" : $", waiting with {Short(waiting)}"));
-        var info = worker.Snapshot().Worker;
+        var info = worker.Info();
         text.AppendLine($"Worker: {info.Status.ToString().ToLowerInvariant()}, extensions {Flag(info.Extensions)}, YuE Studio open {Flag(info.StudioRunning)}"
             + (info.LastError is null ? "" : $", last error: {info.LastError}"));
         var voice = voiceOptions.Value;

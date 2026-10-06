@@ -12,7 +12,7 @@ namespace YueUI.Api.Voices;
 /// too. A render never carries a voice, so rendering a draft again does not make a second version. The voice lives
 /// only in the song's state: a server restart ends the worker and with it the songs, so there is nothing to resume.
 /// </remarks>
-public sealed class AutoVersions(WorkerHost host, VoiceConverter converter, ILogger<AutoVersions> logger) : BackgroundService
+public sealed class AutoVersions(WorkerHost host, Status.StatusHub hub, VoiceConverter converter, ILogger<AutoVersions> logger) : BackgroundService
 {
     /// <summary>Songs whose version was queued, so that a fresh snapshot after a dropped subscription does not queue it twice.</summary>
     private readonly HashSet<string> _queued = [];
@@ -23,7 +23,7 @@ public sealed class AutoVersions(WorkerHost host, VoiceConverter converter, ILog
         while (!stoppingToken.IsCancellationRequested)
         {
             // A dropped subscriber's channel completes; subscribing again starts from a fresh snapshot.
-            using var subscription = host.Subscribe(checkStudio: false);
+            using var subscription = hub.Subscribe(checkStudio: false);
             foreach (var song in subscription.Snapshot.Songs)
             {
                 Consider(song);

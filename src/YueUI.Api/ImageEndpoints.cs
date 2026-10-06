@@ -30,7 +30,7 @@ public static class ImageEndpoints
             images.Get(id) is { Stage: "done" } && File.Exists(images.ImagePath(id))
                 ? Results.File(images.ImagePath(id), "image/jpeg")
                 : Results.NotFound());
-        api.MapPut("/images/{id}/cover", async (string id, ImageMaker images, SongLibrary library, WorkerHost host, CancellationToken cancellationToken) =>
+        api.MapPut("/images/{id}/cover", async (string id, ImageMaker images, SongLibrary library, Status.StatusHub hub, CancellationToken cancellationToken) =>
         {
             if (images.Get(id) is not { Stage: "done" } image
                 || !File.Exists(images.ImagePath(id))
@@ -43,7 +43,7 @@ public static class ImageEndpoints
             {
                 return Results.NotFound();
             }
-            host.LibraryChanged();
+            hub.LibraryChanged();
             return Results.NoContent();
         });
         api.MapDelete("/images/{id}", (string id, ImageMaker images) =>

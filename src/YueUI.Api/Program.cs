@@ -33,6 +33,11 @@ builder.Services.AddSingleton<IWorkerLauncher, PythonWorkerLauncher>();
 builder.Services.AddSingleton<IStudioDetector, StudioDetector>();
 builder.Services.AddSingleton(TimeProvider.System);
 // One worker for the whole server; as a hosted service it is asked to quit (and free its memory) on shutdown.
+// What every browser sees and hears about; the worker hands its part over itself (Status/StatusHub.cs). Built from a
+// factory since the worker publishes through the hub: the hub only asks for the worker once someone subscribes.
+builder.Services.AddSingleton(services => new YueUI.Api.Status.StatusHub(
+    () => services.GetRequiredService<WorkerHost>(),
+    services.GetRequiredService<Microsoft.Extensions.Options.IOptions<QueueOptions>>()));
 builder.Services.AddSingleton<WorkerHost>();
 builder.Services.AddHostedService(services => services.GetRequiredService<WorkerHost>());
 // Which large model holds the memory; on 24 GB they take turns (Memory/ModelMemory.cs).

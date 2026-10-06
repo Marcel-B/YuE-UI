@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using YueUI.Api.Memory;
+using YueUI.Api.Status;
 using YueUI.Api.Worker;
 
 namespace YueUI.Api.Tests;
@@ -12,6 +13,8 @@ public sealed class ModelMemoryTests : IDisposable
     private ModelMemory Memory => _app.Services.GetRequiredService<ModelMemory>();
 
     private WorkerHost Host => _app.Services.GetRequiredService<WorkerHost>();
+
+    private StatusHub Hub => _app.Services.GetRequiredService<StatusHub>();
 
     public void Dispose() => _app.Dispose();
 
@@ -66,7 +69,7 @@ public sealed class ModelMemoryTests : IDisposable
     [Fact]
     public void The_snapshot_says_who_holds_the_memory_and_subscribers_hear_it_change()
     {
-        using var subscription = Host.Subscribe(checkStudio: false);
+        using var subscription = Hub.Subscribe(checkStudio: false);
         Assert.Null(subscription.Snapshot.Memory!.Holder);
 
         Memory.TryClaim(LargeModel.Lyrics);
@@ -76,7 +79,7 @@ public sealed class ModelMemoryTests : IDisposable
         Assert.Equal(("memory", LargeModel.Lyrics), (claimed.Type, ((MemoryInfo)claimed.Data).Holder));
         Assert.True(subscription.Reader.TryRead(out var released));
         Assert.Null(((MemoryInfo)released.Data).Holder);
-        Assert.Null(Host.Snapshot().Memory!.Holder);
+        Assert.Null(Hub.Snapshot().Memory!.Holder);
     }
 
     [Fact]
