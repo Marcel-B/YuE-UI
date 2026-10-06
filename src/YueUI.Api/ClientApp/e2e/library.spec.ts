@@ -36,3 +36,70 @@ test('a rating goes to the server', async ({ page, api }) => {
     .poll(() => api.callsTo('PUT', '/api/songs/run-1/song1/rating').map((call) => call.body))
     .toEqual([{ rating: 4 }])
 })
+
+test("on a phone a song's further actions are in its menu", async ({ page }) => {
+  await page.goto('#/songs')
+  const first = page.getByRole('group').filter({ hasText: 'Nachtzug' })
+  await first.getByRole('button', { name: 'Weitere Aktionen' }).click()
+
+  const menu = page.getByRole('menu')
+  await expect(menu.getByRole('menuitem', { name: 'Alles übernehmen' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Song löschen' })).toBeVisible()
+  // No score, so nothing that needs one.
+  await expect(menu.getByRole('menuitem', { name: 'In Logic öffnen' })).toHaveCount(0)
+})
+
+test('deleting a song asks first and keeps it when told to', async ({ page, api }) => {
+  await page.goto('#/songs')
+  const rain = page.getByRole('group').filter({ hasText: 'Sommerregen' })
+  await rain.getByRole('button', { name: 'Weitere Aktionen' }).first().click()
+  await page.getByRole('menuitem', { name: 'Song löschen' }).click()
+
+  const dialog = page.getByRole('alertdialog')
+  await expect(dialog).toContainText('Sommerregen')
+  await dialog.getByRole('button', { name: 'Behalten' }).click()
+  expect(api.calls.filter((call) => call.method === 'DELETE')).toEqual([])
+
+  await rain.getByRole('button', { name: 'Weitere Aktionen' }).first().click()
+  await page.getByRole('menuitem', { name: 'Song löschen' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Löschen' }).click()
+  await expect.poll(() => api.callsTo('DELETE', '/api/songs/run-2/song1').length).toBe(1)
+})
+
+test('a note opens under its song and is saved', async ({ page, api }) => {
+  await page.goto('#/songs')
+  const first = page.getByRole('group').filter({ hasText: 'Nachtzug' })
+  await first.getByRole('button', { name: 'Notiz', exact: true }).click()
+  await first.getByRole('textbox', { name: 'Notiz' }).fill('Refrain lauter')
+  await first.getByRole('textbox', { name: 'Notiz' }).blur()
+
+  await expect
+    .poll(() => api.callsTo('PUT', '/api/songs/run-1/song1/note').map((call) => call.body))
+    .toContainEqual({
+      note: 'Refrain lauter',
+    })
+  // Filled while a note is written, even before the library reloads.
+  await expect(first.getByRole('button', { name: 'Notiz (vorhanden)' })).toBeVisible()
+})
+
+test("a song's address marks it, even when the search would hide it", async ({ page }) => {
+  await page.goto('#/songs')
+  await page.getByRole('searchbox', { name: 'Suchen' }).fill('folk')
+  await page.goto('#/songs/run-1/song1')
+
+  await expect(page.locator('#song-run-1\\/song1')).toHaveClass(/focused/)
+  await expect(page.getByRole('searchbox', { name: 'Suchen' })).toHaveValue('')
+})
+
+test('songs left unrated are offered for review', async ({ page, api }) => {
+  for (const run of api.runs) {
+    run.createdAt = '2026-01-01T10:00:00Z'
+  }
+  await page.goto('#/songs')
+  await expect(page.getByText(/Songs? ohne Sterne/)).toBeVisible()
+  await page.getByRole('button', { name: 'Durchgehen' }).click()
+
+  // Sommerregen's first song has stars; only its second and Nachtzug's are left.
+  await expect(page.getByText('2 von 2 Einträgen')).toBeVisible()
+  await expect(page.getByRole('group').filter({ hasText: 'Sommerregen' }).getByText('Song 1')).toHaveCount(0)
+})
