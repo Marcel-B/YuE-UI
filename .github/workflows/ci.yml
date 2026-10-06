@@ -86,3 +86,45 @@ jobs:
         run: |
           test -f out/publish/wwwroot/ui/index.html
           ls out/publish/wwwroot/ui/assets/*.js
+
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: src/YueUI.Api/ClientApp
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/YueUI.Api/ClientApp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests (Vitest)
+        run: npm test
+
+      # Against the Vite dev server with /api answered in the page (e2e/fakeApi.ts); no .NET server needed.
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser tests (Playwright)
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            src/YueUI.Api/ClientApp/playwright-report/
+            src/YueUI.Api/ClientApp/test-results/
+          retention-days: 7

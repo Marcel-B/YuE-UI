@@ -490,3 +490,6 @@ $RECYCLE.BIN/
 src/YueUI.Api/ClientApp/dist/
 
 
+
+# Playwright
+src/YueUI.Api/ClientApp/playwright-report/
