@@ -379,6 +379,28 @@ export async function midiAlreadyAllowed(): Promise<boolean> {
 }
 
 let sharedAccess: Promise<MIDIAccess> | null = null
+/**
+ * Accesses a rescan replaced. They are never let go: in Firefox a collected port object closes its device for every
+ * other port object as well (see midiAccess), and the preview may still hold outputs of an older access.
+ */
+const retired: MIDIAccess[] = []
+/** Who wants to hear that the outputs changed: a device came or went, or a rescan made a new access. */
+const portListeners = new Set<() => void>()
+const notifyPorts = (): void => portListeners.forEach((listener) => listener())
+
+function share(request: Promise<MIDIAccess>): Promise<MIDIAccess> {
+  sharedAccess = request.then(
+    (access) => {
+      access.addEventListener('statechange', notifyPorts)
+      return access
+    },
+    (error: unknown) => {
+      sharedAccess = null
+      throw error
+    },
+  )
+  return sharedAccess
+}
 
 /**
  * The one MIDIAccess of this page, asked for on first use. Firefox gives every requestMIDIAccess its own port
@@ -389,11 +411,33 @@ let sharedAccess: Promise<MIDIAccess> | null = null
  * after the user allowed it works.
  */
 export function midiAccess(): Promise<MIDIAccess> {
-  sharedAccess ??= navigator.requestMIDIAccess().catch((error: unknown) => {
-    sharedAccess = null
-    throw error
-  })
-  return sharedAccess
+  return sharedAccess ?? share(navigator.requestMIDIAccess())
+}
+
+/**
+ * Asks the browser for a new access, so its list of outputs is read afresh. Chromium reports devices plugged in
+ * later through statechange, but Firefox's backend (midir) has no notification of its own and looks for devices
+ * only when an access is requested, so with one shared access a device switched on after the first request never
+ * appeared. The old access stays alive (`retired`) for the reason given at midiAccess. Without an access yet, this
+ * is the first request.
+ */
+export async function rescanMidi(): Promise<MIDIAccess> {
+  const previous = sharedAccess ? await sharedAccess.catch(() => null) : null
+  // A refused or failed request leaves the access the page has in place.
+  const fresh = await navigator.requestMIDIAccess()
+  await share(Promise.resolve(fresh))
+  if (previous && previous !== fresh) {
+    previous.removeEventListener('statechange', notifyPorts)
+    retired.push(previous)
+  }
+  notifyPorts()
+  return fresh
+}
+
+/** Calls back whenever the outputs may have changed; answers the function that stops it. */
+export function onMidiPortsChanged(listener: () => void): () => void {
+  portListeners.add(listener)
+  return () => portListeners.delete(listener)
 }
 
 /** The MIDI outputs the browser offers, or an empty list where Web MIDI is missing or refused. */

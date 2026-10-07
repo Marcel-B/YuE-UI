@@ -27,7 +27,9 @@ import {
   midiAlreadyAllowed,
   midiSupported,
   midiUsable,
+  onMidiPortsChanged,
   OutputPool,
+  rescanMidi,
   scheduleOf,
   testTone,
   type MidiPort,
@@ -492,18 +494,31 @@ async function loadPorts(): Promise<void> {
   note.value =
     found.reason === 'unsupported' ? t('midiUnsupported') : found.reason === 'denied' ? t('midiDenied') : null
 
-  if (found.access && !watchedAccess) {
-    // Ports come and go while the page is open. The access is shared with the rest of the page, so a listener
-    // rather than onstatechange, which would replace another component's.
-    watchedAccess = found.access
-    watchedAccess.addEventListener('statechange', refreshPorts)
-  }
+  // Ports come and go while the page is open, and a rescan elsewhere on the page makes a new access.
+  stopWatchingPorts ??= found.access ? onMidiPortsChanged(() => void refreshPorts()) : null
 }
 
-let watchedAccess: MIDIAccess | null = null
+let stopWatchingPorts: (() => void) | null = null
 
 async function refreshPorts(): Promise<void> {
-  ports.value = (await listMidiPorts()).ports
+  const found = await listMidiPorts()
+  pool.setAccess(found.access)
+  ports.value = found.ports
+}
+
+const rescanning = ref(false)
+
+/** A device switched on after the page asked is only found by asking again in Firefox; see rescanMidi. */
+async function rescan(): Promise<void> {
+  rescanning.value = true
+  try {
+    await rescanMidi()
+  } catch {
+    // The access the page had stays; loadPorts below says if there is none.
+  } finally {
+    rescanning.value = false
+  }
+  await loadPorts()
 }
 
 onMounted(async () => {
@@ -540,7 +555,7 @@ onBeforeUnmount(() => {
   observer.disconnect()
   release()
   pool.close()
-  watchedAccess?.removeEventListener('statechange', refreshPorts)
+  stopWatchingPorts?.()
   recordingPlayer?.close()
   void recordingContext?.close().catch(() => {})
   window.removeEventListener('pagehide', stop)
@@ -725,6 +740,16 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
             outlined
             :label="t('previewFindMidi')"
             @click="loadPorts"
+          />
+          <Button
+            v-else-if="canDrivePorts && note === null"
+            size="small"
+            severity="secondary"
+            outlined
+            icon="pi pi-refresh"
+            :label="t('midiRescan')"
+            :loading="rescanning"
+            @click="rescan"
           />
           <Button
             size="small"
