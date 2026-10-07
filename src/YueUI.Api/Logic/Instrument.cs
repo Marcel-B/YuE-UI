@@ -15,13 +15,15 @@ namespace YueUI.Api.Logic;
 /// camelCase like the rest of this API; the converter sits on the property because the app's global enum converter
 /// would win over one on the type.
 /// </remarks>
+/// <param name="Note">What the user wrote about it (which mixer input it is on, …); null when nothing.</param>
 public sealed record Instrument(
     long Id,
     string Name,
     string Port,
     int Channel,
     [property: JsonConverter(typeof(JsonStringEnumConverter<InstrumentKind>))] InstrumentKind Kind = InstrumentKind.Synth,
-    DrumNotes? Drums = null);
+    DrumNotes? Drums = null,
+    string? Note = null);
 
 /// <summary>What an instrument is, which decides what the tracks that play it get from it.</summary>
 public enum InstrumentKind

@@ -448,6 +448,17 @@ public sealed class SqliteDatabase(IOptions<DataOptions> options)
                     PRAGMA user_version = 18;
                     """);
             }
+            if (current < 19)
+            {
+                // A note per instrument ("on input 3 of the mixer"), written on its own and never by the form.
+                Execute(
+                    connection,
+                    null,
+                    """
+                    ALTER TABLE instruments ADD COLUMN note TEXT NULL;
+                    PRAGMA user_version = 19;
+                    """);
+            }
             _ready = true;
         }
     }

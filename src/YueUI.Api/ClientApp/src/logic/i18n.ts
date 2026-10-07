@@ -265,6 +265,9 @@ const messages = {
     instrumentsManageTitle: 'Zur Seite „Instrumente“: MIDI-Instrumente und Browser-Klänge anlegen und anspielen',
     instrumentsTitle: 'MIDI-Instrumente',
     instrumentPlay: 'Auf der Klaviatur spielen',
+    instrumentNote: 'Notiz',
+    instrumentNoteHas: 'Notiz (vorhanden)',
+    instrumentNotePlaceholder: 'Zum Beispiel: an welchem Audioeingang es hängt …',
     soundsTitle: 'Browser-Klänge',
     soundsIntro:
       'Gespeicherte Klänge der beiden Synthesizer im Browser, Analog und FM. Auf der Logic-Seite wählt man ihn je Spur unter „Ausgänge je Spur“, und eine Änderung hier hört man dort gleich. Beim Bearbeiten spielt die Klaviatur unten den Klang, wie er gerade ist.',
@@ -633,6 +636,9 @@ const messages = {
     instrumentsManageTitle: 'To the instruments page: set up and play MIDI instruments and browser sounds',
     instrumentsTitle: 'MIDI instruments',
     instrumentPlay: 'Play on the keyboard',
+    instrumentNote: 'Note',
+    instrumentNoteHas: 'Note (written)',
+    instrumentNotePlaceholder: 'For example: which audio input it is on …',
     soundsTitle: 'Browser sounds',
     soundsIntro:
       'Saved sounds of the two synthesizers in the browser, analog and FM. On the Logic page a track picks one under “Output per track”, and a change here is heard there at once. While editing, the keyboard below plays the sound as it is.',

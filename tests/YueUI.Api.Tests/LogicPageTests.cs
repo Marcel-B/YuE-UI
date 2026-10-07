@@ -50,6 +50,22 @@ public sealed class LogicPageTests : IDisposable
     }
 
     [Fact]
+    public async Task An_instruments_note_is_saved_on_its_own_and_survives_the_form()
+    {
+        var id = (long)(await Json(await _client.PostAsJsonAsync("/api/instruments", new { name = "Mother32", port = "Out 1", channel = 12 })))["id"]!;
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.PutAsJsonAsync($"/api/instruments/{id}/note", new { note = "  Mixer Eingang 3\nLinks  " })).StatusCode);
+        var changed = await Json(await _client.PutAsJsonAsync($"/api/instruments/{id}", new { name = "Mother-32", port = "Out 1", channel = 12 }));
+        Assert.Equal("Mixer Eingang 3\nLinks", (string?)changed["note"]);
+        Assert.Equal("Mixer Eingang 3\nLinks", (string?)Assert.Single((await Json(await _client.GetAsync("/api/instruments"))).AsArray())!["note"]);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.PutAsJsonAsync($"/api/instruments/{id}/note", new { note = " \n " })).StatusCode);
+        Assert.Null(Assert.Single((await Json(await _client.GetAsync("/api/instruments"))).AsArray())!["note"]);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PutAsJsonAsync($"/api/instruments/{id + 1}/note", new { note = "x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync($"/api/instruments/{id}/note", new { note = new string('x', 10_001) })).StatusCode);
+    }
+
+    [Fact]
     public async Task A_drum_machine_keeps_the_notes_of_its_drums()
     {
         var created = await _client.PostAsJsonAsync("/api/instruments", new

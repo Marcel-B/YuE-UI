@@ -10,7 +10,7 @@ namespace YueUI.Api.Data;
 /// </summary>
 public sealed class SqliteInstrumentStore(SqliteDatabase database)
 {
-    private const string Columns = "id, name, port, channel, kind, drum_kick, drum_snare, drum_closed_hihat, drum_open_hihat, drum_crash, drum_clap";
+    private const string Columns = "id, name, port, channel, kind, drum_kick, drum_snare, drum_closed_hihat, drum_open_hihat, drum_crash, drum_clap, note";
 
     /// <summary>SQLITE_CONSTRAINT_UNIQUE: the extended result code of a violated UNIQUE constraint.</summary>
     private const int UniqueConstraintViolated = 2067;
@@ -42,7 +42,23 @@ public sealed class SqliteInstrumentStore(SqliteDatabase database)
     public Instrument? Update(long id, InstrumentValues values)
     {
         using var connection = database.Open();
-        return Update(connection, null, id, values) ? values.WithId(id) : null;
+        return Update(connection, null, id, values) ? Find(connection, id) : null;
+    }
+
+    /// <summary>
+    /// Writes the instrument's note; an empty one takes it away. Apart from <see cref="Update"/>, so that saving the
+    /// form (or importing) never touches a note and a note is saved without the rest.
+    /// </summary>
+    /// <returns><c>false</c> when there is no instrument with that id.</returns>
+    public bool SetNote(long id, string note)
+    {
+        using var connection = database.Open();
+        return SqliteDatabase.Execute(
+            connection,
+            null,
+            "UPDATE instruments SET note = $note, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = $id",
+            ("$id", id),
+            ("$note", note.Length == 0 ? DBNull.Value : note)) > 0;
     }
 
     /// <summary>Removes the instrument and every assignment of a track to it.</summary>
@@ -182,6 +198,15 @@ public sealed class SqliteInstrumentStore(SqliteDatabase database)
         return true;
     }
 
+    private static Instrument? Find(SqliteConnection connection, long id)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {Columns} FROM instruments WHERE id = $id";
+        command.Parameters.AddWithValue("$id", id);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? Read(reader) : null;
+    }
+
     private static long? IdOf(SqliteConnection connection, SqliteTransaction transaction, string name)
     {
         using var command = connection.CreateCommand();
@@ -224,6 +249,7 @@ public sealed class SqliteInstrumentStore(SqliteDatabase database)
                     Crash = reader.GetInt32(9),
                     Clap = reader.GetInt32(10),
                 };
-        return new Instrument(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3), kind, drums);
+        var note = reader.IsDBNull(11) ? null : reader.GetString(11);
+        return new Instrument(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3), kind, drums, note);
     }
 }

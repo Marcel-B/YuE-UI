@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import Fieldset from 'primevue/fieldset'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ApiError, createInstrument, deleteInstrument, updateInstrument } from '../../logic/api'
+import { ApiError, createInstrument, deleteInstrument, saveInstrumentNote, updateInstrument } from '../../logic/api'
+import SongNote from '../SongNote.vue'
 import { instruments, reloadInstruments } from '../../logic/instrumentLibrary'
 import { t, type MessageKey } from '../../logic/i18n'
 import { noteName, parseNote } from '../../logic/notes'
@@ -241,6 +242,25 @@ async function remove(instrument: Instrument): Promise<void> {
   }
 }
 
+/** Instruments whose note is open; closed by default, the button shows whether one is written, as by a song. */
+const openNotes = ref(new Set<number>())
+
+function toggleNote(id: number): void {
+  const open = new Set(openNotes.value)
+  if (!open.delete(id)) {
+    open.add(id)
+  }
+  openNotes.value = open
+}
+
+/** Kept in the shared list at once, so the button fills without reloading every instrument. */
+function noteSaved(id: number, note: string): void {
+  const instrument = instruments.value.find((entry) => entry.id === id)
+  if (instrument) {
+    instrument.note = note || null
+  }
+}
+
 async function refresh(): Promise<void> {
   await reloadInstruments()
 }
@@ -259,7 +279,7 @@ function fail(caught: unknown): void {
   <div>
     <p class="muted mt-0 mb-4 text-sm">{{ t('instrumentsIntro') }}</p>
 
-    <div v-if="instruments.length > 0" class="mb-4 overflow-x-auto">
+    <div v-if="instruments.length > 0" class="@container mb-4 overflow-x-auto">
       <table class="w-full border-collapse text-sm">
         <thead>
           <tr class="text-left text-muted-color text-xs">
@@ -273,41 +293,62 @@ function fail(caught: unknown): void {
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="instrument in instruments"
-            :key="instrument.id"
-            class="rule"
-            :class="{ 'bg-highlight': instrument.id === editing }"
-          >
-            <td class="py-1 pr-2 align-middle">{{ instrument.name }}</td>
-            <td class="py-1 pr-2 align-middle">{{ instrument.port }}</td>
-            <td class="py-1 pr-2 align-middle">{{ instrument.channel }}</td>
-            <td class="py-1 pr-2 align-middle">
-              {{ instrument.kind === 'DrumMachine' ? t('instrumentKindDrumMachine') : t('instrumentKindSynth') }}
-              <span v-if="instrument.drums" class="muted block text-xs">{{ drumSummary(instrument.drums) }}</span>
-            </td>
-            <td class="py-1 align-middle">
-              <div class="flex gap-1 whitespace-nowrap">
-                <Button
-                  link
-                  size="small"
-                  icon="pi pi-play"
-                  :aria-label="t('instrumentPlay')"
-                  v-tooltip.bottom="t('instrumentPlay')"
-                  @click="emit('play', instrument)"
+          <template v-for="instrument in instruments" :key="instrument.id">
+            <tr class="rule" :class="{ 'bg-highlight': instrument.id === editing }">
+              <td class="py-1 pr-2 align-middle">{{ instrument.name }}</td>
+              <td class="py-1 pr-2 align-middle">{{ instrument.port }}</td>
+              <td class="py-1 pr-2 align-middle">{{ instrument.channel }}</td>
+              <td class="py-1 pr-2 align-middle">
+                {{ instrument.kind === 'DrumMachine' ? t('instrumentKindDrumMachine') : t('instrumentKindSynth') }}
+                <span v-if="instrument.drums" class="muted block text-xs">{{ drumSummary(instrument.drums) }}</span>
+              </td>
+              <td class="py-1 align-middle">
+                <div class="flex gap-1 whitespace-nowrap">
+                  <Button
+                    icon="pi pi-comment"
+                    :text="!instrument.note"
+                    size="small"
+                    rounded
+                    :severity="instrument.note ? undefined : 'secondary'"
+                    v-tooltip.bottom="instrument.note ? t('instrumentNoteHas') : t('instrumentNote')"
+                    :aria-label="instrument.note ? t('instrumentNoteHas') : t('instrumentNote')"
+                    :aria-expanded="openNotes.has(instrument.id)"
+                    @click="toggleNote(instrument.id)"
+                  />
+                  <Button
+                    link
+                    size="small"
+                    icon="pi pi-play"
+                    :aria-label="t('instrumentPlay')"
+                    v-tooltip.bottom="t('instrumentPlay')"
+                    @click="emit('play', instrument)"
+                  />
+                  <Button link size="small" :label="t('instrumentEdit')" :disabled="busy" @click="edit(instrument)" />
+                  <Button
+                    link
+                    size="small"
+                    severity="danger"
+                    :label="t('instrumentDelete')"
+                    :disabled="busy"
+                    @click="remove(instrument)"
+                  />
+                </div>
+              </td>
+            </tr>
+            <tr v-if="openNotes.has(instrument.id)">
+              <td colspan="5" class="pb-1">
+                <!-- As wide as the visible part of the table, which scrolls sideways on a phone, and held at its left. -->
+                <SongNote
+                  class="sticky left-0 w-[100cqw]"
+                  :note="instrument.note ?? ''"
+                  :save="(note) => saveInstrumentNote(instrument.id, note)"
+                  :placeholder="t('instrumentNotePlaceholder')"
+                  @saved="noteSaved(instrument.id, $event)"
+                  @error="error = $event"
                 />
-                <Button link size="small" :label="t('instrumentEdit')" :disabled="busy" @click="edit(instrument)" />
-                <Button
-                  link
-                  size="small"
-                  severity="danger"
-                  :label="t('instrumentDelete')"
-                  :disabled="busy"
-                  @click="remove(instrument)"
-                />
-              </div>
-            </td>
-          </tr>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>

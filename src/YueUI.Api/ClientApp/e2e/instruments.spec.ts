@@ -40,3 +40,20 @@ test('searching again finds a MIDI device switched on later', async ({ page }) =
   await port.click()
   await expect(page.getByRole('option')).toHaveText(['Mother-32', 'M-VAVE FM-1', /^Anderer Ausgang/])
 })
+
+test('an instrument keeps a note written under the speech bubble', async ({ page, api }) => {
+  api.answers.set('GET /api/instruments', () => [
+    { id: 7, name: 'Mother-32', port: 'Mother-32', channel: 1, kind: 'Synth', drums: null, note: null },
+  ])
+  await page.goto('#/instruments')
+
+  await page.getByRole('button', { name: 'Notiz', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Notiz' }).fill('Audio an Eingang 3')
+  await page.getByRole('textbox', { name: 'Notiz' }).blur()
+
+  await expect
+    .poll(() => api.callsTo('PUT', '/api/instruments/7/note').map((call) => call.body))
+    .toEqual([{ note: 'Audio an Eingang 3' }])
+  // The button fills once a note is written, so it shows with the note closed.
+  await expect(page.getByRole('button', { name: 'Notiz (vorhanden)' })).toBeVisible()
+})
