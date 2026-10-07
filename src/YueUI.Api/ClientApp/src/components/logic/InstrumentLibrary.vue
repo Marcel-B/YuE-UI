@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import Fieldset from 'primevue/fieldset'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ApiError, createInstrument, deleteInstrument, updateInstrument } from '../../logic/api'
 import { instruments, reloadInstruments } from '../../logic/instrumentLibrary'
 import { t, type MessageKey } from '../../logic/i18n'
 import { noteName, parseNote } from '../../logic/notes'
-import { listMidiPorts, midiAlreadyAllowed, midiSupported, midiUsable, type MidiPort } from '../../logic/midiPlayer'
+import {
+  listMidiPorts,
+  midiAlreadyAllowed,
+  midiSupported,
+  midiUsable,
+  onMidiPortsChanged,
+  rescanMidi,
+  type MidiPort,
+} from '../../logic/midiPlayer'
 import { DRUMS, GENERAL_MIDI_DRUMS, type DrumNotes, type Instrument, type InstrumentKind } from '../../logic/types'
 
 /**
@@ -117,12 +125,37 @@ async function loadPorts(): Promise<void> {
   const found = await listMidiPorts()
   ports.value = found.ports
   canAskForMidi.value = false
+  hasAccess.value = found.access !== null
+  // The page stays mounted while hidden, so a device plugged in meanwhile has to reach the list on its own.
+  stopWatchingPorts ??= found.access
+    ? onMidiPortsChanged(async () => {
+        ports.value = (await listMidiPorts()).ports
+      })
+    : null
   // A form opened before the ports were known can now offer the typed port from the list.
   if (port.value === OTHER_PORT && portNames.value.includes(otherPort.value.trim())) {
     port.value = otherPort.value.trim()
   } else if (port.value === OTHER_PORT && otherPort.value === '' && portNames.value.length > 0) {
     port.value = portNames.value[0]!
   }
+}
+
+const hasAccess = ref(false)
+const rescanning = ref(false)
+let stopWatchingPorts: (() => void) | null = null
+onBeforeUnmount(() => stopWatchingPorts?.())
+
+/** A device switched on after the page asked is only found by asking again in Firefox; see rescanMidi. */
+async function rescan(): Promise<void> {
+  rescanning.value = true
+  try {
+    await rescanMidi()
+  } catch {
+    // The access the page had stays.
+  } finally {
+    rescanning.value = false
+  }
+  await loadPorts()
 }
 
 function startAdding(): void {
@@ -298,14 +331,27 @@ function fail(caught: unknown): void {
       </div>
       <div class="flex flex-col gap-1">
         <label id="instrument-port-label" class="text-sm">{{ t('instrumentPort') }}</label>
-        <Select
-          v-model="port"
-          :options="portOptions"
-          option-label="label"
-          option-value="value"
-          aria-labelledby="instrument-port-label"
-          fluid
-        />
+        <div class="flex gap-2">
+          <Select
+            v-model="port"
+            :options="portOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="instrument-port-label"
+            class="min-w-0 flex-1"
+          />
+          <Button
+            v-if="hasAccess"
+            type="button"
+            severity="secondary"
+            outlined
+            icon="pi pi-refresh"
+            :aria-label="t('midiRescan')"
+            v-tooltip.bottom="t('midiRescan')"
+            :loading="rescanning"
+            @click="rescan"
+          />
+        </div>
       </div>
       <InputText
         v-if="port === OTHER_PORT"
