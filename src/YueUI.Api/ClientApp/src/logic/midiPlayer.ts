@@ -456,21 +456,46 @@ export interface FoundPorts {
   reason?: string
   /** Whether the browser listed ports whose names it could not read (see unreadablePort). */
   unreadable: boolean
+  /** Whether Firefox's outputs changed since this page first listed them, which only a restart of Firefox makes safe (see firstOutputs). */
+  restartFirefox: boolean
+}
+
+/**
+ * The outputs' names when this page first listed them. Firefox's midir backend keeps a port by its name once seen
+ * and never takes a fresh one for that name (`add_new_ports` in dom/midi/midir_impl skips names already present),
+ * while CoreMIDI may give a device switched on or off meanwhile new endpoints: on the Mac, Mother32 on one output of
+ * a MIDI interface then also played the drum machine on another, and only a Firefox restart helped (Logic sent it
+ * right). The page cannot see which port went stale, only that the list changed, which is when to say so.
+ */
+let firstOutputs: string | null = null
+
+function isFirefox(): boolean {
+  return /firefox/i.test(navigator.userAgent ?? '')
 }
 
 /** The MIDI outputs the browser offers, or an empty list where Web MIDI is missing or refused. */
 export async function listMidiPorts(): Promise<FoundPorts> {
   if (!midiSupported()) {
     // Safari has no Web MIDI at all; the oscillator covers those browsers.
-    return { ports: [], access: null, reason: 'unsupported', unreadable: false }
+    return { ports: [], access: null, reason: 'unsupported', unreadable: false, restartFirefox: false }
   }
   try {
     const access = await midiAccess()
     const all = [...access.outputs.values()].map((port) => ({ id: port.id, name: port.name ?? port.id }))
     const ports = all.filter((port) => !unreadablePort(port.name))
-    return { ports, access, unreadable: ports.length < all.length }
+    const names = all
+      .map((port) => port.name)
+      .sort()
+      .join('\n')
+    firstOutputs ??= names
+    return {
+      ports,
+      access,
+      unreadable: ports.length < all.length,
+      restartFirefox: isFirefox() && names !== firstOutputs,
+    }
   } catch {
-    return { ports: [], access: null, reason: 'denied', unreadable: false }
+    return { ports: [], access: null, reason: 'denied', unreadable: false, restartFirefox: false }
   }
 }
 
