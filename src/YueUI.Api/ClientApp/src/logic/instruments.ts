@@ -93,6 +93,15 @@ const DRUM_TRACKS: Record<string, readonly (keyof DrumNotes)[]> = {
 }
 
 /**
+ * The note a drum track's test plays: the drum the track carries (a combined `Drums` track the snare), on the
+ * note its drum machine has for it, else General MIDI's, which the browser kit also plays.
+ */
+export function drumTestNote(track: string, instrument: Instrument | null): number {
+  const drum = DRUM_TRACKS[track]?.[0] ?? 'snare'
+  return (instrument?.kind === 'DrumMachine' ? instrument.drums?.[drum] : undefined) ?? GENERAL_MIDI_DRUMS[drum]
+}
+
+/**
  * The notes the drums are generated on, taken from the drum machine each drum track plays: with one drum
  * track from the machine on `Drums`; with a split kit each track from its own, so a kick on one machine and a
  * snare on another both come out right. A track without a drum machine keeps General MIDI. The count-in click

@@ -4,7 +4,7 @@ import Panel from 'primevue/panel'
 import Slider from 'primevue/slider'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { t } from '../../logic/i18n'
-import { effectiveRouting, instrumentOf } from '../../logic/instruments'
+import { drumTestNote, effectiveRouting, instrumentOf } from '../../logic/instruments'
 import { loadRecordingSettings, loadRoutings, saveRecordingSettings, saveRoutings } from '../../logic/options'
 import { decodeRecording, RecordingPlayer, type Recording } from '../../logic/recording'
 import {
@@ -823,7 +823,9 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
                         effective[index]!.routing,
                         trackIds[index]!,
                         voices[index]?.kind === 'Drums',
-                        registerOf(voices[index]),
+                        voices[index]?.kind === 'Drums'
+                          ? drumTestNote(trackIds[index]!, effective[index]!.instrument)
+                          : registerOf(voices[index]),
                       )
                     "
                   />
