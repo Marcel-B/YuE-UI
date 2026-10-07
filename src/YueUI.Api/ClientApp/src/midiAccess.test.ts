@@ -5,8 +5,8 @@ afterEach(() => {
   vi.resetModules()
 })
 
-async function load(requestMIDIAccess: () => Promise<MIDIAccess>) {
-  vi.stubGlobal('navigator', { requestMIDIAccess })
+async function load(requestMIDIAccess: () => Promise<MIDIAccess>, userAgent = 'Chrome') {
+  vi.stubGlobal('navigator', { requestMIDIAccess, userAgent })
   return import('./logic/midiPlayer')
 }
 
@@ -108,5 +108,27 @@ describe('listMidiPorts', () => {
     const { listMidiPorts } = await load(() => Promise.resolve(access))
 
     expect((await listMidiPorts()).unreadable).toBe(false)
+  })
+
+  it('asks for a Firefox restart once the outputs changed since the page first listed them', async () => {
+    const first = fakeAccess(['MIDI4x4 Midi Out 2', 'MIDI4x4 Midi Out 3'])
+    const second = fakeAccess(['MIDI4x4 Midi Out 2', 'MIDI4x4 Midi Out 3', 'DrumBrute Impact'])
+    const request = vi.fn<() => Promise<MIDIAccess>>().mockResolvedValueOnce(first).mockResolvedValue(second)
+    const { listMidiPorts, rescanMidi } = await load(request, 'Mozilla/5.0 (Macintosh) Gecko/20100101 Firefox/143.0')
+
+    expect((await listMidiPorts()).restartFirefox).toBe(false)
+    await rescanMidi()
+    expect((await listMidiPorts()).restartFirefox).toBe(true)
+  })
+
+  it('does not ask Chromium for a restart, which takes fresh ports on a change', async () => {
+    const first = fakeAccess(['MIDI4x4 Midi Out 3'])
+    const second = fakeAccess(['MIDI4x4 Midi Out 3', 'DrumBrute Impact'])
+    const request = vi.fn<() => Promise<MIDIAccess>>().mockResolvedValueOnce(first).mockResolvedValue(second)
+    const { listMidiPorts, rescanMidi } = await load(request)
+
+    await listMidiPorts()
+    await rescanMidi()
+    expect((await listMidiPorts()).restartFirefox).toBe(false)
   })
 })
