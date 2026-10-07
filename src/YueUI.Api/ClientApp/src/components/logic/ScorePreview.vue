@@ -490,6 +490,7 @@ async function loadPorts(): Promise<void> {
   const found = await listMidiPorts()
   pool.setAccess(found.access)
   ports.value = found.ports
+  unreadable.value = found.unreadable
   canAskForMidi.value = found.access === null && found.reason !== 'unsupported'
   note.value =
     found.reason === 'unsupported' ? t('midiUnsupported') : found.reason === 'denied' ? t('midiDenied') : null
@@ -504,9 +505,11 @@ async function refreshPorts(): Promise<void> {
   const found = await listMidiPorts()
   pool.setAccess(found.access)
   ports.value = found.ports
+  unreadable.value = found.unreadable
 }
 
 const rescanning = ref(false)
+const unreadable = ref(false)
 
 /** A device switched on after the page asked is only found by asking again in Firefox; see rescanMidi. */
 async function rescan(): Promise<void> {
@@ -760,6 +763,7 @@ watch([large, viewportWidth], () => requestAnimationFrame(onScroll))
           />
         </div>
 
+        <p v-if="unreadable" class="hint mt-0 mb-2 text-sm text-(--warning-text)">{{ t('midiUnreadable') }}</p>
         <div class="relative overflow-x-auto">
           <table class="w-full border-collapse text-sm">
             <thead>

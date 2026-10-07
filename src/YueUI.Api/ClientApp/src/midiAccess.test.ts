@@ -10,10 +10,10 @@ async function load(requestMIDIAccess: () => Promise<MIDIAccess>) {
   return import('./logic/midiPlayer')
 }
 
-function fakeAccess() {
+function fakeAccess(names: string[] = []) {
   const listeners = new Set<() => void>()
   return {
-    outputs: new Map(),
+    outputs: new Map(names.map((name, index) => [`${index}`, { id: `${index}`, name }])),
     addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
     removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
     /** What the browser does when a device comes or goes. */
@@ -90,5 +90,23 @@ describe('rescanMidi', () => {
     stop()
     access.change()
     expect(changed).not.toHaveBeenCalled()
+  })
+})
+
+describe('listMidiPorts', () => {
+  it('leaves out ports whose names Firefox could not read and says there were some', async () => {
+    const access = fakeAccess(['M-VAVE FM-1', 'unknown input port'])
+    const { listMidiPorts } = await load(() => Promise.resolve(access))
+
+    const found = await listMidiPorts()
+    expect(found.ports).toEqual([{ id: '0', name: 'M-VAVE FM-1' }])
+    expect(found.unreadable).toBe(true)
+  })
+
+  it('reports nothing unreadable when every name was read', async () => {
+    const access = fakeAccess(['Mother-32'])
+    const { listMidiPorts } = await load(() => Promise.resolve(access))
+
+    expect((await listMidiPorts()).unreadable).toBe(false)
   })
 })

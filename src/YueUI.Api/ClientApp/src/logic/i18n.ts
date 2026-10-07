@@ -158,6 +158,8 @@ const messages = {
     previewSmaller: 'Verkleinern',
     previewFindMidi: 'MIDI-Geräte suchen',
     midiRescan: 'MIDI-Geräte neu suchen',
+    midiUnreadable:
+      'Der Browser meldet Geräte, deren Namen er nicht lesen kann. Firefox erkennt Geräte, die nach seinem Start eingeschaltet wurden, oft erst nach einem Neustart: Firefox ganz beenden und wieder öffnen.',
     previewRouting: 'Ausgänge je Spur',
     previewTrack: 'Spur',
     previewTest: 'Test',
@@ -524,6 +526,8 @@ const messages = {
     previewSmaller: 'Smaller',
     previewFindMidi: 'Find MIDI devices',
     midiRescan: 'Search MIDI devices again',
+    midiUnreadable:
+      'The browser reports devices whose names it cannot read. Firefox often only recognises devices switched on after it started once it is restarted: quit Firefox completely and open it again.',
     previewRouting: 'Output per track',
     previewTrack: 'Track',
     previewTest: 'Test',

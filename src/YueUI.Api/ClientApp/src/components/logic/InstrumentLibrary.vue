@@ -124,12 +124,15 @@ onMounted(async () => {
 async function loadPorts(): Promise<void> {
   const found = await listMidiPorts()
   ports.value = found.ports
+  unreadable.value = found.unreadable
   canAskForMidi.value = false
   hasAccess.value = found.access !== null
   // The page stays mounted while hidden, so a device plugged in meanwhile has to reach the list on its own.
   stopWatchingPorts ??= found.access
     ? onMidiPortsChanged(async () => {
-        ports.value = (await listMidiPorts()).ports
+        const changed = await listMidiPorts()
+        ports.value = changed.ports
+        unreadable.value = changed.unreadable
       })
     : null
   // A form opened before the ports were known can now offer the typed port from the list.
@@ -141,6 +144,7 @@ async function loadPorts(): Promise<void> {
 }
 
 const hasAccess = ref(false)
+const unreadable = ref(false)
 const rescanning = ref(false)
 let stopWatchingPorts: (() => void) | null = null
 onBeforeUnmount(() => stopWatchingPorts?.())
@@ -353,6 +357,7 @@ function fail(caught: unknown): void {
           />
         </div>
       </div>
+      <p v-if="unreadable" class="hint m-0 text-sm text-(--warning-text)">{{ t('midiUnreadable') }}</p>
       <InputText
         v-if="port === OTHER_PORT"
         v-model.trim="otherPort"
