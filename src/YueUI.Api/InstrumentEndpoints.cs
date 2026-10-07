@@ -20,6 +20,7 @@ public static class InstrumentEndpoints
         instruments.MapGet("/", (SqliteInstrumentStore store) => Results.Ok(store.List()));
         instruments.MapPost("/", Create);
         instruments.MapPut("/{id:long}", Update);
+        instruments.MapPut("/{id:long}/note", SetNote);
         instruments.MapDelete("/{id:long}", (long id, SqliteInstrumentStore store) => store.Delete(id) ? Results.NoContent() : NotFound(id));
         instruments.MapGet("/assignments", (SqliteInstrumentStore store) => Results.Ok(store.Assignments()));
         instruments.MapPut("/assignments/{track}", Assign);
@@ -57,6 +58,17 @@ public static class InstrumentEndpoints
         {
             return Taken(exception);
         }
+    }
+
+    /// <summary>Trimmed like a song's note, so a note of blank lines counts as none.</summary>
+    private static IResult SetNote(long id, NoteRequest request, SqliteInstrumentStore store)
+    {
+        var note = (request.Note ?? "").Trim();
+        if (note.Length > LibraryEndpoints.MaxNoteLength)
+        {
+            return Invalid([$"note may have at most {LibraryEndpoints.MaxNoteLength} characters"]);
+        }
+        return store.SetNote(id, note) ? Results.NoContent() : NotFound(id);
     }
 
     private static IResult Assign(string track, [FromBody] TrackAssignmentInput input, SqliteInstrumentStore store)

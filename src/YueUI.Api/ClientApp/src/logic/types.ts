@@ -204,6 +204,8 @@ export interface Instrument {
   kind: InstrumentKind
   /** Only a drum machine has them. */
   drums: DrumNotes | null
+  /** What the user wrote about it, saved on its own (saveInstrumentNote); null when nothing. */
+  note?: string | null
 }
 
 export interface InstrumentInput {

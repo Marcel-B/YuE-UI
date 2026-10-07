@@ -8,7 +8,13 @@ import { t } from '../i18n'
  * the page is hidden (a phone locks, the app goes to the background) and when the note is closed. There is no save
  * button to forget on the phone.
  */
-const props = defineProps<{ songId: string; note: string }>()
+const props = defineProps<{
+  songId?: string
+  note: string
+  /** Where the note goes, for a note that is not a song's (an instrument's); without it, the song's note. */
+  save?: (note: string) => Promise<void>
+  placeholder?: string
+}>()
 
 const emit = defineEmits<{
   /** What was saved, trimmed as the server keeps it. */
@@ -36,7 +42,7 @@ function save(): Promise<void> {
   state.value = 'saving'
   queue = queue.then(async () => {
     try {
-      await saveSongNote(props.songId, text)
+      await (props.save ? props.save(text) : saveSongNote(props.songId!, text))
       emit('saved', text)
       if (draft.value.trim() === text) {
         state.value = 'saved'
@@ -85,7 +91,7 @@ onBeforeUnmount(() => {
       auto-resize
       fluid
       :maxlength="10000"
-      :placeholder="t('songNotePlaceholder')"
+      :placeholder="placeholder ?? t('songNotePlaceholder')"
       :aria-label="t('songNote')"
       @input="typed"
       @blur="save"

@@ -275,6 +275,12 @@ export async function updateInstrument(id: number, input: InstrumentInput): Prom
   return (await request(`/api/instruments/${id}`, json('PUT', input))).json() as Promise<Instrument>
 }
 
+/** Writes the instrument's note; an empty one takes it away. The form's save leaves it alone. */
+export async function saveInstrumentNote(id: number, note: string): Promise<void> {
+  // keepalive: a note typed just before the page goes away still arrives, as with a song's.
+  await request(`/api/instruments/${id}/note`, { ...json('PUT', { note }), keepalive: true })
+}
+
 /** Removes the instrument; the server drops the assignments of tracks to it as well. */
 export async function deleteInstrument(id: number): Promise<void> {
   await request(`/api/instruments/${id}`, { method: 'DELETE' })
