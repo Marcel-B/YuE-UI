@@ -611,7 +611,7 @@ export function testTone(pool: OutputPool, routing: Routing, track: string, perc
   const note: ScheduledNote = {
     time: 0,
     duration: 0.4,
-    pitch: percussive ? 38 : pitch,
+    pitch,
     velocity: 100,
     channel: routing.channel,
     output: routing.output,

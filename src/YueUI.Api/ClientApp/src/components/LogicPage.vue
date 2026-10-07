@@ -302,6 +302,26 @@ watch(assignments, () => {
   }
 })
 
+/**
+ * The drums are generated on the notes of the drum machine their tracks play, so a preview made before a track got
+ * its machine (or before the assignments arrived from the server, which a song opened from the library outruns)
+ * would send General MIDI's notes to it: wrong drums. A change in those notes therefore converts again at once,
+ * unlike other changes, which only mark the result stale.
+ */
+const drumNotesKey = computed(() =>
+  JSON.stringify(
+    withDrumNotes(toConversionOptions(form.value), assignments.value, instruments.value).arrangement.drums?.notes ??
+      null,
+  ),
+)
+let convertedDrumNotes: string | null = null
+// Only the assignments and the library trigger it; a form change keeps marking the result stale as before.
+watch([assignments, instruments], () => {
+  if (result.value && drumNotesKey.value !== convertedDrumNotes) {
+    void convert()
+  }
+})
+
 // ---- Presets ----------------------------------------------------------------------------------------
 
 /** The presets, kept on the server like the instruments; loaded once, and again after every change. */
@@ -401,8 +421,15 @@ async function convert(): Promise<void> {
   error.value = null
 
   try {
-    result.value = await convertScore(from, conversionOptions(), controller.signal)
+    const options = conversionOptions()
+    const drumNotes = drumNotesKey.value
+    result.value = await convertScore(from, options, controller.signal)
+    convertedDrumNotes = drumNotes
     stale.value = false
+    // The assignments may have arrived while the score was on its way.
+    if (drumNotesKey.value !== drumNotes) {
+      void convert()
+    }
   } catch (caught) {
     if (caught instanceof DOMException && caught.name === 'AbortError') {
       return
