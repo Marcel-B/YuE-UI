@@ -440,18 +440,37 @@ export function onMidiPortsChanged(listener: () => void): () => void {
   return () => portListeners.delete(listener)
 }
 
+/**
+ * The name Firefox gives a port whose name it could not read: its midir backend writes "unknown input port" for
+ * inputs and outputs alike (dom/midi/midir_impl). On the Mac that happened to devices switched on while Firefox was
+ * running, even after a fresh request, and only a restart of Firefox read them; such a port cannot be told apart
+ * from another one, so it is left out and the page says what helps instead.
+ */
+export function unreadablePort(name: string): boolean {
+  return /^unknown (input|output) port$/i.test(name.trim())
+}
+
+export interface FoundPorts {
+  ports: MidiPort[]
+  access: MIDIAccess | null
+  reason?: string
+  /** Whether the browser listed ports whose names it could not read (see unreadablePort). */
+  unreadable: boolean
+}
+
 /** The MIDI outputs the browser offers, or an empty list where Web MIDI is missing or refused. */
-export async function listMidiPorts(): Promise<{ ports: MidiPort[]; access: MIDIAccess | null; reason?: string }> {
+export async function listMidiPorts(): Promise<FoundPorts> {
   if (!midiSupported()) {
     // Safari has no Web MIDI at all; the oscillator covers those browsers.
-    return { ports: [], access: null, reason: 'unsupported' }
+    return { ports: [], access: null, reason: 'unsupported', unreadable: false }
   }
   try {
     const access = await midiAccess()
-    const ports = [...access.outputs.values()].map((port) => ({ id: port.id, name: port.name ?? port.id }))
-    return { ports, access }
+    const all = [...access.outputs.values()].map((port) => ({ id: port.id, name: port.name ?? port.id }))
+    const ports = all.filter((port) => !unreadablePort(port.name))
+    return { ports, access, unreadable: ports.length < all.length }
   } catch {
-    return { ports: [], access: null, reason: 'denied' }
+    return { ports: [], access: null, reason: 'denied', unreadable: false }
   }
 }
 
